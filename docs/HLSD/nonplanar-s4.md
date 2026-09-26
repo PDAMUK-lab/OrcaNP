@@ -109,6 +109,16 @@ whose flat slices are chosen surfaces (`LayerShapes`):
   core's layers all come first, the first layer over the core lies the gap away from it all
   around (not only above it), and what is within the gap or inside the core falls below H and
   is cut off the deformed part before slicing.
+  - The core is either the object's parts set as print surface, or generated to fit the part:
+    - A **sphere** centred below the part's top by half its width, out to the part's nearest
+      point.
+    - A **cylinder** about the rotation axis, from the bed to the roof of the part's cavity, out to
+      its nearest wall below the roof.
+
+    Either is shrunk by the gap, so the part's first layer is its modelled inner surface. A
+    generated core is sliced with the part (and printed with its settings). A cavity that does
+    not reach the bed, is too small, or (for a cylinder) does not surround the axis is refused:
+    the core must stand on the bed to be printed first.
   - The distance is exact (a uniform grid of the core's triangles, and a vertical ray for
     inside/outside).
   - Laid out *from above*: the horizontal position is the direction from a centre below the
@@ -162,9 +172,10 @@ Two groups of settings switch the pipeline on:
 - **Print settings > Quality > Non-planar (S4)** (`s4_*`, per object): `s4_enabled`, the layer
   shape (`s4_layer_shape`), the S4 deformation parameters, the surface gap and layout, and the
   cone angle. Any change re-slices the object.
-- **Print surface** (`s4_print_surface`, a per-part setting added to a part in the object list):
-  the part is the core that layers are offset from. OrcaSlicer places every object on the bed,
-  so a core and what is printed over it are two parts of one object.
+- **Print surface** (`s4_surface_core`): what offset layers are offset from. Either the parts set
+  as print surface (`s4_print_surface`, a per-part setting added in the object list), or a
+  generated sphere or cylinder. OrcaSlicer places every object on the bed, so a modelled core
+  and what is printed over it are two parts of one object.
 - **Printer settings > Basic information > Polar kinematics** (`polar_*`): `polar_kinematics`, the
   axis letters and directions, axis crossing, the radius and tilt travel, the tilt threshold,
   and the conversion and speed limits.
@@ -231,7 +242,8 @@ and the non-planar building blocks:
   inverted cells, limits and rotation direction), and the bounded rotation solver against
   closed-form solutions.
 - **Meshing:** volume.
-- **Layer shapes:** signed distance, the gap all around, the unwrap, cones.
+- **Layer shapes:** signed distance, the gap all around, the unwrap, cones, fitting sphere and
+  cylinder cores.
 - **Mapper:** identity, rigid tilt, squash, outside points.
 - **G-code transform:**
   - identity, flow, travel lifts, absolute extrusion refused;
@@ -242,4 +254,5 @@ and the non-planar building blocks:
 `tests/fff_print/test_nonplanar.cpp` slices through the whole pipeline:
 - S4 curves layers, holds them flat below the planar height, and needs relative extrusion;
 - polar export drives angle and radius, and tilts the nozzle over S4 layers;
-- a dome printed over a print surface dome keeps the gap all around it, after the whole core.
+- a dome printed over a print surface dome keeps the gap all around it, after the whole core;
+- a hollow dome gets a generated core and its first layer on its inner surface.
