@@ -146,7 +146,6 @@ private:
 
     enum class Block { Body, Start, End };
     Block       m_block            = Block::Body;
-    bool        m_seen_start_tag   = false;
     bool        m_absolute_xyz     = true;
     bool        m_relative_e       = false;
     double      m_e                = 0.;   // absolute E position of the Cartesian stream
