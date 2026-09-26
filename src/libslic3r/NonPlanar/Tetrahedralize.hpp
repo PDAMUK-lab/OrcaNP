@@ -18,6 +18,9 @@ struct TetrahedralizeParams
     double cell_size = 0.;
     // Surface edges sharper than this dihedral angle (degrees) are kept exactly.
     double feature_angle = 60.;
+    // Remove sliver tetrahedra (perturbation and exudation). Slivers are nearly flat, so the
+    // deformation easily turns them inside out.
+    bool optimize = true;
 };
 
 // Throws std::runtime_error when the input is not a closed, orientable surface.

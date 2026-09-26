@@ -67,13 +67,16 @@ struct S4PassData
     std::vector<double> distance; // path length to the bed, overhanging cells only
     std::vector<double> direction; // smoothed rotation direction (-1 .. 1)
     std::vector<double> target;   // target rotation
-    std::vector<double> limit;    // rotation bound
+    std::vector<double> limit;    // rotation bound, after cutting back where cells inverted
     std::vector<double> rotation; // optimized rotation
+    size_t              inverted = 0; // cells still inside out after the last round
+    int                 rounds   = 0; // solves needed to remove inversions
 };
 
 struct S4Result
 {
-    // Deformed vertex positions, numbered like the input points. Vertices on the bed stay put.
+    // Deformed vertex positions, numbered like the input points. Vertices on the bed stay put;
+    // all others stay at least min(their height, bottom_threshold) above the bed.
     std::vector<Eigen::Vector3d> deformed;
     std::vector<S4PassData>      passes;
 };

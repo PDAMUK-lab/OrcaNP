@@ -208,6 +208,34 @@ TEST_CASE("Deformation does not invert any tetrahedron", "[S4]")
         CHECK(signed_volume(mesh.points, t) * signed_volume(result.deformed, t) > 0.);
 }
 
+TEST_CASE("Aggressive rotations are cut back until no tetrahedron is inverted", "[S4]")
+{
+    const TetMesh mesh = voxel_mesh(cantilever_voxels(), 2.);
+    S4Params      params;
+    params.rotation_multiplier = 4.;
+    params.max_rotation_near   = 80.;
+    params.max_rotation_far    = 80.;
+    params.neighbour_weight    = 0.5;
+    const S4Result result = s4_deform(mesh, params);
+
+    // The first solve folds cells over; the repair has to kick in.
+    CHECK(result.passes.front().rounds > 1);
+    CHECK(result.passes.front().inverted == 0);
+    for (const auto &t : mesh.tets)
+        CHECK(signed_volume(mesh.points, t) * signed_volume(result.deformed, t) > 0.);
+}
+
+TEST_CASE("Only the base stays at bed level", "[S4]")
+{
+    const TetMesh  mesh   = voxel_mesh(cantilever_voxels(), 2.);
+    S4Params       params;
+    params.bottom_threshold = 0.3;
+    const S4Result result   = s4_deform(mesh, params);
+
+    for (size_t v = 0; v < mesh.points.size(); ++v)
+        CHECK(result.deformed[v].z() >= std::min(mesh.points[v].z(), params.bottom_threshold) - 1e-9);
+}
+
 TEST_CASE("The rotation field follows its targets and stays within its bounds", "[S4]")
 {
     // A chain of four cells; the ends carry targets 1 and -1, the middle cells follow.

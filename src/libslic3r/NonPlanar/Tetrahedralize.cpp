@@ -69,7 +69,8 @@ TetMesh tetrahedralize(const std::vector<Eigen::Vector3d> &vertices, const std::
     namespace p = CGAL::parameters;
     const Criteria criteria(p::edge_size = size, p::facet_angle = 25., p::facet_size = size, p::facet_distance = size / 10.,
                             p::cell_radius_edge_ratio = 3., p::cell_size = size);
-    const Complex complex = CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::no_exude());
+    const Complex complex = params.optimize ? CGAL::make_mesh_3<Complex>(domain, criteria, p::perturb(), p::exude()) :
+                                              CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::no_exude());
 
     TetMesh                                                        mesh;
     std::unordered_map<Tr::Vertex_handle, int, CGAL::Handle_hash_function> index;

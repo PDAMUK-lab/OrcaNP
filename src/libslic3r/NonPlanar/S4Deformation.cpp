@@ -315,38 +315,38 @@ std::vector<Eigen::Matrix3d> rotation_matrices(const std::vector<Eigen::Vector3d
     return out;
 }
 
-// Vertex positions whose cells best match their rotated shapes (least squares on the centred
-// cell vertices), with `pinned` vertices held at their current positions.
-std::vector<Eigen::Vector3d> solve_deformation(const std::vector<Eigen::Vector3d> &pts, const TetMesh &mesh,
-                                               const std::vector<Eigen::Matrix3d> &rot, const std::vector<char> &pinned)
+// One coordinate of the vertex positions whose cells best match their rotated shapes (least
+// squares on the centred cell vertices). Vertices with `fixed` set hold `value`.
+Eigen::VectorXd solve_axis(const std::vector<Eigen::Vector3d> &pts, const TetMesh &mesh, const std::vector<Eigen::Matrix3d> &rot, int axis,
+                           const std::vector<char> &fixed, const std::vector<double> &value)
 {
     const size_t     n = pts.size();
     std::vector<int> index(n, -1);
     int              num_free = 0;
     for (size_t v = 0; v < n; ++v)
-        if (! pinned[v])
+        if (! fixed[v])
             index[v] = num_free++;
 
     // Normal equations: sum over cells of S^T N S x = S^T T, with N = I - 1/4 the centring
     // matrix (symmetric, idempotent) and T the rotated centred cell.
     std::vector<Eigen::Triplet<double>> triplets;
     triplets.reserve(mesh.tets.size() * 16);
-    Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(num_free, 3);
+    Eigen::VectorXd rhs = Eigen::VectorXd::Zero(num_free);
     for (size_t c = 0; c < mesh.tets.size(); ++c) {
-        const std::array<int, 4> &t = mesh.tets[c];
+        const std::array<int, 4> &t    = mesh.tets[c];
         const Eigen::Vector3d     mean = 0.25 * (pts[t[0]] + pts[t[1]] + pts[t[2]] + pts[t[3]]);
         for (int i = 0; i < 4; ++i) {
             const int row = index[t[i]];
             if (row < 0)
                 continue;
-            rhs.row(row) += (rot[c] * (pts[t[i]] - mean)).transpose();
+            rhs[row] += rot[c].row(axis).dot(pts[t[i]] - mean);
             for (int j = 0; j < 4; ++j) {
-                const double w = (i == j ? 1. : 0.) - 0.25;
+                const double w   = (i == j ? 1. : 0.) - 0.25;
                 const int    col = index[t[j]];
                 if (col >= 0)
                     triplets.emplace_back(row, col, w);
                 else
-                    rhs.row(row) -= w * pts[t[j]].transpose();
+                    rhs[row] -= w * value[t[j]];
             }
         }
     }
@@ -356,20 +356,58 @@ std::vector<Eigen::Vector3d> solve_deformation(const std::vector<Eigen::Vector3d
     for (size_t v = 0; v < n; ++v)
         if (index[v] >= 0) {
             triplets.emplace_back(index[v], index[v], eps);
-            rhs.row(index[v]) += eps * pts[v].transpose();
+            rhs[index[v]] += eps * pts[v][axis];
         }
     Eigen::SparseMatrix<double> L(num_free, num_free);
     L.setFromTriplets(triplets.begin(), triplets.end());
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(L);
     if (solver.info() != Eigen::Success)
         throw std::runtime_error("S4: deformation system could not be factorized");
-    const Eigen::MatrixXd x = solver.solve(rhs);
+    const Eigen::VectorXd x = solver.solve(rhs);
 
-    std::vector<Eigen::Vector3d> out = pts;
+    Eigen::VectorXd out(n);
     for (size_t v = 0; v < n; ++v)
-        if (index[v] >= 0)
-            out[v] = x.row(index[v]).transpose();
+        out[v] = index[v] >= 0 ? x[index[v]] : value[v];
     return out;
+}
+
+// Deformed vertex positions: `pinned` vertices stay put, and no vertex may end up below its
+// `z_floor`. The axes are independent, so the floor is an active set on the Z solve alone.
+std::vector<Eigen::Vector3d> solve_deformation(const std::vector<Eigen::Vector3d> &pts, const TetMesh &mesh,
+                                               const std::vector<Eigen::Matrix3d> &rot, const std::vector<char> &pinned,
+                                               const std::vector<double> &z_floor)
+{
+    const size_t        n = pts.size();
+    std::vector<double> value(n);
+    std::vector<Eigen::Vector3d> out(n);
+    for (int axis = 0; axis < 3; ++axis) {
+        std::vector<char> fixed = pinned;
+        for (size_t v = 0; v < n; ++v)
+            value[v] = pts[v][axis];
+        Eigen::VectorXd x;
+        for (int round = 0; round < 100; ++round) {
+            x = solve_axis(pts, mesh, rot, axis, fixed, value);
+            if (axis != 2)
+                break;
+            bool violated = false;
+            for (size_t v = 0; v < n; ++v)
+                if (! fixed[v] && x[v] < z_floor[v] - 1e-9) {
+                    fixed[v] = 1;
+                    value[v] = z_floor[v];
+                    violated = true;
+                }
+            if (! violated)
+                break;
+        }
+        for (size_t v = 0; v < n; ++v)
+            out[v][axis] = x[v];
+    }
+    return out;
+}
+
+double signed_volume(const std::vector<Eigen::Vector3d> &pts, const std::array<int, 4> &t)
+{
+    return (pts[t[1]] - pts[t[0]]).cross(pts[t[2]] - pts[t[0]]).dot(pts[t[3]] - pts[t[0]]);
 }
 
 } // namespace
@@ -464,13 +502,22 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
     const Topology topo = build_topology(mesh);
     const size_t   n    = mesh.tets.size();
 
-    // Vertices on the bed stay on the bed.
+    // Vertices on the bed stay on the bed. Everything else keeps clear of it: a region pushed
+    // down to bed level would be sliced into the first layers and printed in mid-air.
     double min_z = std::numeric_limits<double>::infinity();
     for (const Eigen::Vector3d &p : mesh.points)
         min_z = std::min(min_z, p.z());
-    std::vector<char> pinned(mesh.points.size());
-    for (size_t v = 0; v < mesh.points.size(); ++v)
-        pinned[v] = mesh.points[v].z() <= min_z + 1e-6;
+    std::vector<char>   pinned(mesh.points.size());
+    std::vector<double> z_floor(mesh.points.size());
+    for (size_t v = 0; v < mesh.points.size(); ++v) {
+        pinned[v]  = mesh.points[v].z() <= min_z + 1e-6;
+        z_floor[v] = min_z + std::min(mesh.points[v].z() - min_z, params.bottom_threshold);
+    }
+
+    // Cells turned inside out get their rotation limits (and their neighbourhood's) cut back,
+    // and the pass is solved again. No rotation means no inversion, so this terminates.
+    constexpr int    max_rounds = 10;
+    constexpr double shrink     = 0.7;
 
     S4Result result;
     result.deformed = mesh.points;
@@ -482,19 +529,51 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
         data.in_air    = a.in_air;
         data.overhang  = a.overhang;
         data.direction = rotation_direction(a, topo, params, data.distance);
-        data.limit     = rotation_limits(data.distance, params);
+        const std::vector<double> limit = rotation_limits(data.distance, params);
 
-        data.target.assign(n, NaN);
+        std::vector<double>          raw_target(n, NaN);
         for (size_t c = 0; c < n; ++c) {
             double t = std::abs(threshold - a.overhang[c]);
             if (params.steep_overhang_compensation && a.in_air[c])
                 t += 2. * (PI - a.overhang[c]);
-            t *= data.direction[c] * params.rotation_multiplier;
-            if (! std::isnan(t))
-                data.target[c] = std::clamp(t, -data.limit[c], data.limit[c]);
+            raw_target[c] = t * data.direction[c] * params.rotation_multiplier;
         }
-        data.rotation   = s4_solve_rotation_field(n, topo.face_pairs, params.neighbour_weight, data.target, data.limit);
-        result.deformed = solve_deformation(result.deformed, mesh, rotation_matrices(a.center, data.rotation, params.axis), pinned);
+
+        std::vector<double>          scale(n, 1.);
+        std::vector<Eigen::Vector3d> deformed;
+        for (int round = 0;; ++round) {
+            data.limit.resize(n);
+            data.target.assign(n, NaN);
+            for (size_t c = 0; c < n; ++c) {
+                data.limit[c] = limit[c] * scale[c];
+                if (! std::isnan(raw_target[c]))
+                    data.target[c] = std::clamp(raw_target[c], -data.limit[c], data.limit[c]);
+            }
+            data.rotation = s4_solve_rotation_field(n, topo.face_pairs, params.neighbour_weight, data.target, data.limit);
+            deformed = solve_deformation(result.deformed, mesh, rotation_matrices(a.center, data.rotation, params.axis), pinned, z_floor);
+
+            std::vector<int> inverted;
+            for (size_t c = 0; c < n; ++c)
+                if (signed_volume(result.deformed, mesh.tets[c]) * signed_volume(deformed, mesh.tets[c]) <= 0.)
+                    inverted.push_back(int(c));
+            data.inverted = inverted.size();
+            data.rounds   = round + 1;
+            if (inverted.empty() || round + 1 == max_rounds)
+                break;
+            std::vector<char> hit(n, 0);
+            for (int c : inverted) {
+                hit[c] = 1;
+                for (int o : topo.point_neighbours[c]) {
+                    hit[o] = 1;
+                    for (int oo : topo.point_neighbours[o])
+                        hit[oo] = 1;
+                }
+            }
+            for (size_t c = 0; c < n; ++c)
+                if (hit[c])
+                    scale[c] *= shrink;
+        }
+        result.deformed = std::move(deformed);
         result.passes.emplace_back(std::move(data));
     }
     return result;
