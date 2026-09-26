@@ -12,6 +12,7 @@
 // Slice with relative extrusion (M83) and arc fitting off. Where the slicer places the part does
 // not matter: `map` finds it, and the rotation axis moves with the part.
 
+#include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/NonPlanar/PolarKinematics.hpp"
 #include "libslic3r/NonPlanar/S4Deformation.hpp"
 #include "libslic3r/NonPlanar/S4GCodeTransform.hpp"
@@ -368,7 +369,9 @@ int main(int argc, char **argv)
         return 1;
     }
     try {
-        const std::string cmd = argv[1];
+        // G-code and STL numbers use '.' decimals whatever the user's locale.
+        const Slic3r::CNumericLocalesSetter locales;
+        const std::string                   cmd = argv[1];
         const Args        a   = parse(argc, argv);
         if (cmd == "deform")
             return cmd_deform(a);

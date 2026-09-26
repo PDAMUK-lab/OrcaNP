@@ -1,0 +1,179 @@
+#include <catch2/catch_all.hpp>
+
+#include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/Config.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <sstream>
+
+#include "test_helpers.hpp"
+
+using namespace Slic3r::Test;
+using namespace Slic3r;
+using Catch::Matchers::WithinRel;
+
+namespace {
+
+// A G1 endpoint of the G-code body (after the first layer change), with the layer it belongs to.
+struct Move
+{
+    std::map<char, double> axes; // every axis word seen so far, carried between moves
+    double                 e     = 0.;
+    int                    layer = 0;
+};
+
+std::vector<Move> body_moves(const std::string &gcode)
+{
+    std::vector<Move>      out;
+    std::map<char, double> pos;
+    int                    layer = 0;
+    std::istringstream     in(gcode);
+    std::string            line;
+    while (std::getline(in, line)) {
+        if (line.rfind(";LAYER_CHANGE", 0) == 0)
+            ++layer;
+        const std::string code = line.substr(0, line.find(';'));
+        std::istringstream words(code);
+        std::string        cmd;
+        if (! (words >> cmd) || (cmd != "G1" && cmd != "G0"))
+            continue;
+        Move        m;
+        std::string w;
+        while (words >> w)
+            if (w.size() > 1 && std::isalpha(static_cast<unsigned char>(w[0]))) {
+                const double v = std::stod(w.substr(1));
+                if (w[0] == 'E')
+                    m.e = v;
+                else if (w[0] != 'F')
+                    pos[w[0]] = v;
+            }
+        if (layer == 0)
+            continue;
+        m.axes  = pos;
+        m.layer = layer;
+        out.push_back(m);
+    }
+    return out;
+}
+
+double total_extrusion(const std::vector<Move> &moves)
+{
+    double e = 0.;
+    for (const Move &m : moves)
+        e += m.e;
+    return e;
+}
+
+bool has_word(const std::vector<Move> &moves, char axis)
+{
+    return std::any_of(moves.begin(), moves.end(), [axis](const Move &m) { return m.axes.count(axis) > 0; });
+}
+
+// The largest Z range covered by the extrusion of one layer.
+double max_layer_z_span(const std::vector<Move> &moves)
+{
+    std::map<int, std::pair<double, double>> span;
+    for (const Move &m : moves)
+        if (m.e > 0.) {
+            const double z  = axis(m, 'Z');
+            auto         it = span.emplace(m.layer, std::make_pair(z, z)).first;
+            it->second.first  = std::min(it->second.first, z);
+            it->second.second = std::max(it->second.second, z);
+        }
+    double out = 0.;
+    for (const auto &[layer, s] : span)
+        out = std::max(out, s.second - s.first);
+    return out;
+}
+
+double axis(const Move &m, char a) { return m.axes.count(a) ? m.axes.at(a) : 0.; }
+
+// An upside-down square frustum, 10 mm across at the bed and 40 mm across 15 mm up: every side
+// overhangs 45 degrees from vertical, more than s4_max_overhang (30).
+TriangleMesh inverted_frustum()
+{
+    return TriangleMesh({ { -5, -5, 0 }, { 5, -5, 0 }, { 5, 5, 0 }, { -5, 5, 0 }, { -20, -20, 15 }, { 20, -20, 15 }, { 20, 20, 15 }, { -20, 20, 15 } },
+                        { { 0, 2, 1 }, { 0, 3, 2 }, { 4, 5, 6 }, { 4, 6, 7 }, { 0, 1, 5 }, { 0, 5, 4 },
+                          { 1, 2, 6 }, { 1, 6, 5 }, { 2, 3, 7 }, { 2, 7, 6 }, { 3, 0, 4 }, { 3, 4, 7 } });
+}
+
+DynamicPrintConfig config_with(std::initializer_list<ConfigBase::SetDeserializeItem> items)
+{
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_deserialize_strict(items);
+    return config;
+}
+
+DynamicPrintConfig s4_config()
+{
+    return config_with({ { "s4_enabled", true }, { "use_relative_e_distances", true }, { "layer_height", 0.3 },
+                         { "initial_layer_print_height", 0.3 }, { "enable_support", false } });
+}
+
+} // namespace
+
+TEST_CASE("S4 printing curves the layers of an overhanging part", "[NonPlanar]")
+{
+    const std::vector<Move> moves = body_moves(slice({ inverted_frustum() }, s4_config()));
+
+    REQUIRE(total_extrusion(moves) > 0.);
+    // Flat slices of the deformed part become layers that climb within themselves.
+    CHECK(max_layer_z_span(moves) > 0.3);
+    // Only the tip is written: no tilt axis without a polar printer.
+    CHECK_FALSE(has_word(moves, 'B'));
+    for (const Move &m : moves)
+        REQUIRE(axis(m, 'Z') > 0.);
+}
+
+TEST_CASE("S4 printing requires relative extrusion", "[NonPlanar]")
+{
+    Print print;
+    Model model;
+    init_print({ inverted_frustum() }, print, model, config_with({ { "s4_enabled", true }, { "use_relative_e_distances", false } }));
+    CHECK_FALSE(print.validate().string.empty());
+}
+
+TEST_CASE("Polar export drives the bed angle and radius instead of X and Y", "[NonPlanar]")
+{
+    // The bed turns about the centre of its printable area, (100, 100) here.
+    const DynamicPrintConfig cartesian = config_with({ { "use_relative_e_distances", true }, { "printable_area", "0x0,200x0,200x200,0x200" } });
+    DynamicPrintConfig       polar     = cartesian;
+    polar.set_deserialize_strict({ { "polar_kinematics", true } });
+    const std::vector<Move> ref = body_moves(slice({ TestMesh::L }, cartesian));
+    const std::vector<Move> out = body_moves(slice({ TestMesh::L }, polar));
+
+    CHECK(has_word(out, 'C'));
+    CHECK_FALSE(has_word(out, 'Y'));
+    // The same filament, split over more, shorter machine moves.
+    CHECK_THAT(total_extrusion(out), WithinRel(total_extrusion(ref), 1e-4));
+    CHECK(out.size() > ref.size());
+
+    // Every extruding machine move puts the nozzle over the Cartesian print.
+    BoundingBoxf printed;
+    for (const Move &m : ref)
+        if (m.e > 0.)
+            printed.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
+    printed.offset(0.1);
+    for (const Move &m : out)
+        if (m.e > 0.) {
+            const double angle = axis(m, 'C') * PI / 180.;
+            const Vec2d  tip   = Vec2d(100., 100.) + axis(m, 'X') * Vec2d(std::cos(angle), std::sin(angle));
+            REQUIRE(printed.contains(tip));
+        }
+}
+
+TEST_CASE("Polar S4 export tilts the nozzle over curved layers", "[NonPlanar]")
+{
+    DynamicPrintConfig config = s4_config();
+    config.set_deserialize_strict({ { "polar_kinematics", true }, { "polar_tilt_axis", true } });
+    const std::vector<Move> moves = body_moves(slice({ inverted_frustum() }, config));
+
+    REQUIRE(total_extrusion(moves) > 0.);
+    double max_tilt = 0.;
+    for (const Move &m : moves)
+        max_tilt = std::max(max_tilt, std::abs(axis(m, 'B')));
+    CHECK(max_tilt > 5.);
+    CHECK(max_layer_z_span(moves) > 0.3);
+}
