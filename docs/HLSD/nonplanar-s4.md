@@ -91,7 +91,11 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    stretched to respect the angle and tilt speed limits; retractions switch to G94. An optional
    pivot length compensates for firmware that positions the tilt pivot rather than the tip.
    Machine tilt is kept within the axis travel (`min_tilt` .. `max_tilt`); poses beyond it are
-   printed at the limit and counted.
+   printed at the limit and counted. `tilt_sign` reverses the tilt axis for machines that count
+   it positive toward the rotation axis. With `signed_radius` off the radius never goes negative:
+   a path through the centre stops there while the bed turns half a turn, for machines whose
+   radius travel past the axis is short. Commanded radii outside the radius travel (after pivot
+   compensation) are counted, not changed. The machine end block runs in units per minute (G94).
 
 ## Frames and placement
 
@@ -104,8 +108,23 @@ where a slicer places the part on its bed does not change the machine output.
 
 The machine start and end G-code are written for the polar machine and are copied verbatim by
 both the S4 transform and the polar conversion, delimited by Orca's `MACHINE_START_GCODE_END`
-and `MACHINE_END_GCODE_START` tags. Without the tags, the body starts at the first layer marker
-(or the first extruding move) and the end block starts after the last extruding move.
+and `MACHINE_END_GCODE_START` tags. Orca writes the tags whenever polar kinematics or an S4
+object is in the print. Without them (G-code from another slicer), the S4 transform starts the
+body at the first layer marker (or the first extruding move) and ends it after the last
+extruding move.
+
+## Target machine
+
+The reference machine is Joshua Bird's Core R-Theta 4-axis printer running the ThetaFirm
+RepRapFirmware configuration (https://github.com/PDAMUK/ThetaFirm) in 4-axis mode. It moves the
+bed angle C (continuous), the radius X and the tilt B through a mixing matrix (`M669 K0`) and
+takes inverse time feed. That gives the "ThetaFirm Core R-Theta" printer profile its settings:
+- axis letters CXB and G93;
+- the bed angle counting with the polar angle;
+- a reversed tilt axis (B0 points straight down; a nozzle leaning outward is negative B);
+- 43 mm from the tilt pivot to the nozzle tip, which the firmware positions (not the tip);
+- radius travel -37.5 to 115.5 mm. The travel past the centre is for pivot compensation, not
+  for crossing the axis, so axis crossing is off.
 
 ## Integration in OrcaSlicer
 

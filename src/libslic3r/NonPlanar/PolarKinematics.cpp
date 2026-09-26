@@ -80,7 +80,7 @@ MachinePose PolarKinematics::to_machine(const ToolPose &pose, const MachinePose 
     m.angle  = rad2deg(phi) * c.angle_sign;
     m.radius = radius + c.tilt_pivot_length * std::sin(tilt);
     m.z      = pose.tip.z() + c.tilt_pivot_length * (std::cos(tilt) - 1.);
-    m.tilt   = rad2deg(tilt);
+    m.tilt   = rad2deg(tilt) * c.tilt_sign;
     return m;
 }
 
@@ -88,7 +88,7 @@ ToolPose PolarKinematics::to_tool(const MachinePose &m) const
 {
     const PolarKinematicsConfig &c = m_config;
     const double phi    = deg2rad(m.angle / c.angle_sign);
-    const double tilt   = deg2rad(m.tilt);
+    const double tilt   = deg2rad(m.tilt * c.tilt_sign);
     const double radius = m.radius - c.tilt_pivot_length * std::sin(tilt);
 
     ToolPose pose;
@@ -156,6 +156,10 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
     ++m_stats.cartesian_moves;
 
     auto write_pose = [&](const MachinePose &m, double seg_e, double seg_feed, bool with_comment) {
+        m_stats.min_radius = std::min(m_stats.min_radius, m.radius);
+        m_stats.max_radius = std::max(m_stats.max_radius, m.radius);
+        if (m.radius < c.min_travel_radius || m.radius > c.max_travel_radius)
+            ++m_stats.radius_outside;
         out << cmd << ' ' << c.angle_axis << GCodeWords::number(m.angle, 4) << ' ' << c.radius_axis << GCodeWords::number(m.radius, 4) << " Z"
             << GCodeWords::number(m.z, 4);
         if (c.has_tilt_axis)
@@ -240,8 +244,10 @@ void PolarGCodeConverter::process_line(const std::string &raw, std::ostream &out
         return;
     }
     if (raw.find("MACHINE_END_GCODE_START") != std::string::npos) {
+        // The end block is written for the machine and its feedrates are units per minute.
         m_block = Block::End;
         out << raw << '\n';
+        set_feed_mode(false, out);
         return;
     }
 

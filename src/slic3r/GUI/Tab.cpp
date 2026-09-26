@@ -5194,6 +5194,10 @@ void TabPrinter::build_fff()
         optgroup->append_single_option_line("polar_tilt_axis");
         optgroup->append_single_option_line("polar_axis_names");
         optgroup->append_single_option_line("polar_reverse_rotation");
+        optgroup->append_single_option_line("polar_reverse_tilt");
+        optgroup->append_single_option_line("polar_signed_radius");
+        optgroup->append_single_option_line("polar_radius_min");
+        optgroup->append_single_option_line("polar_radius_max");
         optgroup->append_single_option_line("polar_inverse_time_feed");
         optgroup->append_single_option_line("polar_max_rotation_speed");
         optgroup->append_single_option_line("polar_max_tilt_speed");
@@ -6172,10 +6176,11 @@ void TabPrinter::toggle_options()
     if (m_active_page->title() == L("Basic information")) {
         const auto &printer_cfg = m_preset_bundle->printers.get_edited_preset().config;
         const bool polar = m_config->opt_bool("polar_kinematics");
-        for (auto el : {"polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_inverse_time_feed", "polar_max_rotation_speed",
+        for (auto el : {"polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_signed_radius", "polar_radius_min",
+                        "polar_radius_max", "polar_inverse_time_feed", "polar_max_rotation_speed",
                         "polar_max_tilt_speed", "polar_tilt_pivot_length", "polar_angle_step", "polar_min_radius"})
             toggle_line(el, polar);
-        for (auto el : {"polar_tilt_pivot_length", "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold"})
+        for (auto el : {"polar_tilt_pivot_length", "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold", "polar_reverse_tilt"})
             toggle_line(el, polar && m_config->opt_bool("polar_tilt_axis"));
         for (auto el : {"nonplanar_nozzle_cone_angle", "nonplanar_nozzle_length", "nonplanar_head_radius"})
             toggle_field(el, m_config->opt_bool("nonplanar_clearance_check"));

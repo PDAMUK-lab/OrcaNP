@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <iosfwd>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -44,9 +45,16 @@ struct PolarKinematicsConfig
     bool inverse_time_feed = true;
     // The machine has a tilt axis. Without one the tilt is ignored and never emitted.
     bool has_tilt_axis = true;
-    // Travel of the tilt axis (degrees). A pose leaning further is printed at the limit.
+    // Travel of the tilt axis (degrees, positive leaning toward +radius). A pose leaning further
+    // is printed at the limit.
     double min_tilt = -90.;
     double max_tilt = 90.;
+    // -1 when the machine's tilt axis counts the other way: positive toward the rotation axis.
+    double tilt_sign = 1.;
+    // Travel of the radius axis (mm, as commanded, after pivot compensation). Moves outside it
+    // are counted, not changed.
+    double min_travel_radius = -std::numeric_limits<double>::infinity();
+    double max_travel_radius = std::numeric_limits<double>::infinity();
     // Distance from the nozzle tip to the tilt pivot. Non-zero when the firmware positions the
     // pivot rather than the tip, so the commanded radius and Z must be compensated.
     double tilt_pivot_length = 0.;
@@ -70,7 +78,7 @@ struct MachinePose
     double angle  = 0.; // degrees, continuous (not wrapped)
     double radius = 0.; // mm along the head's radial line, signed when signed_radius
     double z      = 0.;
-    double tilt   = 0.; // degrees, positive when the nozzle leans toward +radius
+    double tilt   = 0.; // degrees, as commanded (positive toward +radius unless tilt_sign is -1)
     bool   tilt_limited = false; // the pose wanted more tilt than the axis travel allows
 };
 
@@ -118,6 +126,8 @@ public:
         size_t arcs_linearized  = 0;
         size_t held_near_center = 0; // machine poses inside min_radius
         size_t tilt_limited     = 0; // machine poses whose tilt was cut back to the tilt travel
+        size_t radius_outside   = 0; // machine poses beyond the radius travel
+        double min_radius = std::numeric_limits<double>::infinity(), max_radius = -std::numeric_limits<double>::infinity();
         double total_angle      = 0.; // degrees of angle-axis travel
     };
 

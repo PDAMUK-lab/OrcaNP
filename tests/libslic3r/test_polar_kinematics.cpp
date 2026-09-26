@@ -91,6 +91,7 @@ TEST_CASE("A machine pose converts back to the tool pose it came from", "[PolarK
     cfg.center            = Eigen::Vector2d(100., 90.);
     cfg.angle_sign        = GENERATE(1., -1.);
     cfg.tilt_pivot_length = GENERATE(0., 42.);
+    cfg.tilt_sign         = GENERATE(1., -1.);
     const PolarKinematics kin(cfg);
 
     const std::vector<ToolPose> poses = { pose(130., 90., 5., 10.), pose(100., 120., 2., -25.), pose(60., 50., 0.2, 0.),
@@ -287,4 +288,31 @@ TEST_CASE("Tilt beyond the axis travel is printed at the limit", "[PolarKinemati
             if (const size_t at = line.find(" B"); at != std::string::npos)
                 max_b = std::max(max_b, std::stod(line.substr(at + 2)));
     CHECK_THAT(max_b, WithinAbs(30., 1e-6));
+}
+
+TEST_CASE("A reversed tilt axis gets the negated angle", "[PolarKinematics]")
+{
+    PolarKinematicsConfig cfg;
+    cfg.tilt_sign = -1.;
+    const PolarKinematics kin(cfg);
+    // Leaning outward on the +X side: positive toward +radius, so negative on a reversed axis.
+    CHECK_THAT(kin.to_machine(pose(50., 0., 5., 30.), nullptr).tilt, WithinAbs(-30., 1e-9));
+}
+
+TEST_CASE("The machine end block runs in units per minute and radius travel is checked", "[PolarKinematics]")
+{
+    PolarKinematicsConfig cfg;
+    cfg.max_travel_radius = 15.;
+    std::istringstream  in("M83\n; MACHINE_START_GCODE_END\nG1 X10 Y0 Z1 F600\nG1 X20 Y0 E1\n; MACHINE_END_GCODE_START\nG91\nG1 Z10 F600\n");
+    std::ostringstream  out;
+    PolarGCodeConverter converter(cfg);
+    converter.process(in, out);
+
+    const std::string gcode = out.str();
+    const size_t      end   = gcode.find("MACHINE_END_GCODE_START");
+    REQUIRE(end != std::string::npos);
+    CHECK(gcode.find("G93", 0) < end);
+    CHECK(gcode.find("G94", end) < gcode.find("G1 Z10", end));
+    CHECK(converter.stats().radius_outside > 0);
+    CHECK_THAT(converter.stats().max_radius, WithinAbs(20., 1e-9));
 }

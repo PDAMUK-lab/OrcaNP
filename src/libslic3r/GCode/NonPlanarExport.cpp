@@ -80,6 +80,10 @@ NonPlanar::PolarKinematicsConfig polar_config(const PrintConfig &config)
     cfg.tilt_pivot_length = config.polar_tilt_pivot_length.value;
     cfg.min_tilt          = config.polar_tilt_min.value;
     cfg.max_tilt          = config.polar_tilt_max.value;
+    cfg.tilt_sign         = config.polar_reverse_tilt.value ? -1. : 1.;
+    cfg.signed_radius     = config.polar_signed_radius.value;
+    cfg.min_travel_radius = config.polar_radius_min.value;
+    cfg.max_travel_radius = config.polar_radius_max.value;
     if (config.polar_axis_names.value.size() == 3) {
         cfg.angle_axis  = config.polar_axis_names.value[0];
         cfg.radius_axis = config.polar_axis_names.value[1];

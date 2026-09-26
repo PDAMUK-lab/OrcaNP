@@ -2735,9 +2735,16 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
             if (! out)
                 throw Slic3r::RuntimeError(std::string("G-code export to ") + path + " failed.\nCannot write the polar G-code.\n");
         }
-        BOOST_LOG_TRIVIAL(info) << "Polar: " << converter.stats().cartesian_moves << " moves -> " << converter.stats().machine_moves
-                                << " machine moves, bed turns " << converter.stats().total_angle << " degrees, "
-                                << converter.stats().tilt_limited << " poses at the tilt limit";
+        const NonPlanar::PolarGCodeConverter::Stats &stats = converter.stats();
+        BOOST_LOG_TRIVIAL(info) << "Polar: " << stats.cartesian_moves << " moves -> " << stats.machine_moves << " machine moves, bed turns "
+                                << stats.total_angle << " degrees, " << stats.tilt_limited << " poses at the tilt limit, radius "
+                                << stats.min_radius << " .. " << stats.max_radius;
+        if (stats.radius_outside > 0)
+            print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                Slic3r::format(_(L("%1% machine moves reach a radius of %2% to %3% mm, beyond the radius axis travel of %4% to %5% mm. "
+                                   "Move the part toward the centre, or lower the tilt near the edge of the bed.")),
+                               stats.radius_outside, stats.min_radius, stats.max_radius, print->config().polar_radius_min.value,
+                               print->config().polar_radius_max.value));
         boost::nowide::remove(path_tmp.c_str());
         path_tmp = path_polar;
     }
@@ -3823,7 +3830,9 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // injector fleet (H2D/X2D/H2D-Pro/H2C) emits it; the byte-frozen fleet (X1/P1/A1/H2S, flag false) never
     // does, so their g-code is byte-identical. Without this marker handle_filament_change early-returns and
     // no blocks are built, so this line is what actually activates the pre-heat injector.
-    if (m_config.enable_pre_heating.value)
+    // Orca: the non-planar (S4) and polar passes copy the machine blocks verbatim, so they need the
+    // markers too. The pre-heat builder stays gated on enable_pre_heating in the processor.
+    if (m_config.enable_pre_heating.value || m_config.polar_kinematics.value || NonPlanarExport::has_s4(print))
         file.write_format(";%s\n", GCodeProcessor::Machine_Start_GCode_End_Tag.c_str());
 
     //BBS: gcode writer doesn't know where the real position of extruder is after inserting custom gcode
@@ -4187,7 +4196,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // Mark the start of the machine end g-code so the usage-block builder closes its open blocks here and
     // ignores filament changes inside the end g-code. Same enable_pre_heating gate as the start marker →
     // byte-frozen fleet unaffected.
-    if (m_config.enable_pre_heating.value)
+    if (m_config.enable_pre_heating.value || m_config.polar_kinematics.value || NonPlanarExport::has_s4(print))
         file.write_format(";%s\n", GCodeProcessor::Machine_End_GCode_Start_Tag.c_str());
 
     // Process filament-specific gcode in extruder order.

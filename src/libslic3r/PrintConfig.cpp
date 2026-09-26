@@ -8127,6 +8127,37 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
 
+    def = this->add("polar_reverse_tilt", coBool);
+    def->label   = L("Reverse tilt direction");
+    def->tooltip = L("Negate the tilt axis, for machines whose tilt counts positive toward the rotation axis (such as the "
+                     "Core R-Theta printer, where a nozzle leaning outward is a negative B).");
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("polar_signed_radius", coBool);
+    def->label   = L("Cross the rotation axis");
+    def->tooltip = L("A path through the centre continues on a negative radius, past the axis, instead of the bed turning "
+                     "half a turn while the nozzle waits at the centre. Needs radius travel past the axis on the far side "
+                     "for as far as the part reaches.");
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("polar_radius_min", coFloat);
+    def->label    = L("Minimum radius");
+    def->tooltip  = L("Lower end of the radius axis travel, negative past the rotation axis, as the firmware's axis limit. "
+                      "Moves beyond the travel, including the tilt pivot compensation, are reported.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(-1000));
+
+    def = this->add("polar_radius_max", coFloat);
+    def->label    = L("Maximum radius");
+    def->tooltip  = L("Upper end of the radius axis travel, as the firmware's axis limit. Moves beyond the travel, including "
+                      "the tilt pivot compensation, are reported.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(1000));
+
     def = this->add("nonplanar_clearance_check", coBool);
     def->label    = L("Check toolhead clearance");
     def->tooltip  = L("Check non-planar (S4) toolpaths for the nozzle or the toolhead hitting what is already printed, and "

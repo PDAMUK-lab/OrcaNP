@@ -13,10 +13,6 @@
 			"sub_path": "machine/MyMarlin.json"
 		},
 		{
-			"name": "Generic Polar Non-planar Printer",
-			"sub_path": "machine/Generic Polar Non-planar Printer.json"
-		},
-		{
 			"name": "Generic RRF Printer",
 			"sub_path": "machine/MyRRF.json"
 		},
@@ -27,6 +23,10 @@
 		{
 			"name": "Generic ToolChanger Printer",
 			"sub_path": "machine/MyToolChanger.json"
+		},
+		{
+			"name": "ThetaFirm Core R-Theta",
+			"sub_path": "machine/ThetaFirm Core R-Theta.json"
 		}
 	],
 	"process_list": [
@@ -35,8 +35,8 @@
 			"sub_path": "process/fdm_process_common.json"
 		},
 		{
-			"name": "0.20mm Non-planar S4 @MyPolar",
-			"sub_path": "process/0.20mm Non-planar S4 @MyPolar.json"
+			"name": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
+			"sub_path": "process/0.20mm Non-planar S4 @ThetaFirm Core R-Theta.json"
 		},
 		{
 			"name": "fdm_process_klipper_common",
@@ -243,8 +243,8 @@
 			"sub_path": "machine/MyMarlin 0.4 nozzle.json"
 		},
 		{
-			"name": "MyPolar 0.4 nozzle",
-			"sub_path": "machine/MyPolar 0.4 nozzle.json"
+			"name": "ThetaFirm Core R-Theta 0.4 nozzle",
+			"sub_path": "machine/ThetaFirm Core R-Theta 0.4 nozzle.json"
 		},
 		{
 			"name": "fdm_klipper_common",
