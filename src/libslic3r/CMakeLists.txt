@@ -340,6 +340,8 @@ set(lisbslic3r_sources
     MutablePolygon.cpp
     MutablePolygon.hpp
     MutablePriorityQueue.hpp
+    NonPlanar/PolarKinematics.cpp
+    NonPlanar/PolarKinematics.hpp
     NormalUtils.cpp
     NormalUtils.hpp
     NSVGUtils.cpp
