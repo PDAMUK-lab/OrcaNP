@@ -210,6 +210,21 @@ enum class WallSequence {
 };
 
 // Orca
+// Orca: shape of non-planar (S4) layers.
+enum class S4LayerShape
+{
+    Optimized, // the S4 rotation field
+    Offset,    // at constant distance from the object's print surface parts
+    Cone,      // conical about the rotation axis
+};
+
+// How layers offset from a print surface are laid out flat for slicing.
+enum class S4SurfaceProjection
+{
+    Above, // seen from above the print surface
+    Axis,  // unwrapped around the rotation axis
+};
+
 enum class WallDirection
 {
     CounterClockwise,
@@ -697,6 +712,9 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(ToolChangeOrderingType)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(PowerLossRecoveryMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SurfaceFillOrder)
 
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4LayerShape)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceProjection)
+
 #undef CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS
 
 class DynamicPrintConfig;
@@ -1145,6 +1163,10 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               s4_cell_size))
     ((ConfigOptionFloat,               s4_planar_height))
     ((ConfigOptionBool,                s4_hold_non_overhangs))
+    ((ConfigOptionEnum<S4LayerShape>,  s4_layer_shape))
+    ((ConfigOptionFloat,               s4_surface_gap))
+    ((ConfigOptionEnum<S4SurfaceProjection>, s4_surface_projection))
+    ((ConfigOptionFloat,               s4_cone_angle))
     ((ConfigOptionEnum<SlicingMode>,   slicing_mode))
     ((ConfigOptionBool,                enable_support))
     // Automatic supports (generated based on support_threshold_angle).
@@ -1276,6 +1298,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     PrintRegionConfig,
 
     ((ConfigOptionInts,  print_extruder_id))
+    ((ConfigOptionBool,                 s4_print_surface))
     ((ConfigOptionStrings,  print_extruder_variant))
     ((ConfigOptionInt,                  bottom_shell_layers))
     ((ConfigOptionFloat,                bottom_shell_thickness))

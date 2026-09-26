@@ -1783,16 +1783,24 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     for (const PrintObject *object : m_objects) {
         if (! object->config().s4_enabled.value)
             continue;
-        size_t parts = 0, others = 0;
+        size_t parts = 0, surfaces = 0, others = 0;
         for (const ModelVolume *v : object->model_object()->volumes) {
-            if (v->is_model_part())
+            if (PrintObject::is_s4_print_surface(*v))
+                ++surfaces;
+            else if (v->is_model_part())
                 ++parts;
             else if (v->is_modifier() || v->is_negative_volume())
                 ++others;
         }
         if (parts != 1 || others != 0 || object->instances().size() != 1)
-            return { L("Non-planar (S4) printing supports objects made of a single part, without modifiers or negative volumes, "
-                       "placed once."), object, "s4_enabled" };
+            return { L("Non-planar (S4) printing supports objects with one part printed non-planar (besides print surface parts), "
+                       "without modifiers or negative volumes, placed once."), object, "s4_enabled" };
+        const bool offset = object->config().s4_layer_shape.value == S4LayerShape::Offset;
+        if (offset && surfaces == 0)
+            return { L("Layers offset from a print surface need a part set as print surface (in the object list, add the "
+                       "\"Print surface\" setting to the part)."), object, "s4_layer_shape" };
+        if (! offset && surfaces > 0)
+            return { L("Print surface parts need the layer shape \"Offset from print surface\"."), object, "s4_layer_shape" };
         if (! m_config.use_relative_e_distances)
             return { L("Non-planar (S4) printing needs relative extrusion (use_relative_e_distances)."), object, "use_relative_e_distances" };
         if (m_config.spiral_mode)

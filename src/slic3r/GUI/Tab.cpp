@@ -2773,6 +2773,10 @@ void TabPrint::build()
 
         optgroup = page->new_optgroup(L("Non-planar (S4)"), L"param_z_contouring");
         optgroup->append_single_option_line("s4_enabled");
+        optgroup->append_single_option_line("s4_layer_shape");
+        optgroup->append_single_option_line("s4_surface_gap");
+        optgroup->append_single_option_line("s4_surface_projection");
+        optgroup->append_single_option_line("s4_cone_angle");
         optgroup->append_single_option_line("s4_planar_height");
         optgroup->append_single_option_line("s4_hold_non_overhangs");
         optgroup->append_single_option_line("s4_max_overhang");

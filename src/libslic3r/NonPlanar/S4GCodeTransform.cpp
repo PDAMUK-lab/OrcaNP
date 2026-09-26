@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <istream>
 #include <limits>
 #include <map>
@@ -35,6 +36,8 @@ struct Move
     bool                  pure_e    = false; // retract / prime: E and F only
     bool                  dropped   = false;
     std::string           axes;              // axis words the source line commanded
+    int                   object    = -1;    // object marker the line is in, -1 outside
+    const S4Mapper       *mapped_by = nullptr; // mapper that placed it, null when printed as sliced
 };
 
 struct Record
@@ -66,7 +69,18 @@ bool extrudes_xy(const std::string &raw)
 class Transform
 {
 public:
-    Transform(const S4Mapper &mapper, const S4GCodeConfig &cfg) : m_mapper(mapper), m_cfg(cfg) {}
+    Transform(const S4MapperSet &mappers, const S4GCodeConfig &cfg) : m_mappers(mappers), m_cfg(cfg)
+    {
+        m_axis = Eigen::Vector2d::Zero();
+        if (mappers.fallback.mapper)
+            m_axis = mappers.fallback.mapper->axis();
+        else
+            for (const auto &[id, m] : mappers.objects)
+                if (m.mapper) {
+                    m_axis = m.mapper->axis();
+                    break;
+                }
+    }
 
     S4GCodeReport run(std::istream &in, std::ostream &out);
 
@@ -74,6 +88,12 @@ private:
     void split_blocks(const std::vector<std::string> &lines);
     void build_records();
     void map_moves();
+    void pass_junctions();
+    const S4ObjectMapping &mapping(int object) const
+    {
+        auto it = m_mappers.objects.find(object);
+        return it == m_mappers.objects.end() ? m_mappers.fallback : it->second;
+    }
     void pass_z_floor();
     void pass_extrusion();
     void pass_drop_degenerate();
@@ -93,7 +113,8 @@ private:
         return m;
     }
 
-    const S4Mapper      &m_mapper;
+    const S4MapperSet   &m_mappers;
+    Eigen::Vector2d      m_axis;
     const S4GCodeConfig &m_cfg;
     S4GCodeReport        m_report;
 
@@ -192,12 +213,18 @@ void Transform::build_records()
                 break;
             }
 
+    int object = -1;
     for (size_t i = 0; i < m_body.size(); ++i) {
         const std::string     &raw = m_body[i];
         const GCodeWords::Line l   = GCodeWords::split(raw);
         const std::string      cmd = GCodeWords::command(l.code);
         Record                 rec;
         rec.raw = raw;
+        if (const size_t at = raw.find("NONPLANAR_OBJECT_END"); at != std::string::npos)
+            object = -1;
+        else if (const size_t at = raw.find("NONPLANAR_OBJECT "); at != std::string::npos)
+            object = std::atoi(raw.c_str() + at + 17);
+        const S4ObjectMapping &om = mapping(object);
         if (cmd == "G90")
             absolute = true;
         else if (cmd == "G91")
@@ -234,6 +261,7 @@ void Transform::build_records()
             m.e      = e;
             m.feed   = feed;
             m.pure_e = true;
+            m.object = object;
             rec.moves.push_back(m);
             m_records.push_back(std::move(rec));
             continue;
@@ -271,10 +299,31 @@ void Transform::build_records()
             const double dist = (target - pos).norm();
             // A travel leaving or entering the mesh (bed-level repositioning, the run in from the
             // purge line) is not deformed by anything; subdividing it only inflates the file.
-            const bool outside = ! printing && (! m_mapper.in_bbox(pos - m_cfg.offset) || ! m_mapper.in_bbox(target - m_cfg.offset));
+            const bool outside = ! printing && (! om.mapper || ! om.mapper->in_bbox(pos - m_cfg.offset) ||
+                                                ! om.mapper->in_bbox(target - m_cfg.offset));
             const int  n       = ! have_pos || outside || dist <= step ? 1 : std::min(m_cfg.max_segments_per_move, int(std::ceil(dist / step)));
             for (int k = 1; k <= n; ++k)
                 path.push_back(pos + (target - pos) * (double(k) / n));
+        }
+
+        // Extrusion outside the object's kept window is repeated inside it: split the path where
+        // it crosses the window's edges and print only the inside.
+        const bool windowed = printing && (std::isfinite(om.keep_min_x) || std::isfinite(om.keep_max_x));
+        if (windowed) {
+            std::vector<Eigen::Vector3d> split;
+            Eigen::Vector3d              a = pos;
+            for (const Eigen::Vector3d &b : path) {
+                std::vector<double> ts;
+                for (double edge : { om.keep_min_x, om.keep_max_x })
+                    if (std::isfinite(edge) && (a.x() - edge) * (b.x() - edge) < 0.)
+                        ts.push_back((edge - a.x()) / (b.x() - a.x()));
+                std::sort(ts.begin(), ts.end());
+                for (double t : ts)
+                    split.push_back(a + (b - a) * t);
+                split.push_back(b);
+                a = b;
+            }
+            path.swap(split);
         }
 
         std::vector<double> lengths;
@@ -285,15 +334,34 @@ void Transform::build_records()
             total += lengths.back();
             prev = p;
         }
+        prev = pos;
         for (size_t k = 0; k < path.size(); ++k) {
             Move m     = make_move(path[k]);
             m.rapid    = cmd == "G0";
             m.feed     = feed;
             m.printing = printing;
             m.axes     = axes;
+            m.object   = object;
             if (e)
                 m.e = *e * (total > 0. ? lengths[k] / total : 1. / path.size());
+            if (windowed) {
+                const double mid = 0.5 * (prev.x() + path[k].x());
+                if (mid < om.keep_min_x || mid >= om.keep_max_x) {
+                    m.e.reset();
+                    m.printing = false;
+                    ++m_report.trimmed;
+                }
+            }
+            prev = path[k];
             rec.moves.push_back(m);
+        }
+        if (windowed && e) {
+            // The line's material is what its kept part needs.
+            double kept = 0.;
+            for (const Move &m : rec.moves)
+                if (m.e)
+                    kept += *m.e;
+            rec.source_e = kept;
         }
         pos      = target;
         have_pos = true;
@@ -316,11 +384,24 @@ void Transform::map_moves()
                 }
                 continue;
             }
-            std::snprintf(key, sizeof(key), "%.6f %.6f %.6f", m.source.x(), m.source.y(), m.source.z());
+            const S4ObjectMapping &om = mapping(m.object);
+            if (! om.mapper || m.source.z() <= om.identity_below_z) {
+                // Printed as sliced: no mapper, or the object's flat print surface.
+                m.pos       = m.source;
+                m.tilt      = 0.;
+                m.flow      = 1.;
+                m.tier      = S4Mapper::Tier::Outside;
+                m.mapped_by = nullptr;
+                ++m_report.outside;
+                last = &m;
+                continue;
+            }
+            std::snprintf(key, sizeof(key), "%p %.6f %.6f %.6f", (const void *) om.mapper, m.source.x(), m.source.y(), m.source.z());
             auto it = cache.find(key);
             if (it == cache.end())
-                it = cache.emplace(key, m_mapper.map(m.source - m_cfg.offset)).first;
+                it = cache.emplace(key, om.mapper->map(m.source - m_cfg.offset)).first;
             const S4Mapper::Result &res = it->second;
+            m.mapped_by                 = om.mapper;
             m.pos  = res.point + m_cfg.offset;
             m.tilt = shape_tilt(res.tilt);
             m.flow = res.flow;
@@ -335,6 +416,79 @@ void Transform::map_moves()
         }
 }
 
+void Transform::pass_junctions()
+{
+    // A run of non-printing moves between prints that were mapped differently (another object,
+    // an object's flat print surface, lines outside any object) was planned in two unrelated
+    // spaces. It becomes a straight line in the part from where the last print ended to where
+    // the next one starts; the travel pass then lifts it over whatever is in the way.
+    struct Ref { size_t record, move; };
+    struct Job { Ref from; std::vector<Ref> run; Ref to; };
+    std::vector<Job>   jobs;
+    std::vector<Ref>   run;
+    std::optional<Ref> last_print;
+    auto at = [this](const Ref &r) -> Move & { return m_records[r.record].moves[r.move]; };
+    for (size_t ri = 0; ri < m_records.size(); ++ri)
+        for (size_t mi = 0; mi < m_records[ri].moves.size(); ++mi) {
+            const Move &m = m_records[ri].moves[mi];
+            if (m.pure_e)
+                continue;
+            if (! m.printing) {
+                run.push_back({ ri, mi });
+                continue;
+            }
+            if (last_print && ! run.empty()) {
+                const S4Mapper *to    = m.mapped_by;
+                bool            mixed = at(*last_print).mapped_by != to;
+                for (const Ref &r : run)
+                    mixed |= at(r).mapped_by != to || at(r).object != m.object;
+                if (mixed)
+                    jobs.push_back({ *last_print, run, { ri, mi } });
+            }
+            run.clear();
+            last_print = Ref { ri, mi };
+        }
+
+    // Back to front, so inserting moves does not shift the ones still to come.
+    for (auto job = jobs.rbegin(); job != jobs.rend(); ++job) {
+        const Move           &from = at(job->from);
+        const Move           &to   = at(job->to);
+        const Ref             last = job->run.back();
+        Move                 &end  = at(last);
+        Eigen::Vector3d       target = end.source;
+        double                tilt   = 0.;
+        if (to.mapped_by) {
+            const S4Mapper::Result res = to.mapped_by->map(end.source - m_cfg.offset);
+            target                     = res.point + m_cfg.offset;
+            tilt                       = shape_tilt(res.tilt);
+        }
+        for (const Ref &r : job->run)
+            if (r.record != last.record || r.move != last.move)
+                at(r).dropped = true;
+        const Eigen::Vector3d start = from.pos;
+        const double          start_tilt = from.tilt;
+        end.pos       = target;
+        end.tilt      = tilt;
+        end.mapped_by = to.mapped_by;
+        const int n = std::clamp(int(std::ceil((target - start).norm() / m_cfg.travel_seg_size)), 1, m_cfg.max_segments_per_move);
+        std::vector<Move> path;
+        for (int k = 1; k < n; ++k) {
+            const double t = double(k) / n;
+            Move         m = make_move(start + (target - start) * t);
+            m.pos       = m.source;
+            m.rapid     = end.rapid;
+            m.feed      = end.feed;
+            m.tilt      = start_tilt + (tilt - start_tilt) * t;
+            m.object    = end.object;
+            m.synthetic = true;
+            path.push_back(m);
+        }
+        std::vector<Move> &moves = m_records[last.record].moves;
+        moves.insert(moves.begin() + last.move, path.begin(), path.end());
+        ++m_report.junctions;
+    }
+}
+
 // The nozzle stays vertical over gently sloped layers, catches up with the layer between the
 // threshold and twice the threshold, and never leans past max_tilt.
 double Transform::shape_tilt(double tilt)
@@ -343,11 +497,12 @@ double Transform::shape_tilt(double tilt)
     double       mag = std::abs(tilt);
     if (th > 0.)
         mag = mag <= th ? 0. : std::min(mag, 2. * (mag - th));
-    if (mag > m_cfg.max_tilt) {
-        mag = m_cfg.max_tilt;
+    const double shaped = std::copysign(mag, tilt);
+    const double lo = std::max(-m_cfg.max_tilt, m_cfg.min_tilt_toward), hi = std::min(m_cfg.max_tilt, m_cfg.max_tilt_away);
+    const double out = std::clamp(shaped, std::min(lo, 0.), std::max(hi, 0.));
+    if (out != shaped)
         ++m_report.tilt_limited;
-    }
-    return std::copysign(mag, tilt);
+    return out;
 }
 
 void Transform::pass_z_floor()
@@ -750,7 +905,7 @@ void Transform::pass_head_clearance()
     const double ignore2  = m_cfg.clearance_ignore_radius * m_cfg.clearance_ignore_radius;
     double       top_z    = -std::numeric_limits<double>::infinity();
     auto         collides = [&](const Eigen::Vector3d &tip, double tilt) {
-        Eigen::Vector2d rhat = tip.head<2>() - m_cfg.offset.head<2>() - m_mapper.axis();
+        Eigen::Vector2d rhat = tip.head<2>() - m_cfg.offset.head<2>() - m_axis;
         rhat                 = rhat.norm() > 1e-9 ? Eigen::Vector2d(rhat.normalized()) : Eigen::Vector2d(1., 0.);
         const Eigen::Vector3d axis(std::sin(tilt) * rhat.x(), std::sin(tilt) * rhat.y(), std::cos(tilt));
         const double          az = axis.z();
@@ -758,6 +913,13 @@ void Transform::pass_head_clearance()
         // material.
         const double s_max = (std::max(top_z - tip.z(), 0.) + big_r * axis.head<2>().norm()) / az;
         const double reach = big_r + std::max(len, s_max) * axis.head<2>().norm() + m_cfg.height_field_res;
+        // The bed: the lowest points of the cone and of the cylinder's lower rim, on the side the
+        // nozzle leans away from.
+        const double lean     = axis.head<2>().norm();
+        const double cone_low = std::min(tip.z() - r0 * lean, tip.z() + len * az - (r0 + k * len) * lean);
+        const double cyl_low  = tip.z() + len * az - big_r * lean;
+        if (std::min(cone_low, cyl_low) < m_cfg.z_floor - m_cfg.clearance_tolerance)
+            return true;
         bool         hit   = false;
         hf.for_each_within(tip.head<2>(), std::min(reach, 250.), [&](const Eigen::Vector2d &c, double h) {
             const Eigen::Vector2d d = c - tip.head<2>();
@@ -939,6 +1101,7 @@ S4GCodeReport Transform::run(std::istream &in, std::ostream &out)
     for (const Record &r : m_records)
         m_report.segments += r.moves.size();
     map_moves();
+    pass_junctions();
     pass_z_floor();
     pass_extrusion();
     pass_drop_degenerate();
@@ -961,10 +1124,17 @@ S4GCodeReport Transform::run(std::istream &in, std::ostream &out)
 
 } // namespace
 
+S4GCodeReport s4_transform_gcode(std::istream &in, std::ostream &out, const S4MapperSet &mappers, const S4GCodeConfig &config)
+{
+    Transform t(mappers, config);
+    return t.run(in, out);
+}
+
 S4GCodeReport s4_transform_gcode(std::istream &in, std::ostream &out, const S4Mapper &mapper, const S4GCodeConfig &config)
 {
-    Transform t(mapper, config);
-    return t.run(in, out);
+    S4MapperSet mappers;
+    mappers.fallback.mapper = &mapper;
+    return s4_transform_gcode(in, out, mappers, config);
 }
 
 } // namespace NonPlanar

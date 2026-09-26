@@ -675,6 +675,8 @@ private:
     bool                                m_enable_cooling_markers;
     
     bool m_enable_exclude_object;
+    // Orca: object markers for the non-planar (S4) pass.
+    bool m_nonplanar_markers = false;
     std::vector<size_t> m_label_objects_ids;
     std::string _encode_label_ids_to_base64(std::vector<size_t> ids);
     // ORCA: Add support for role based fan speed control

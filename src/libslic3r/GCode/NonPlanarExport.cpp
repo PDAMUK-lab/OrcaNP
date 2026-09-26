@@ -22,29 +22,33 @@ bool has_s4(const Print &print)
     return false;
 }
 
-std::unique_ptr<NonPlanar::S4Mapper> s4_mapper(const Print &print)
+std::unique_ptr<S4Mappers> s4_mappers(const Print &print)
 {
-    // All deformed objects in one mesh, moved from each object's slicing frame into G-code
-    // coordinates: XY by the instance shift less the plate origin, Z by the Z offset and a raft.
-    NonPlanar::TetMesh           mesh;
-    std::vector<Eigen::Vector3d> deformed;
+    // Each deformed object is moved from its slicing frame into G-code coordinates: XY by the
+    // instance shift less the plate origin, Z by the Z offset and a raft.
+    auto out = std::make_unique<S4Mappers>();
     for (const PrintObject *object : print.objects()) {
         const PrintObject::S4Deformation *s4 = object->s4_deformation();
         if (s4 == nullptr)
             continue;
         const Vec2d           xy = unscale(object->instances().front().shift) - print.get_plate_origin().head<2>();
         const Eigen::Vector3d offset(xy.x(), xy.y(), print.config().z_offset.value + object->slicing_parameters().object_print_z_min);
-        const int             base = int(mesh.points.size());
-        for (size_t v = 0; v < s4->mesh.points.size(); ++v) {
-            mesh.points.push_back(s4->mesh.points[v] + offset);
-            deformed.push_back(s4->deformed[v] + offset);
-        }
-        for (const std::array<int, 4> &t : s4->mesh.tets)
-            mesh.tets.push_back({ t[0] + base, t[1] + base, t[2] + base, t[3] + base });
+        NonPlanar::TetMesh           mesh = s4->mesh;
+        std::vector<Eigen::Vector3d> deformed = s4->deformed;
+        for (Eigen::Vector3d &p : mesh.points)
+            p += offset;
+        for (Eigen::Vector3d &p : deformed)
+            p += offset;
+        out->storage.push_back(std::make_unique<NonPlanar::S4Mapper>(mesh, deformed, rotation_axis(print.config())));
+        NonPlanar::S4ObjectMapping &m = out->set.objects[int(object->get_id())];
+        m.mapper           = out->storage.back().get();
+        m.identity_below_z = s4->surface_top + offset.z();
+        m.keep_min_x       = s4->keep_min_x + offset.x();
+        m.keep_max_x       = s4->keep_max_x + offset.x();
     }
-    if (mesh.tets.empty())
+    if (out->storage.empty())
         return nullptr;
-    return std::make_unique<NonPlanar::S4Mapper>(mesh, deformed, rotation_axis(print.config()));
+    return out;
 }
 
 NonPlanar::S4GCodeConfig s4_gcode_config(const PrintConfig &config)
@@ -58,7 +62,13 @@ NonPlanar::S4GCodeConfig s4_gcode_config(const PrintConfig &config)
     // The polar conversion may put the nozzle on either side of the rotation axis, which flips
     // the sign of the tilt, so only the travel both sides share is safe.
     cfg.tilt_threshold = Geometry::deg2rad(config.polar_tilt_threshold.value);
-    cfg.max_tilt       = Geometry::deg2rad(std::min(-config.polar_tilt_min.value, config.polar_tilt_max.value));
+    if (config.polar_signed_radius.value)
+        cfg.max_tilt = Geometry::deg2rad(std::min(-config.polar_tilt_min.value, config.polar_tilt_max.value));
+    else {
+        // The radius never turns negative, so the part's outward lean is the machine's.
+        cfg.min_tilt_toward = Geometry::deg2rad(config.polar_tilt_min.value);
+        cfg.max_tilt_away   = Geometry::deg2rad(config.polar_tilt_max.value);
+    }
     cfg.clearance_check   = config.nonplanar_clearance_check.value;
     cfg.nozzle_cone_angle = Geometry::deg2rad(config.nonplanar_nozzle_cone_angle.value);
     cfg.nozzle_length     = config.nonplanar_nozzle_length.value;

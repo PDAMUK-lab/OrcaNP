@@ -386,10 +386,19 @@ public:
     {
         NonPlanar::TetMesh           mesh;     // undeformed tetrahedra
         std::vector<Eigen::Vector3d> deformed; // deformed vertex positions
-        indexed_triangle_set         surface;  // deformed boundary
+        indexed_triangle_set         surface;  // deformed boundary, sliced in place of the part
+        ObjectID                     part_id;  // the model part it stands in for
         Vec2d                        axis;     // the printer's rotation axis
+        // Print surface parts are printed as sliced up to this height; the part is above it.
+        double surface_top = -std::numeric_limits<double>::infinity();
+        // Unwrapped layers are sliced over more than a turn: only extrusion in [keep_min_x,
+        // keep_max_x) of the slicing frame is printed.
+        double keep_min_x = -std::numeric_limits<double>::infinity();
+        double keep_max_x = std::numeric_limits<double>::infinity();
     };
     const S4Deformation*         s4_deformation() const { return m_s4.get(); }
+    // A part set to be the print surface that non-planar layers are offset from.
+    static bool                  is_s4_print_surface(const ModelVolume &volume);
 
     // BBS
     void generate_support_preview();

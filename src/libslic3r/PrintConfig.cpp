@@ -311,6 +311,19 @@ static t_config_enum_values s_keys_map_WallSequence {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(WallSequence)
 
+static t_config_enum_values s_keys_map_S4LayerShape{
+    { "optimized", int(S4LayerShape::Optimized) },
+    { "offset",    int(S4LayerShape::Offset) },
+    { "cone",      int(S4LayerShape::Cone) },
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4LayerShape)
+
+static t_config_enum_values s_keys_map_S4SurfaceProjection{
+    { "above", int(S4SurfaceProjection::Above) },
+    { "axis",  int(S4SurfaceProjection::Axis) },
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceProjection)
+
 //Orca
 static t_config_enum_values s_keys_map_WallDirection{
     { "ccw",  int(WallDirection::CounterClockwise) },
@@ -5011,6 +5024,66 @@ void PrintConfigDef::init_fff_params()
     def->min      = 0;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("s4_layer_shape", coEnum);
+    def->label    = L("Layer shape");
+    def->category = L("Quality");
+    def->tooltip  = L("Optimized: layers bend where overhangs need it (S4).\n"
+                      "Offset from print surface: parts set as print surface are printed first with flat layers, and the "
+                      "rest of the object is printed over them in layers at constant distance from their surface, starting "
+                      "the surface gap away, like support.\n"
+                      "Conical: cones about the rotation axis (the radial slicer's layers).");
+    def->enum_keys_map = &ConfigOptionEnum<S4LayerShape>::get_enum_values();
+    def->enum_values.push_back("optimized");
+    def->enum_values.push_back("offset");
+    def->enum_values.push_back("cone");
+    def->enum_labels.push_back(L("Optimized (S4)"));
+    def->enum_labels.push_back(L("Offset from print surface"));
+    def->enum_labels.push_back(L("Conical"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<S4LayerShape>(S4LayerShape::Optimized));
+
+    def = this->add("s4_surface_gap", coFloat);
+    def->label    = L("Surface gap");
+    def->category = L("Quality");
+    def->tooltip  = L("Distance between the print surface and the first layer printed over it, all around, as the gap between "
+                      "support and part. The part within this distance of the print surface is not printed.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.2));
+
+    def = this->add("s4_surface_projection", coEnum);
+    def->label    = L("Surface layout");
+    def->category = L("Quality");
+    def->tooltip  = L("How the layers over the print surface are laid out for slicing. From above: for domes, spheres and "
+                      "capped cylinders. Around the rotation axis: for sleeves around the axis, unwrapped into a strip.");
+    def->enum_keys_map = &ConfigOptionEnum<S4SurfaceProjection>::get_enum_values();
+    def->enum_values.push_back("above");
+    def->enum_values.push_back("axis");
+    def->enum_labels.push_back(L("From above"));
+    def->enum_labels.push_back(L("Around the rotation axis"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<S4SurfaceProjection>(S4SurfaceProjection::Above));
+
+    def = this->add("s4_cone_angle", coFloat);
+    def->label    = L("Cone angle");
+    def->category = L("Quality");
+    def->tooltip  = L("Slope of conical layers from horizontal. Positive: layers descend away from the rotation axis.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = -60;
+    def->max      = 60;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(20));
+
+    def = this->add("s4_print_surface", coBool);
+    def->label    = L("Print surface");
+    def->category = L("Quality");
+    def->tooltip  = L("Print this part first with flat layers, as the surface the rest of the object is printed on with "
+                      "non-planar layers offset from it (layer shape \"Offset from print surface\"). Set it on the part in the "
+                      "object list.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
 
     def = this->add("s4_hold_non_overhangs", coBool);
     def->label    = L("Keep other areas planar");

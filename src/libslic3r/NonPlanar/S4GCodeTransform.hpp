@@ -19,6 +19,8 @@
 #include <Eigen/Core>
 
 #include <iosfwd>
+#include <limits>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -60,13 +62,17 @@ struct S4GCodeConfig
     double height_field_res                = 0.8;
     double nozzle_radius                   = 0.4;
 
-    // Nozzle tilt (radians). Where the layer leans less than `tilt_threshold` the nozzle stays
-    // vertical; from there to twice the threshold it catches up with the layer. It never leans
-    // more than `max_tilt`.
-    double tilt_threshold = 0.;
-    double max_tilt       = 1.5707963267948966; // 90 degrees
+    // Nozzle tilt (radians, positive leaning away from the rotation axis). Where the layer leans
+    // less than `tilt_threshold` the nozzle stays vertical; from there to twice the threshold it
+    // catches up with the layer. It never leans more than `max_tilt` either way, nor outside
+    // [min_tilt_toward, max_tilt_away].
+    double tilt_threshold  = 0.;
+    double max_tilt        = 1.5707963267948966; // 90 degrees
+    double min_tilt_toward = -1.5707963267948966;
+    double max_tilt_away   = 1.5707963267948966;
 
-    // Clearance of the nozzle and the head around material already printed. The nozzle is a
+    // Clearance of the nozzle and the head around material already printed, and above the bed
+    // (at z_floor). The nozzle is a
     // cone of half-angle `nozzle_cone_angle` (radians) widening from `nozzle_radius` at the tip
     // up to `nozzle_length`, and the head above it a cylinder of `head_radius`, both along the
     // nozzle axis. Material within `clearance_ignore_radius` of the tip (the beads it is laying
@@ -94,6 +100,8 @@ struct S4GCodeReport
     size_t collisions = 0, lifts = 0, retractions_added = 0;
     double min_z = 0., max_z = 0., max_tilt_deg = 0.;
     size_t tilt_limited = 0; // points whose tilt was cut back to max_tilt
+    size_t trimmed      = 0; // extruding segments outside their object's kept window
+    size_t junctions    = 0; // travels between differently mapped toolpaths
     // Checked positions where the nozzle or the head would hit printed material, with the first
     // few described.
     size_t                   head_collisions = 0;
@@ -102,7 +110,31 @@ struct S4GCodeReport
     std::vector<std::string> failed;
 };
 
+// How the toolpath of one object is mapped back.
+struct S4ObjectMapping
+{
+    const S4Mapper *mapper = nullptr; // null: printed as sliced
+    // Sliced space up to this height is the object's print surface, printed as sliced.
+    double identity_below_z = -std::numeric_limits<double>::infinity();
+    // Only extrusion whose sliced X lies in [keep_min_x, keep_max_x) is printed: an unwrapped
+    // layer is sliced over more than a turn, and the rest repeats what is printed here.
+    double keep_min_x = -std::numeric_limits<double>::infinity();
+    double keep_max_x = std::numeric_limits<double>::infinity();
+};
+
+// The mapping of each object, by the id in the G-code's object markers: the lines between
+// "; NONPLANAR_OBJECT <id>" and "; NONPLANAR_OBJECT_END" belong to object <id>. Everything else
+// (and objects not listed) uses the fallback. A travel between differently mapped toolpaths
+// becomes a straight line between where they end and start in the part.
+struct S4MapperSet
+{
+    S4ObjectMapping                fallback;
+    std::map<int, S4ObjectMapping> objects;
+};
+
 // Throws std::runtime_error for input it cannot handle (absolute extrusion, no body).
+S4GCodeReport s4_transform_gcode(std::istream &in, std::ostream &out, const S4MapperSet &mappers, const S4GCodeConfig &config);
+// All of the G-code through one mapper.
 S4GCodeReport s4_transform_gcode(std::istream &in, std::ostream &out, const S4Mapper &mapper, const S4GCodeConfig &config);
 
 } // namespace NonPlanar

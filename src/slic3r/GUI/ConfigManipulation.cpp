@@ -1014,9 +1014,15 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
         toggle_line(el, has_zaa);
 
     bool has_s4 = config->opt_bool("s4_enabled");
+    const S4LayerShape s4_shape = config->opt_enum<S4LayerShape>("s4_layer_shape");
+    toggle_line("s4_layer_shape", has_s4);
+    toggle_line("s4_cell_size", has_s4);
     for (auto el : {"s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far", "s4_passes",
-                    "s4_cell_size", "s4_planar_height", "s4_hold_non_overhangs"})
-        toggle_line(el, has_s4);
+                    "s4_planar_height", "s4_hold_non_overhangs"})
+        toggle_line(el, has_s4 && s4_shape == S4LayerShape::Optimized);
+    for (auto el : {"s4_surface_gap", "s4_surface_projection"})
+        toggle_line(el, has_s4 && s4_shape == S4LayerShape::Offset);
+    toggle_line("s4_cone_angle", has_s4 && s4_shape == S4LayerShape::Cone);
 
     bool have_sequential_printing = (config->opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject);
     // for (auto el : { "extruder_clearance_radius", "extruder_clearance_height_to_rod", "extruder_clearance_height_to_lid" })

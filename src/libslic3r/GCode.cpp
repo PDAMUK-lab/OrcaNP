@@ -2580,11 +2580,11 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         // Map the toolpath back, then feed it to the processor in whole lines as generation would.
         std::stringstream real;
         {
-            const std::unique_ptr<NonPlanar::S4Mapper> mapper = NonPlanarExport::s4_mapper(*print);
-            if (! mapper)
+            const std::unique_ptr<NonPlanarExport::S4Mappers> mappers = NonPlanarExport::s4_mappers(*print);
+            if (! mappers)
                 throw Slic3r::RuntimeError("Non-planar (S4) objects have no deformation to map the G-code through.");
-            boost::nowide::ifstream                    sliced(path_sliced);
-            const NonPlanar::S4GCodeReport report = NonPlanar::s4_transform_gcode(sliced, real, *mapper,
+            boost::nowide::ifstream        sliced(path_sliced);
+            const NonPlanar::S4GCodeReport report = NonPlanar::s4_transform_gcode(sliced, real, mappers->set,
                                                                                   NonPlanarExport::s4_gcode_config(print->config()));
             BOOST_LOG_TRIVIAL(info) << "S4: " << report.segments << " segments mapped (" << report.nearest << " beside the mesh), "
                                     << report.lifts << " travel lifts, " << report.retractions_added << " retractions added, filament "
@@ -3047,6 +3047,7 @@ static BambuBedType to_bambu_bed_type(BedType type)
 
 void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb)
 {
+    m_nonplanar_markers = NonPlanarExport::has_s4(print);
     PROFILE_FUNC();
 
     m_print = &print;
@@ -6606,6 +6607,9 @@ LayerResult GCode::process_layer(
                 if (m_config.reduce_crossing_wall)
                     m_avoid_crossing_perimeters.init_layer(*m_layer);
 
+                // Orca: the non-planar (S4) pass maps each object's toolpath through its own deformation.
+                if (m_nonplanar_markers)
+                    gcode += "; NONPLANAR_OBJECT " + std::to_string(instance_to_print.print_object.get_id()) + "\n";
                 if (this->config().gcode_label_objects) {
                     gcode += std::string("; printing object ") + instance_to_print.print_object.model_object()->name +
                              " id:" + std::to_string(instance_to_print.print_object.get_id()) + " copy " +
@@ -6752,6 +6756,8 @@ LayerResult GCode::process_layer(
                     gcode += this->extrude_infill(print,by_region_specific, true);
                 }
 
+                if (m_nonplanar_markers)
+                    gcode += "; NONPLANAR_OBJECT_END\n";
                 if (this->config().gcode_label_objects) {
                     gcode += std::string("; stop printing object ") +
                              instance_to_print.print_object.model_object()->name +
@@ -6831,6 +6837,9 @@ LayerResult GCode::process_layer(
                 if (m_config.reduce_crossing_wall)
                     m_avoid_crossing_perimeters.init_layer(*m_layer);
 
+                // Orca: the non-planar (S4) pass maps each object's toolpath through its own deformation.
+                if (m_nonplanar_markers)
+                    gcode += "; NONPLANAR_OBJECT " + std::to_string(instance_to_print.print_object.get_id()) + "\n";
                 if (this->config().gcode_label_objects) {
                     gcode += std::string("; printing object ") + instance_to_print.print_object.model_object()->name +
                              " id:" + std::to_string(instance_to_print.print_object.get_id()) + " copy " +
@@ -7061,6 +7070,8 @@ LayerResult GCode::process_layer(
                 }
 
                 // --- Shared instance footer (mirrors Orca's main instance loop) ---
+                if (m_nonplanar_markers)
+                    gcode += "; NONPLANAR_OBJECT_END\n";
                 if (!m_writer.is_object_start_str_empty()) {
                     m_writer.set_object_start_str("");
                 } else if (m_enable_exclude_object) {

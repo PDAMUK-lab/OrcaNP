@@ -1,5 +1,6 @@
 #include <catch2/catch_all.hpp>
 
+#include "libslic3r/NonPlanar/LayerShapes.hpp"
 #include "libslic3r/NonPlanar/S4Deformation.hpp"
 #include "libslic3r/NonPlanar/S4GCodeTransform.hpp"
 #include "libslic3r/NonPlanar/S4Mapping.hpp"
@@ -595,3 +596,151 @@ TEST_CASE("The clearance check finds the toolhead hitting a taller print beside 
     transform(far, mapper, &report, cfg);
     CHECK(report.head_collisions == 0);
 }
+
+TEST_CASE("The distance to a print surface is signed, negative inside", "[S4]")
+{
+    const Surface         cube = voxel_surface({ { 0, 0, 0 } }, 10.);
+    const SurfaceDistance d(cube.vertices, cube.triangles);
+    CHECK_THAT(d.signed_distance({ 5., 5., 13. }), WithinAbs(3., 1e-9));
+    CHECK_THAT(d.signed_distance({ 13., 14., 5. }), WithinAbs(5., 1e-9)); // off an edge
+    CHECK_THAT(d.signed_distance({ 5., 5., 4. }), WithinAbs(-4., 1e-9));
+    CHECK_THAT(d.signed_distance({ 25., -5., 30. }), WithinAbs(std::sqrt(15. * 15. + 5. * 5. + 20. * 20.), 1e-9));
+}
+
+TEST_CASE("Layers offset from a print surface start the gap away from it, all around", "[S4]")
+{
+    // A 10 mm cube core from -5 to 5 in X and Y; seen from (0, 0, 5), 5 mm below its top.
+    std::vector<std::array<int, 3>> voxel { { 0, 0, 0 } };
+    Surface                         cube = voxel_surface(voxel, 10.);
+    for (Eigen::Vector3d &v : cube.vertices)
+        v -= Eigen::Vector3d(5., 5., 0.);
+    const SurfaceDistance d(cube.vertices, cube.triangles);
+    const double          gap = 0.3, base = 10.2, d_out = 1.5;
+    const Eigen::Vector3d centre(0., 0., 5.);
+    const double          scale = 5. + gap;
+    const std::vector<Eigen::Vector3d> points { { 0., 0., 10. + gap + d_out }, { 5. + gap + d_out, 0., 5. }, { 0., 0., 10. + 0.1 } };
+    const std::vector<Eigen::Vector3d> out = deform_offset_from_above(points, d, centre, scale, base, gap);
+    // Straight above: the centre of the layout, d_out above the first layer's bottom.
+    CHECK_THAT(out[0].head<2>().norm(), WithinAbs(0., 1e-9));
+    CHECK_THAT(out[0].z(), WithinAbs(base + d_out, 1e-9));
+    // Beside it, a quarter turn from straight up.
+    CHECK_THAT(out[1].x(), WithinAbs(scale * PI / 2., 1e-9));
+    CHECK_THAT(out[1].z(), WithinAbs(base + d_out, 1e-9));
+    // Within the gap: below the print surface's layers, so never printed.
+    CHECK(out[2].z() < base);
+}
+
+TEST_CASE("Unwrapping around the axis turns angle into length and height into width", "[S4]")
+{
+    std::vector<std::array<int, 3>> voxel { { 0, 0, 0 } };
+    Surface                         cube = voxel_surface(voxel, 10.);
+    for (Eigen::Vector3d &v : cube.vertices)
+        v -= Eigen::Vector3d(5., 5., 0.);
+    const SurfaceDistance d(cube.vertices, cube.triangles);
+    const Eigen::Vector2d axis(0., 0.);
+    // On +Y (a quarter turn), 2 mm off the face, 4 mm up; unwrapped from -90 degrees.
+    const std::vector<Eigen::Vector3d> out = deform_offset_around_axis({ { 0., 7., 4. } }, d, axis, -PI / 2., 5.2, 10., 0.2, -1.);
+    CHECK_THAT(out[0].x(), WithinAbs(5.2 * PI - 1., 1e-9));
+    CHECK_THAT(out[0].y(), WithinAbs(4., 1e-9));
+    CHECK_THAT(out[0].z(), WithinAbs(10. + 2. - 0.2, 1e-9));
+}
+
+TEST_CASE("Conical layers rise with the distance from the axis", "[S4]")
+{
+    const std::vector<Eigen::Vector3d> out = deform_cone({ { 3., 4., 1. } }, Eigen::Vector2d::Zero(), PI / 4.);
+    CHECK_THAT(out[0].z(), WithinAbs(1. + 5., 1e-9));
+    CHECK_THAT(out[0].x(), WithinAbs(3., 1e-12));
+}
+
+namespace {
+
+// Everything sliced 1 mm above where it prints.
+S4Mapper raised_mapper(const TetMesh &mesh)
+{
+    std::vector<Eigen::Vector3d> deformed;
+    for (const Eigen::Vector3d &p : mesh.points)
+        deformed.push_back(p + Eigen::Vector3d(0., 0., 1.));
+    return S4Mapper(mesh, deformed, Eigen::Vector2d::Zero());
+}
+
+} // namespace
+
+TEST_CASE("Each object is mapped through its own deformation, the rest printed as sliced", "[S4]")
+{
+    const TetMesh  mesh   = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper = raised_mapper(mesh);
+    S4MapperSet    set;
+    set.objects[7].mapper = &mapper;
+
+    const std::string g = start_block + "; NONPLANAR_OBJECT 7\n" + square(2.4) + "; NONPLANAR_OBJECT_END\n" +
+                          "G1 X30 Y0 Z2.4 F3000\nG1 X32 Y0 E0.1 F1200\n";
+    std::istringstream  in(g);
+    std::ostringstream  out;
+    const S4GCodeReport report = s4_transform_gcode(in, out, set, S4GCodeConfig());
+    const Parsed        p      = parse_body(out.str());
+    REQUIRE(! p.printing.empty());
+    for (const Eigen::Vector3d &pt : p.printing)
+        CHECK_THAT(pt.z(), WithinAbs(pt.x() > 20. ? 2.4 : 1.4, 1e-6));
+    CHECK(report.junctions >= 1);
+
+    // Up to its print surface's top an object is printed as sliced.
+    set.objects[7].identity_below_z = 2.5;
+    std::istringstream in2(g);
+    std::ostringstream out2;
+    s4_transform_gcode(in2, out2, set, S4GCodeConfig());
+    for (const Eigen::Vector3d &pt : parse_body(out2.str()).printing)
+        CHECK_THAT(pt.z(), WithinAbs(2.4, 1e-6));
+}
+
+TEST_CASE("Extrusion outside an unwrapped object's window is left out", "[S4]")
+{
+    const TetMesh  mesh   = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper = raised_mapper(mesh);
+    S4MapperSet    set;
+    set.objects[3].mapper     = &mapper;
+    set.objects[3].keep_min_x = 2.; // the square runs from X1 to X3
+    std::istringstream  in(start_block + "; NONPLANAR_OBJECT 3\n" + square(2.4) + "; NONPLANAR_OBJECT_END\n");
+    std::ostringstream  out;
+    const S4GCodeReport report = s4_transform_gcode(in, out, set, S4GCodeConfig());
+    CHECK(report.trimmed > 0);
+    // Half of the first and third sides and all of the second remain: 0.05 + 0.1 + 0.05.
+    CHECK_THAT(parse_body(out.str()).e_total, WithinAbs(0.2, 1e-4));
+    for (const Eigen::Vector3d &pt : parse_body(out.str()).printing)
+        CHECK(pt.x() >= 2. - 1e-6);
+}
+
+TEST_CASE("The clearance check finds a leaning toolhead reaching the bed", "[S4]")
+{
+    // Layers leaning 20 degrees (the rigid tilt of the mapping test); a 20 mm head 5 mm up the
+    // nozzle dips 2.1 mm below the tip on the downhill side.
+    const TetMesh         mesh  = voxel_mesh(cantilever_voxels(), 2.);
+    const double          angle = 20. * PI / 180.;
+    const Eigen::Vector3d pivot(10., 0., 0.);
+    const Eigen::Matrix3d rot = Eigen::AngleAxisd(angle, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    TetMesh               real = mesh;
+    for (Eigen::Vector3d &p : real.points)
+        p += Eigen::Vector3d(10., 0., 0.);
+    std::vector<Eigen::Vector3d> deformed;
+    for (const Eigen::Vector3d &p : real.points)
+        deformed.push_back(pivot + rot * (p - pivot));
+    const S4Mapper mapper(real, deformed, Eigen::Vector2d::Zero());
+    S4GCodeConfig  cfg;
+    cfg.emit_tilt       = true;
+    cfg.clearance_check = true;
+
+    auto collisions_at = [&](double real_z) {
+        std::ostringstream g;
+        g << start_block;
+        const Eigen::Vector3d corners[] = { { 11., -1., real_z }, { 13., -1., real_z }, { 13., 1., real_z }, { 11., 1., real_z } };
+        for (size_t i = 0; i < 4; ++i) {
+            const Eigen::Vector3d q = pivot + rot * (corners[i] - pivot);
+            g << "G1 X" << q.x() << " Y" << q.y() << " Z" << q.z() << (i == 0 ? " F3000\n" : " E0.1 F1200\n");
+        }
+        S4GCodeReport report;
+        transform(g.str(), mapper, &report, cfg);
+        return report.head_collisions;
+    };
+    CHECK(collisions_at(1.) > 0);
+    CHECK(collisions_at(12.) == 0);
+}
+

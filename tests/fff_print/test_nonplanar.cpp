@@ -2,6 +2,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
+#include "libslic3r/TriangleMeshSlicer.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -202,3 +203,72 @@ TEST_CASE("Polar S4 export tilts the nozzle over curved layers", "[NonPlanar]")
     CHECK(max_tilt > 5.);
     CHECK(max_layer_z_span(moves) > 0.3);
 }
+
+namespace {
+
+// Upper half of a sphere standing on the bed.
+TriangleMesh dome(double radius)
+{
+    indexed_triangle_set upper, lower;
+    cut_mesh(its_make_sphere(radius, PI / 36.), 0.f, &upper, &lower, true);
+    return TriangleMesh(upper);
+}
+
+} // namespace
+
+TEST_CASE("Layers offset from a print surface part keep the surface gap all around it", "[NonPlanar]")
+{
+    // A 20 mm dome printed flat as the print surface, and over it a 26 mm dome: what is left of
+    // it is a shell from the gap out to 26 mm, printed after the whole core.
+    const double core_radius = 20., shell_radius = 26., gap = 0.4;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "dome.stl";
+    ModelVolume *core   = object->add_volume(dome(core_radius));
+    core->config.set_key_value("s4_print_surface", new ConfigOptionBool(true));
+    object->add_volume(dome(shell_radius));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_gap", gap },
+                                              { "use_relative_e_distances", true }, { "layer_height", 0.3 },
+                                              { "initial_layer_print_height", 0.3 }, { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+
+    // The dome's centre, on the bed, from the core's first layer.
+    BoundingBoxf first;
+    for (const Move &m : moves)
+        if (m.e > 0. && m.layer == 1)
+            first.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
+    const Vec3d centre(first.center().x(), first.center().y(), 0.);
+
+    size_t core_points = 0, shell_points = 0, last_core = 0, first_shell = moves.size();
+    double shell_min = 1e9, shell_max = 0.;
+    for (size_t i = 0; i < moves.size(); ++i) {
+        const Move &m = moves[i];
+        if (m.e <= 0.)
+            continue;
+        const double d = (Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')) - centre).norm();
+        if (d <= core_radius + 0.1) {
+            ++core_points;
+            last_core = i;
+        } else {
+            ++shell_points;
+            first_shell = std::min(first_shell, i);
+            shell_min   = std::min(shell_min, d);
+            shell_max   = std::max(shell_max, d);
+        }
+    }
+    REQUIRE(core_points > 0);
+    REQUIRE(shell_points > 0);
+    // Nothing is printed within the gap, and the shell stays inside its dome.
+    CHECK(shell_min >= core_radius + gap - 0.05);
+    CHECK(shell_max <= shell_radius + 0.3);
+    // The whole core comes first.
+    CHECK(last_core < first_shell);
+}
+

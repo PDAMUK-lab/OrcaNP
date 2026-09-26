@@ -9,6 +9,7 @@
 #include "../NonPlanar/S4Mapping.hpp"
 
 #include <memory>
+#include <vector>
 
 namespace Slic3r {
 
@@ -20,8 +21,14 @@ namespace NonPlanarExport {
 // True when any object of the print was deformed for S4.
 bool has_s4(const Print &print);
 
-// Maps G-code of all S4 objects of the print (in G-code coordinates) back into the real parts.
-std::unique_ptr<NonPlanar::S4Mapper> s4_mapper(const Print &print);
+// How the G-code of each deformed object (in G-code coordinates) maps back into the real part,
+// by the object ids of its NONPLANAR_OBJECT markers. Everything else is printed as sliced.
+struct S4Mappers
+{
+    std::vector<std::unique_ptr<NonPlanar::S4Mapper>> storage;
+    NonPlanar::S4MapperSet                            set;
+};
+std::unique_ptr<S4Mappers> s4_mappers(const Print &print);
 
 NonPlanar::S4GCodeConfig         s4_gcode_config(const PrintConfig &config);
 NonPlanar::PolarKinematicsConfig polar_config(const PrintConfig &config);
