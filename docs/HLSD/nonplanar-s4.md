@@ -89,6 +89,37 @@ both the S4 transform and the polar conversion, delimited by Orca's `MACHINE_STA
 and `MACHINE_END_GCODE_START` tags. Without the tags, the body starts at the first layer marker
 (or the first extruding move) and the end block starts after the last extruding move.
 
+## Integration in OrcaSlicer
+
+Two groups of settings switch the pipeline on:
+
+- **Print settings > Quality > Non-planar (S4)** (`s4_*`, per object): `s4_enabled` plus the
+  deformation parameters above. Any change re-slices the object.
+- **Printer settings > Basic information > Polar kinematics** (`polar_*`): `polar_kinematics`, the
+  axis letters, the tilt axis, and the conversion and speed limits. These only affect G-code export.
+
+The pipeline hooks into the print steps as follows:
+
+- **Slicing** (`PrintObject::slice()`): with `s4_enabled`, `deform_s4()` meshes and deforms the
+  object's single model part in its slicing frame (`trafo_centered()`) before the layers are
+  laid out. The layer heights are then computed for the deformed height, and `slice_volumes()`
+  slices the deformed surface in place of the part. Perimeters, infill, supports, seams and the
+  rest of the pipeline run unchanged on those flat slices. The rotation axis in that frame is
+  the centre of the printable area moved into the object's frame through the instance shift and
+  plate origin. So moving the object, or changing the bed shape, re-slices it.
+- **Validation** (`Print::validate()`): an S4 object must be one model part with no modifiers or
+  negative volumes, placed once. The mapping only handles relative extrusion, and spiral vase
+  is refused.
+- **Export** (`GCode::do_export()`): when an object is deformed, generation writes the sliced-space
+  G-code to a side file without the G-code processor. `NonPlanarExport::s4_mapper()` joins every
+  deformed object's tetrahedra in G-code coordinates (instance shift less plate origin in XY;
+  Z offset and raft height in Z), and `s4_transform_gcode()` maps the file back. Only the mapped
+  G-code is then streamed through the processor, so the preview, time estimate and filament
+  statistics describe the curved toolpath that will be printed. With `polar_kinematics`, the
+  processed file is converted to machine coordinates last, just before the export rename. The
+  preview therefore stays Cartesian, and its G-code text view does not match the polar file line
+  for line.
+
 ## Tool
 
 `s4_polar` (`src/dev-utils/`, built with `ORCA_TOOLS`) runs the pipeline around any slicer:

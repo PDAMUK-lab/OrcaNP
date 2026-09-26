@@ -141,6 +141,9 @@ PrintBase::ApplyStatus PrintObject::set_instances(PrintInstances &&instances)
         if (m_print->invalidate_steps({ psSkirtBrim, psGCodeExport }) ||
             (! equal_length && m_print->invalidate_step(psWipeTower)))
             status = PrintBase::APPLY_STATUS_INVALIDATED;
+        // S4 deforms the object about the printer's rotation axis, so moving it changes the deformation.
+        if (m_config.s4_enabled.value && this->invalidate_step(posSlice))
+            status = PrintBase::APPLY_STATUS_INVALIDATED;
         m_instances = std::move(instances);
 	    for (PrintInstance &i : m_instances)
 	    	i.print_object = this;

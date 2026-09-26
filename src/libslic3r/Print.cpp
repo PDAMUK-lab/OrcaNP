@@ -465,6 +465,11 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
     for (PrintObjectStep ostep : osteps)
         for (PrintObject *object : m_objects)
             invalidated |= object->invalidate_step(ostep);
+    // S4 deforms objects about the printer's rotation axis, the centre of the printable area.
+    if (std::find(opt_keys.begin(), opt_keys.end(), "printable_area") != opt_keys.end())
+        for (PrintObject *object : m_objects)
+            if (object->config().s4_enabled.value)
+                invalidated |= object->invalidate_step(posSlice);
 
     return invalidated;
 }
