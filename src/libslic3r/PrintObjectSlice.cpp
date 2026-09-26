@@ -874,8 +874,9 @@ void PrintObject::deform_s4()
             surfaces.push_back(v);
         else if (v->is_model_part() && part == nullptr)
             part = v;
-    const S4LayerShape shape = m_config.s4_layer_shape.value;
-    if (part == nullptr || m_instances.size() != 1 || (shape == S4LayerShape::Offset) == surfaces.empty())
+    const S4LayerShape  shape      = m_config.s4_layer_shape.value;
+    const bool          from_parts = shape == S4LayerShape::Offset && m_config.s4_surface_core.value == S4SurfaceCore::Parts;
+    if (part == nullptr || m_instances.size() != 1 || from_parts == surfaces.empty())
         throw Slic3r::SlicingError(L("Non-planar (S4) printing needs a single instance with one part to print non-planar, "
                                      "and print surface parts exactly when the layers are offset from them."));
 
@@ -926,20 +927,53 @@ void PrintObject::deform_s4()
         } else {
             // The print surface parts print as sliced, up to the top of the layer holding their top;
             // the part goes above that, in layers at constant distance from their surface.
-            S4Mesh core;
-            for (const ModelVolume *v : surfaces) {
-                const S4Mesh m    = to_s4_mesh(volume_in_slicing_frame(*this, *v));
-                const int    base = int(core.vertices.size());
-                core.vertices.insert(core.vertices.end(), m.vertices.begin(), m.vertices.end());
-                for (const std::array<int, 3> &t : m.triangles)
-                    core.triangles.push_back({ t[0] + base, t[1] + base, t[2] + base });
+            S4Mesh       core;
+            const double gap = m_config.s4_surface_gap.value;
+            if (from_parts)
+                for (const ModelVolume *v : surfaces) {
+                    const S4Mesh m    = to_s4_mesh(volume_in_slicing_frame(*this, *v));
+                    const int    base = int(core.vertices.size());
+                    core.vertices.insert(core.vertices.end(), m.vertices.begin(), m.vertices.end());
+                    for (const std::array<int, 3> &t : m.triangles)
+                        core.triangles.push_back({ t[0] + base, t[1] + base, t[2] + base });
+                }
+            else {
+                // A core fitted into the part's cavity, the gap short of its inner surface, so the
+                // part's first layer is its inner surface.
+                const NonPlanar::SurfaceDistance part_distance(shell.vertices, shell.triangles);
+                const double                     bottom = part_distance.bbox_min().z();
+                if (m_config.s4_surface_core.value == S4SurfaceCore::Sphere) {
+                    const NonPlanar::FittedCore fit = NonPlanar::fit_sphere_core(part_distance);
+                    if (fit.radius <= gap + 0.5)
+                        throw Slic3r::SlicingError(L("The part's cavity is too small for a print surface sphere."), this->id().id);
+                    // The core is printed first, from the bed: it cannot start in mid-air.
+                    if (fit.base.z() - (fit.radius - gap) > bottom + m_print->config().initial_layer_print_height.value)
+                        throw Slic3r::SlicingError(L("The sphere fitted into the part does not reach the bed, so it cannot be "
+                                                     "printed first as its print surface."), this->id().id);
+                    indexed_triangle_set sphere = its_make_sphere(fit.radius - gap, PI / 90.), lower;
+                    for (stl_vertex &v : sphere.vertices)
+                        v += fit.base.cast<float>();
+                    cut_mesh(sphere, float(bottom), &s4->core, &lower, true);
+                } else {
+                    const NonPlanar::FittedCore fit = NonPlanar::fit_cylinder_core(shell.vertices, shell.triangles, part_distance,
+                                                                                   s4->axis);
+                    // Open to the top (a sleeve), the core is as tall as the part; under a roof it
+                    // stops the gap short of it.
+                    const bool   roofed = fit.height < part_distance.bbox_max().z() - bottom - 1e-3;
+                    const double height = roofed ? fit.height - gap : fit.height;
+                    if (fit.radius <= gap + 0.5 || height <= 0.5)
+                        throw Slic3r::SlicingError(L("The part's cavity is too small for a print surface cylinder."), this->id().id);
+                    s4->core = its_make_cylinder(fit.radius - gap, height);
+                    for (stl_vertex &v : s4->core.vertices)
+                        v += fit.base.cast<float>();
+                }
+                core = to_s4_mesh(s4->core);
             }
             const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles);
             const double first = m_print->config().initial_layer_print_height.value;
             const double layer = m_config.layer_height.value;
             const double top   = distance.bbox_max().z();
             s4->surface_top    = top <= first ? first : first + std::ceil((top - first) / layer - 1e-6) * layer;
-            const double gap   = m_config.s4_surface_gap.value;
 
             if (m_config.s4_surface_projection.value == S4SurfaceProjection::Above) {
                 // Seen from a centre as far below the top as the surface is wide (a sphere's
@@ -1396,7 +1430,17 @@ void PrintObject::slice_volumes()
         params.closing_radius = m_config.slice_closing_radius.value;
         params.resolution     = print->config().resolution <= 0.001 ? 0.0f : 0.0025;
         params.trafo          = Transform3d::Identity();
-        objSliceByVolume.push_back({ m_s4->part_id, slice_mesh_ex(m_s4->surface, slice_zs, params, throw_on_cancel_callback) });
+        std::vector<ExPolygons> part_slices = slice_mesh_ex(m_s4->surface, slice_zs, params, throw_on_cancel_callback);
+        if (! m_s4->core.indices.empty()) {
+            // A generated print surface is printed with the part's settings, under it.
+            std::vector<ExPolygons> core_slices = slice_mesh_ex(m_s4->core, slice_zs, params, throw_on_cancel_callback);
+            for (size_t i = 0; i < part_slices.size(); ++i)
+                if (! core_slices[i].empty()) {
+                    append(part_slices[i], std::move(core_slices[i]));
+                    part_slices[i] = union_ex(part_slices[i]);
+                }
+        }
+        objSliceByVolume.push_back({ m_s4->part_id, std::move(part_slices) });
     } else if (!slice_zs.empty()) {
         objSliceByVolume = slice_volumes_inner(
             print->config(), this->config(), this->trafo_centered(),

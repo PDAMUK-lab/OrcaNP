@@ -324,6 +324,13 @@ static t_config_enum_values s_keys_map_S4SurfaceProjection{
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceProjection)
 
+static t_config_enum_values s_keys_map_S4SurfaceCore{
+    { "parts",    int(S4SurfaceCore::Parts) },
+    { "sphere",   int(S4SurfaceCore::Sphere) },
+    { "cylinder", int(S4SurfaceCore::Cylinder) },
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceCore)
+
 //Orca
 static t_config_enum_values s_keys_map_WallDirection{
     { "ccw",  int(WallDirection::CounterClockwise) },
@@ -5052,6 +5059,25 @@ void PrintConfigDef::init_fff_params()
     def->min      = 0;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.2));
+
+    def = this->add("s4_surface_core", coEnum);
+    def->label    = L("Print surface");
+    def->category = L("Quality");
+    def->tooltip  = L("What the layers are offset from.\n"
+                      "Parts: the object's parts set as print surface.\n"
+                      "Generated sphere: a sphere fitted inside the part, centred below its top by half its width, sized to "
+                      "the part's inner surface less the surface gap, so the first layer is the part's inner surface.\n"
+                      "Generated cylinder: the same with a cylinder around the rotation axis, up to the part's inner roof.\n"
+                      "A generated core is printed first with the part's settings.");
+    def->enum_keys_map = &ConfigOptionEnum<S4SurfaceCore>::get_enum_values();
+    def->enum_values.push_back("parts");
+    def->enum_values.push_back("sphere");
+    def->enum_values.push_back("cylinder");
+    def->enum_labels.push_back(L("Parts"));
+    def->enum_labels.push_back(L("Generated sphere"));
+    def->enum_labels.push_back(L("Generated cylinder"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<S4SurfaceCore>(S4SurfaceCore::Parts));
 
     def = this->add("s4_surface_projection", coEnum);
     def->label    = L("Surface layout");

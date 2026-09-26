@@ -162,6 +162,53 @@ double SurfaceDistance::signed_distance(const Eigen::Vector3d &p) const
     return inside(p) ? -d : d;
 }
 
+FittedCore fit_sphere_core(const SurfaceDistance &part)
+{
+    const Eigen::Vector3d lo = part.bbox_min(), hi = part.bbox_max();
+    const Eigen::Vector3d centre(0.5 * (lo.x() + hi.x()), 0.5 * (lo.y() + hi.y()),
+                                 std::max(lo.z(), hi.z() - 0.5 * std::max(hi.x() - lo.x(), hi.y() - lo.y())));
+    // Just above the bottom, where a dome's centre lies on the bed.
+    const Eigen::Vector3d probe = centre + Eigen::Vector3d(0., 0., 1e-3);
+    if (part.inside(probe))
+        throw std::runtime_error("Print surface: the part has no cavity at its centre to fit a sphere into");
+    return { centre, part.distance(centre), 0. };
+}
+
+FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                             const SurfaceDistance &part, const Eigen::Vector2d &axis)
+{
+    const Eigen::Vector3d lo = part.bbox_min(), hi = part.bbox_max();
+    // The cavity must reach down to the bed, where the core stands; its roof is where the axis
+    // enters the part again.
+    const double step = 0.05;
+    if (part.inside({ axis.x(), axis.y(), lo.z() + step }))
+        throw std::runtime_error("Print surface: the part covers the rotation axis at the bed; a cylinder core needs a cavity "
+                                 "open to the bed around the axis");
+    double roof = hi.z();
+    for (double z = lo.z() + step; z < hi.z(); z += step)
+        if (part.inside({ axis.x(), axis.y(), z })) {
+            roof = z - step;
+            break;
+        }
+    // Nearest wall: horizontal distance from the axis to the part below the roof.
+    double r2 = std::numeric_limits<double>::infinity();
+    auto   seg = [&axis](const Eigen::Vector2d &a, const Eigen::Vector2d &b) {
+        const Eigen::Vector2d ab = b - a;
+        const double          l2 = ab.squaredNorm();
+        const double          t  = l2 > 0. ? std::clamp((axis - a).dot(ab) / l2, 0., 1.) : 0.;
+        return (a + ab * t - axis).squaredNorm();
+    };
+    for (const std::array<int, 3> &t : triangles) {
+        const Eigen::Vector3d &a = vertices[t[0]], &b = vertices[t[1]], &c = vertices[t[2]];
+        if (std::min({ a.z(), b.z(), c.z() }) >= roof)
+            continue;
+        r2 = std::min({ r2, seg(a.head<2>(), b.head<2>()), seg(b.head<2>(), c.head<2>()), seg(c.head<2>(), a.head<2>()) });
+    }
+    if (! std::isfinite(r2) || r2 <= 0.)
+        throw std::runtime_error("Print surface: the part has no cavity around the rotation axis to fit a cylinder into");
+    return { Eigen::Vector3d(axis.x(), axis.y(), lo.z()), std::sqrt(r2), roof - lo.z() };
+}
+
 std::vector<Eigen::Vector3d> deform_offset_from_above(const std::vector<Eigen::Vector3d> &points, const SurfaceDistance &surface,
                                                       const Eigen::Vector3d &centre, double scale, double base_z, double gap)
 {

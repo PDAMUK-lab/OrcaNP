@@ -744,3 +744,38 @@ TEST_CASE("The clearance check finds a leaning toolhead reaching the bed", "[S4]
     CHECK(collisions_at(12.) == 0);
 }
 
+TEST_CASE("A sphere core is fitted to the part's cavity", "[S4]")
+{
+    // A 10 mm cube with a 6 mm cubic cavity in its middle.
+    std::vector<std::array<int, 3>> voxels;
+    for (int x = 0; x < 5; ++x)
+        for (int y = 0; y < 5; ++y)
+            for (int z = 0; z < 5; ++z)
+                if (x == 0 || y == 0 || z == 0 || x == 4 || y == 4 || z == 4)
+                    voxels.push_back({ x, y, z });
+    const Surface         box = voxel_surface(voxels, 2.);
+    const SurfaceDistance part(box.vertices, box.triangles);
+    const FittedCore      fit = fit_sphere_core(part);
+    CHECK_THAT((fit.base - Eigen::Vector3d(5., 5., 5.)).norm(), WithinAbs(0., 1e-9));
+    CHECK_THAT(fit.radius, WithinAbs(3., 1e-9));
+}
+
+TEST_CASE("A cylinder core is fitted up to the roof of the part's cavity", "[S4]")
+{
+    // A 10 x 10 x 12 mm cup upside down: a 6 x 6 mm cavity open to the bed, 8 mm high.
+    std::vector<std::array<int, 3>> voxels;
+    for (int x = 0; x < 5; ++x)
+        for (int y = 0; y < 5; ++y)
+            for (int z = 0; z < 6; ++z)
+                if (! (x >= 1 && x <= 3 && y >= 1 && y <= 3 && z <= 3))
+                    voxels.push_back({ x, y, z });
+    const Surface         cup = voxel_surface(voxels, 2.);
+    const SurfaceDistance part(cup.vertices, cup.triangles);
+    const FittedCore      fit = fit_cylinder_core(cup.vertices, cup.triangles, part, Eigen::Vector2d(5., 5.));
+    CHECK_THAT(fit.radius, WithinAbs(3., 1e-9));
+    CHECK_THAT(fit.height, WithinAbs(8., 0.1));
+
+    // A part covering the axis at the bed has nowhere to stand a core.
+    CHECK_THROWS(fit_cylinder_core(cup.vertices, cup.triangles, part, Eigen::Vector2d(1., 1.)));
+}
+

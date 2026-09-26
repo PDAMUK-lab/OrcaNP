@@ -218,6 +218,15 @@ enum class S4LayerShape
     Cone,      // conical about the rotation axis
 };
 
+// What layers are offset from: the object's print surface parts, or a core generated to fit the
+// part's inner surface.
+enum class S4SurfaceCore
+{
+    Parts,
+    Sphere,
+    Cylinder,
+};
+
 // How layers offset from a print surface are laid out flat for slicing.
 enum class S4SurfaceProjection
 {
@@ -714,6 +723,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SurfaceFillOrder)
 
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4LayerShape)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceProjection)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceCore)
 
 #undef CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS
 
@@ -1166,6 +1176,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<S4LayerShape>,  s4_layer_shape))
     ((ConfigOptionFloat,               s4_surface_gap))
     ((ConfigOptionEnum<S4SurfaceProjection>, s4_surface_projection))
+    ((ConfigOptionEnum<S4SurfaceCore>, s4_surface_core))
     ((ConfigOptionFloat,               s4_cone_angle))
     ((ConfigOptionEnum<SlicingMode>,   slicing_mode))
     ((ConfigOptionBool,                enable_support))

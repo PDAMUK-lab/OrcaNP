@@ -1795,12 +1795,14 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         if (parts != 1 || others != 0 || object->instances().size() != 1)
             return { L("Non-planar (S4) printing supports objects with one part printed non-planar (besides print surface parts), "
                        "without modifiers or negative volumes, placed once."), object, "s4_enabled" };
-        const bool offset = object->config().s4_layer_shape.value == S4LayerShape::Offset;
+        const bool offset = object->config().s4_layer_shape.value == S4LayerShape::Offset &&
+                            object->config().s4_surface_core.value == S4SurfaceCore::Parts;
         if (offset && surfaces == 0)
             return { L("Layers offset from a print surface need a part set as print surface (in the object list, add the "
                        "\"Print surface\" setting to the part)."), object, "s4_layer_shape" };
         if (! offset && surfaces > 0)
-            return { L("Print surface parts need the layer shape \"Offset from print surface\"."), object, "s4_layer_shape" };
+            return { L("Print surface parts need the layer shape \"Offset from print surface\" with the print surface \"Parts\"."),
+                     object, "s4_layer_shape" };
         if (! m_config.use_relative_e_distances)
             return { L("Non-planar (S4) printing needs relative extrusion (use_relative_e_distances)."), object, "use_relative_e_distances" };
         if (m_config.spiral_mode)

@@ -388,6 +388,7 @@ public:
         std::vector<Eigen::Vector3d> deformed; // deformed vertex positions
         indexed_triangle_set         surface;  // deformed boundary, sliced in place of the part
         ObjectID                     part_id;  // the model part it stands in for
+        indexed_triangle_set         core;     // a generated print surface, sliced with the part
         Vec2d                        axis;     // the printer's rotation axis
         // Print surface parts are printed as sliced up to this height; the part is above it.
         double surface_top = -std::numeric_limits<double>::infinity();

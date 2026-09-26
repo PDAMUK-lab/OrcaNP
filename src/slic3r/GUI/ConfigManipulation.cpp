@@ -1020,7 +1020,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
     for (auto el : {"s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far", "s4_passes",
                     "s4_planar_height", "s4_hold_non_overhangs"})
         toggle_line(el, has_s4 && s4_shape == S4LayerShape::Optimized);
-    for (auto el : {"s4_surface_gap", "s4_surface_projection"})
+    for (auto el : {"s4_surface_core", "s4_surface_gap", "s4_surface_projection"})
         toggle_line(el, has_s4 && s4_shape == S4LayerShape::Offset);
     toggle_line("s4_cone_angle", has_s4 && s4_shape == S4LayerShape::Cone);
 

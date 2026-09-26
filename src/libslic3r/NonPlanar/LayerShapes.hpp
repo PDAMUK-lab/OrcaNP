@@ -37,6 +37,24 @@ private:
     std::vector<std::vector<int>>   m_grid; // triangles overlapping each cell
 };
 
+// A core fitted into a part's cavity, for the part to be printed over.
+struct FittedCore
+{
+    Eigen::Vector3d base;   // sphere: its centre; cylinder: the axis at the part's bottom
+    double          radius; // out to the part's inner surface
+    double          height; // cylinder: from the base up to the cavity's roof
+};
+
+// A sphere about a centre below the part's top by half the part's width (a dome's or sphere's
+// centre), out to the nearest point of the part. Throws when the centre is inside the part.
+FittedCore fit_sphere_core(const SurfaceDistance &part);
+
+// A cylinder about a vertical axis, from the part's bottom up to the roof of its cavity, out to
+// the part's nearest wall below the roof. Throws when the part covers the axis at its bottom
+// (the core must stand on the bed) or has no cavity around the axis.
+FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                             const SurfaceDistance &part, const Eigen::Vector2d &axis);
+
 // Layers at constant distance from the print surface, stacked above `base_z` (the print surface's
 // top, where its own flat layers end). A point at distance d from the surface goes to height
 // base_z + d - gap, so the first layer lies `gap` off the surface and what is closer (or inside)

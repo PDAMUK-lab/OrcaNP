@@ -1291,6 +1291,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "s4_layer_shape"
             || opt_key == "s4_surface_gap"
             || opt_key == "s4_surface_projection"
+            || opt_key == "s4_surface_core"
             || opt_key == "s4_cone_angle"
             || opt_key == "s4_print_surface"
             || opt_key == "slowdown_for_curled_perimeters"

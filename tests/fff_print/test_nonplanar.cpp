@@ -272,3 +272,97 @@ TEST_CASE("Layers offset from a print surface part keep the surface gap all arou
     CHECK(last_core < first_shell);
 }
 
+namespace {
+
+// Closed surface of revolution about Z of a profile in (r, z) that starts and ends on the axis.
+TriangleMesh revolve(const std::vector<Vec2d> &profile, int segments = 96)
+{
+    indexed_triangle_set its;
+    std::vector<int>     ring_start;
+    for (const Vec2d &p : profile) {
+        ring_start.push_back(int(its.vertices.size()));
+        const int n = p.x() <= 0. ? 1 : segments;
+        for (int k = 0; k < n; ++k) {
+            const double a = 2. * PI * k / segments;
+            its.vertices.emplace_back(float(p.x() * std::cos(a)), float(p.x() * std::sin(a)), float(p.y()));
+        }
+    }
+    auto at = [&](size_t i, int k) { return profile[i].x() <= 0. ? ring_start[i] : ring_start[i] + k % segments; };
+    for (size_t i = 0; i + 1 < profile.size(); ++i)
+        for (int k = 0; k < segments; ++k) {
+            const int a = at(i, k), b = at(i, k + 1), c = at(i + 1, k), d = at(i + 1, k + 1);
+            if (a != b)
+                its.indices.emplace_back(a, c, b);
+            if (c != d)
+                its.indices.emplace_back(b, c, d);
+        }
+    return TriangleMesh(its);
+}
+
+// A dome shell from inner radius `inner` to `outer`, open to the bed.
+TriangleMesh hollow_dome(double inner, double outer)
+{
+    std::vector<Vec2d> profile;
+    for (int k = 0; k <= 24; ++k) { // inner arc, top to bed
+        const double a = 0.5 * PI * k / 24;
+        profile.emplace_back(inner * std::sin(a), inner * std::cos(a));
+    }
+    for (int k = 24; k >= 0; --k) { // outer arc, bed to top
+        const double a = 0.5 * PI * k / 24;
+        profile.emplace_back(outer * std::sin(a), outer * std::cos(a));
+    }
+    return revolve(profile);
+}
+
+} // namespace
+
+TEST_CASE("A generated sphere core puts the first layer on the part's inner surface", "[NonPlanar]")
+{
+    // Only the shell is modelled: the slicer fits a core into it, the gap short of its inner
+    // surface, prints it first, and the shell's first layer lies on its inner surface.
+    const double inner = 20., outer = 25., gap = 0.4;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "shell.stl";
+    object->add_volume(hollow_dome(inner, outer));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "sphere" },
+                                              { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
+                                              { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
+                                              { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+
+    BoundingBoxf first;
+    for (const Move &m : moves)
+        if (m.e > 0. && m.layer == 1)
+            first.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
+    const Vec3d centre(first.center().x(), first.center().y(), 0.);
+
+    size_t core_points = 0, shell_points = 0, last_core = 0, first_shell = moves.size();
+    double shell_min = 1e9;
+    for (size_t i = 0; i < moves.size(); ++i) {
+        const Move &m = moves[i];
+        if (m.e <= 0.)
+            continue;
+        const double d = (Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')) - centre).norm();
+        if (d <= inner - gap + 0.1) {
+            ++core_points;
+            last_core = i;
+        } else {
+            ++shell_points;
+            first_shell = std::min(first_shell, i);
+            shell_min   = std::min(shell_min, d);
+        }
+    }
+    REQUIRE(core_points > 0);
+    REQUIRE(shell_points > 0);
+    CHECK(shell_min >= inner - 0.05);
+    CHECK(last_core < first_shell);
+}
+
