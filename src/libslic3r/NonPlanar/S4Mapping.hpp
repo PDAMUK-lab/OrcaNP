@@ -40,6 +40,7 @@ public:
 
     Result map(const Eigen::Vector3d &deformed_point) const;
 
+    const Eigen::Vector2d& axis() const { return m_axis; }
     const Eigen::Vector3d& bbox_min() const { return m_min; }
     const Eigen::Vector3d& bbox_max() const { return m_max; }
     bool                   in_bbox(const Eigen::Vector3d &p) const;

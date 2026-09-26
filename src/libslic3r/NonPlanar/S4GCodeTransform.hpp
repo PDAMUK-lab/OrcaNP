@@ -60,6 +60,25 @@ struct S4GCodeConfig
     double height_field_res                = 0.8;
     double nozzle_radius                   = 0.4;
 
+    // Nozzle tilt (radians). Where the layer leans less than `tilt_threshold` the nozzle stays
+    // vertical; from there to twice the threshold it catches up with the layer. It never leans
+    // more than `max_tilt`.
+    double tilt_threshold = 0.;
+    double max_tilt       = 1.5707963267948966; // 90 degrees
+
+    // Clearance of the nozzle and the head around material already printed. The nozzle is a
+    // cone of half-angle `nozzle_cone_angle` (radians) widening from `nozzle_radius` at the tip
+    // up to `nozzle_length`, and the head above it a cylinder of `head_radius`, both along the
+    // nozzle axis. Material within `clearance_ignore_radius` of the tip (the beads it is laying
+    // and touching) and less than `clearance_tolerance` inside the head is not a collision.
+    bool   clearance_check          = false;
+    double nozzle_cone_angle        = 0.698; // 40 degrees
+    double nozzle_length            = 5.;
+    double head_radius              = 20.;
+    double clearance_tolerance      = 0.2;
+    double clearance_ignore_radius  = 2.;
+    double clearance_check_interval = 2.; // mm of nozzle travel between checks
+
     // Output.
     bool emit_tilt = true;
     char tilt_axis = 'B';
@@ -74,6 +93,11 @@ struct S4GCodeReport
     size_t degenerate_dropped = 0, z_steps_limited = 0;
     size_t collisions = 0, lifts = 0, retractions_added = 0;
     double min_z = 0., max_z = 0., max_tilt_deg = 0.;
+    size_t tilt_limited = 0; // points whose tilt was cut back to max_tilt
+    // Checked positions where the nozzle or the head would hit printed material, with the first
+    // few described.
+    size_t                   head_collisions = 0;
+    std::vector<std::string> head_collision_samples;
     // Names and details of failed structural checks; empty when the output is sound.
     std::vector<std::string> failed;
 };

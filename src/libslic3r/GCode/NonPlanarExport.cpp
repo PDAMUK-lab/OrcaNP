@@ -1,6 +1,7 @@
 #include "NonPlanarExport.hpp"
 
 #include "../BoundingBox.hpp"
+#include "../Geometry.hpp"
 #include "../Print.hpp"
 
 namespace Slic3r {
@@ -54,6 +55,14 @@ NonPlanar::S4GCodeConfig s4_gcode_config(const PrintConfig &config)
     cfg.emit_tilt = config.polar_kinematics.value && config.polar_tilt_axis.value;
     if (config.polar_axis_names.value.size() == 3)
         cfg.tilt_axis = config.polar_axis_names.value[2];
+    // The polar conversion may put the nozzle on either side of the rotation axis, which flips
+    // the sign of the tilt, so only the travel both sides share is safe.
+    cfg.tilt_threshold = Geometry::deg2rad(config.polar_tilt_threshold.value);
+    cfg.max_tilt       = Geometry::deg2rad(std::min(-config.polar_tilt_min.value, config.polar_tilt_max.value));
+    cfg.clearance_check   = config.nonplanar_clearance_check.value;
+    cfg.nozzle_cone_angle = Geometry::deg2rad(config.nonplanar_nozzle_cone_angle.value);
+    cfg.nozzle_length     = config.nonplanar_nozzle_length.value;
+    cfg.head_radius       = config.nonplanar_head_radius.value;
     return cfg;
 }
 
@@ -69,6 +78,8 @@ NonPlanar::PolarKinematicsConfig polar_config(const PrintConfig &config)
     cfg.inverse_time_feed = config.polar_inverse_time_feed.value;
     cfg.has_tilt_axis     = config.polar_tilt_axis.value;
     cfg.tilt_pivot_length = config.polar_tilt_pivot_length.value;
+    cfg.min_tilt          = config.polar_tilt_min.value;
+    cfg.max_tilt          = config.polar_tilt_max.value;
     if (config.polar_axis_names.value.size() == 3) {
         cfg.angle_axis  = config.polar_axis_names.value[0];
         cfg.radius_axis = config.polar_axis_names.value[1];

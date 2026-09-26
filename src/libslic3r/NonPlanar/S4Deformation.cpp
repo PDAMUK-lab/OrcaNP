@@ -135,10 +135,19 @@ Attributes compute_attributes(const std::vector<Eigen::Vector3d> &pts, const Tet
             min_face_z = std::min(min_face_z, z);
     if (! std::isfinite(min_face_z))
         throw std::runtime_error("S4: the tetrahedral mesh has no boundary faces");
+    // Cells of the planar base are the "bed" of the part above it.
+    double min_z = std::numeric_limits<double>::infinity();
+    for (const Eigen::Vector3d &p : pts)
+        min_z = std::min(min_z, p.z());
+    const double base_z = min_z + params.planar_height;
 
     a.bottom.assign(n, 0);
     a.overhang.assign(n, NaN);
     for (size_t c = 0; c < n; ++c) {
+        if (params.planar_height > 0. && a.center[c].z() <= base_z) {
+            a.bottom[c] = 1;
+            continue;
+        }
         if (std::isnan(face_z[c]))
             continue;
         a.bottom[c] = face_z[c] < min_face_z + params.bottom_threshold;
@@ -517,17 +526,24 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
     const Topology topo = build_topology(mesh);
     const size_t   n    = mesh.tets.size();
 
-    // Vertices on the bed stay on the bed. Everything else keeps clear of it: a region pushed
-    // down to bed level would be sliced into the first layers and printed in mid-air.
+    // Vertices on the bed (or in the planar base) stay put. Everything else keeps clear of the
+    // base: a region pushed down to its level would be sliced into those layers and printed in
+    // mid-air.
     double min_z = std::numeric_limits<double>::infinity();
     for (const Eigen::Vector3d &p : mesh.points)
         min_z = std::min(min_z, p.z());
+    const double        base_z = min_z + std::max(params.planar_height, 0.);
     std::vector<char>   pinned(mesh.points.size());
     std::vector<double> z_floor(mesh.points.size());
     for (size_t v = 0; v < mesh.points.size(); ++v) {
-        pinned[v]  = mesh.points[v].z() <= min_z + 1e-6;
-        z_floor[v] = min_z + std::min(mesh.points[v].z() - min_z, params.bottom_threshold);
+        pinned[v]  = mesh.points[v].z() <= base_z + 1e-6;
+        z_floor[v] = base_z + std::min(mesh.points[v].z() - base_z, params.bottom_threshold);
     }
+    // Cells of the planar base do not turn, so the rotation field starts from zero at its top.
+    std::vector<char> frozen(n, 0);
+    if (params.planar_height > 0.)
+        for (size_t c = 0; c < n; ++c)
+            frozen[c] = std::all_of(mesh.tets[c].begin(), mesh.tets[c].end(), [&pinned](int v) { return pinned[v] != 0; });
 
     // Cells turned inside out get their rotation limits (and their neighbourhood's) cut back,
     // and the pass is solved again. No rotation means no inversion, so this terminates.
@@ -560,7 +576,7 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
             data.limit.resize(n);
             data.target.assign(n, NaN);
             for (size_t c = 0; c < n; ++c) {
-                data.limit[c] = limit[c] * scale[c];
+                data.limit[c] = frozen[c] ? 0. : limit[c] * scale[c];
                 if (! std::isnan(raw_target[c]))
                     data.target[c] = std::clamp(raw_target[c], -data.limit[c], data.limit[c]);
             }

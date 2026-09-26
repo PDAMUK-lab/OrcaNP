@@ -202,11 +202,12 @@ Parsed parse_body(const std::string &gcode)
     return p;
 }
 
-std::string transform(const std::string &gcode, const S4Mapper &mapper, S4GCodeReport *report = nullptr)
+std::string transform(const std::string &gcode, const S4Mapper &mapper, S4GCodeReport *report = nullptr,
+                      const S4GCodeConfig &config = S4GCodeConfig())
 {
     std::istringstream  in(gcode);
     std::ostringstream  out;
-    const S4GCodeReport r = s4_transform_gcode(in, out, mapper, S4GCodeConfig());
+    const S4GCodeReport r = s4_transform_gcode(in, out, mapper, config);
     if (report)
         *report = r;
     return out.str();
@@ -304,6 +305,28 @@ TEST_CASE("Only the base stays at bed level", "[S4]")
 
     for (size_t v = 0; v < mesh.points.size(); ++v)
         CHECK(result.deformed[v].z() >= std::min(mesh.points[v].z(), params.bottom_threshold) - 1e-9);
+}
+
+TEST_CASE("A planar base stays as it is while the part above it still turns", "[S4]")
+{
+    // The post is 20 mm tall and the arm's underside is at 16 mm; flat layers up to 10 mm.
+    const TetMesh mesh = voxel_mesh(cantilever_voxels(), 2.);
+    S4Params      params;
+    params.planar_height  = 10.;
+    const S4Result result = s4_deform(mesh, params);
+
+    double moved = 0.;
+    for (size_t v = 0; v < mesh.points.size(); ++v) {
+        const double z = mesh.points[v].z();
+        if (z <= 10.)
+            CHECK_THAT((result.deformed[v] - mesh.points[v]).norm(), WithinAbs(0., 1e-12));
+        else {
+            CHECK(result.deformed[v].z() >= 10. + std::min(z - 10., params.bottom_threshold) - 1e-9);
+            moved = std::max(moved, (result.deformed[v] - mesh.points[v]).norm());
+        }
+    }
+    CHECK(moved > 1.);
+    CHECK(result.passes.front().inverted == 0);
 }
 
 TEST_CASE("The rotation field follows its targets and stays within its bounds", "[S4]")
@@ -494,4 +517,80 @@ TEST_CASE("Absolute extrusion is refused", "[S4]")
     const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
     const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
     CHECK_THROWS(transform("G28\nM82\n; MACHINE_START_GCODE_END\n" + square(0.2), mapper));
+}
+
+TEST_CASE("The nozzle stays vertical below the tilt threshold and never leans past the limit", "[S4]")
+{
+    // The rigid 20 degree tilt of the mapping test: every layer leans inward by 20 degrees.
+    const TetMesh         mesh  = voxel_mesh(cantilever_voxels(), 2.);
+    const double          angle = 20. * PI / 180.;
+    const Eigen::Vector3d pivot(10., 0., 0.);
+    const Eigen::Matrix3d rot = Eigen::AngleAxisd(angle, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    TetMesh               real = mesh;
+    for (Eigen::Vector3d &p : real.points)
+        p += Eigen::Vector3d(10., 0., 0.);
+    std::vector<Eigen::Vector3d> deformed;
+    for (const Eigen::Vector3d &p : real.points)
+        deformed.push_back(pivot + rot * (p - pivot));
+    const S4Mapper mapper(real, deformed, Eigen::Vector2d::Zero());
+
+    // A square in the post at real height 5, written in the sliced (deformed) space.
+    std::ostringstream g;
+    g << start_block;
+    const Eigen::Vector3d corners[] = { { 11., -1., 5. }, { 13., -1., 5. }, { 13., 1., 5. }, { 11., 1., 5. }, { 11., -1., 5. } };
+    for (size_t i = 0; i < 5; ++i) {
+        const Eigen::Vector3d q = pivot + rot * (corners[i] - pivot);
+        g << "G1 X" << q.x() << " Y" << q.y() << " Z" << q.z() << (i == 0 ? " F3000\n" : " E0.1 F1200\n");
+    }
+    auto tilts = [&](double threshold_deg, double max_deg, S4GCodeReport &report) {
+        S4GCodeConfig cfg;
+        cfg.emit_tilt      = true;
+        cfg.tilt_threshold = threshold_deg * PI / 180.;
+        cfg.max_tilt       = max_deg * PI / 180.;
+        const std::string   out = transform(g.str(), mapper, &report, cfg);
+        std::vector<double> b;
+        std::istringstream  lines(out);
+        std::string         line;
+        while (std::getline(lines, line))
+            if (const size_t at = line.find(" B"); at != std::string::npos)
+                b.push_back(std::stod(line.substr(at + 2)));
+        return b;
+    };
+
+    S4GCodeReport report;
+    for (double b : tilts(25., 90., report)) // the layer leans less than the threshold
+        CHECK_THAT(b, WithinAbs(0., 1e-9));
+    for (double b : tilts(5., 90., report)) // twice the threshold is reached: the layer is followed
+        CHECK_THAT(b, WithinAbs(-20., 1e-3));
+    for (double b : tilts(0., 10., report)) // cut back to the limit
+        CHECK_THAT(b, WithinAbs(-10., 1e-3));
+    CHECK(report.tilt_limited > 0);
+}
+
+TEST_CASE("The clearance check finds the toolhead hitting a taller print beside it", "[S4]")
+{
+    const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
+    S4GCodeConfig  cfg;
+    cfg.clearance_check = true; // 40 degree nozzle cone 5 mm long, head radius 20 mm
+
+    // A 2 mm square column printed layer by layer up to 15 mm clears itself.
+    std::string column = start_block;
+    for (int layer = 1; layer <= 30; ++layer)
+        column += square(0.5 * layer);
+    S4GCodeReport report;
+    transform(column, mapper, &report, cfg);
+    CHECK(report.head_collisions == 0);
+
+    // Then a line on the bed 6 mm beside it: the head, 5 mm above the nozzle tip and 20 mm
+    // wide, runs into the column.
+    const std::string beside = column + "G1 X9 Y-4 Z0.5 F3000\nG1 X9 Y4 E0.3 F1200\n";
+    transform(beside, mapper, &report, cfg);
+    CHECK(report.head_collisions > 0);
+    CHECK_FALSE(report.head_collision_samples.empty());
+
+    // Far enough away, the head clears it.
+    const std::string far = column + "G1 X40 Y-4 Z0.5 F3000\nG1 X40 Y4 E0.3 F1200\n";
+    transform(far, mapper, &report, cfg);
+    CHECK(report.head_collisions == 0);
 }

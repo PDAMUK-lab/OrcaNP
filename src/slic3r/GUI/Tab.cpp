@@ -2773,6 +2773,8 @@ void TabPrint::build()
 
         optgroup = page->new_optgroup(L("Non-planar (S4)"), L"param_z_contouring");
         optgroup->append_single_option_line("s4_enabled");
+        optgroup->append_single_option_line("s4_planar_height");
+        optgroup->append_single_option_line("s4_hold_non_overhangs");
         optgroup->append_single_option_line("s4_max_overhang");
         optgroup->append_single_option_line("s4_max_rotation_near");
         optgroup->append_single_option_line("s4_max_rotation_far");
@@ -5195,9 +5197,18 @@ void TabPrinter::build_fff()
         optgroup->append_single_option_line("polar_inverse_time_feed");
         optgroup->append_single_option_line("polar_max_rotation_speed");
         optgroup->append_single_option_line("polar_max_tilt_speed");
+        optgroup->append_single_option_line("polar_tilt_min");
+        optgroup->append_single_option_line("polar_tilt_max");
+        optgroup->append_single_option_line("polar_tilt_threshold");
         optgroup->append_single_option_line("polar_tilt_pivot_length");
         optgroup->append_single_option_line("polar_angle_step");
         optgroup->append_single_option_line("polar_min_radius");
+
+        optgroup = page->new_optgroup(L("Non-planar toolhead"), L"param_advanced");
+        optgroup->append_single_option_line("nonplanar_clearance_check");
+        optgroup->append_single_option_line("nonplanar_nozzle_cone_angle");
+        optgroup->append_single_option_line("nonplanar_nozzle_length");
+        optgroup->append_single_option_line("nonplanar_head_radius");
 
         optgroup = page->new_optgroup(L("Plugin Configuration"), L"param_gcode");
         optgroup->append_single_option_line("printer_plugin_config_overrides");
@@ -6164,7 +6175,10 @@ void TabPrinter::toggle_options()
         for (auto el : {"polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_inverse_time_feed", "polar_max_rotation_speed",
                         "polar_max_tilt_speed", "polar_tilt_pivot_length", "polar_angle_step", "polar_min_radius"})
             toggle_line(el, polar);
-        toggle_line("polar_tilt_pivot_length", polar && m_config->opt_bool("polar_tilt_axis"));
+        for (auto el : {"polar_tilt_pivot_length", "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold"})
+            toggle_line(el, polar && m_config->opt_bool("polar_tilt_axis"));
+        for (auto el : {"nonplanar_nozzle_cone_angle", "nonplanar_nozzle_length", "nonplanar_head_radius"})
+            toggle_field(el, m_config->opt_bool("nonplanar_clearance_check"));
         for (auto el : {"polar_max_rotation_speed", "polar_max_tilt_speed"})
             toggle_field(el, polar && m_config->opt_bool("polar_inverse_time_feed"));
 

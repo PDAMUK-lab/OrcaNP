@@ -254,3 +254,36 @@ TEST_CASE("Clockwise arcs are linearized onto their circle", "[PolarKinematics]"
         CHECK_THAT((r.poses[i].tip.head<2>() - Eigen::Vector2d(10., 0.)).norm(), WithinAbs(10., 1e-3));
     CHECK_THAT(r.e_total, WithinAbs(1., 1e-4));
 }
+
+TEST_CASE("Tilt beyond the axis travel is printed at the limit", "[PolarKinematics]")
+{
+    PolarKinematicsConfig cfg;
+    cfg.center   = Eigen::Vector2d(0., 0.);
+    cfg.min_tilt = -20.;
+    cfg.max_tilt = 30.;
+    const PolarKinematics kin(cfg);
+
+    // On the +X side (positive radius) an outward lean is a positive machine tilt.
+    const MachinePose outward = kin.to_machine(pose(50., 0., 5., 40.), nullptr);
+    CHECK(outward.tilt_limited);
+    CHECK_THAT(outward.tilt, WithinAbs(30., 1e-9));
+    const MachinePose inward = kin.to_machine(pose(50., 0., 5., -25.), nullptr);
+    CHECK(inward.tilt_limited);
+    CHECK_THAT(inward.tilt, WithinAbs(-20., 1e-9));
+    const MachinePose within = kin.to_machine(pose(50., 0., 5., 15.), nullptr);
+    CHECK_FALSE(within.tilt_limited);
+    CHECK_THAT(within.tilt, WithinAbs(15., 1e-9));
+
+    std::istringstream  in("M83\nG1 X50 Y0 Z5 B0 F600\nG1 X60 Y0 B40 E1\n");
+    std::ostringstream  out;
+    PolarGCodeConverter converter(cfg);
+    converter.process(in, out);
+    CHECK(converter.stats().tilt_limited > 0);
+    double             max_b = -1e9;
+    std::istringstream lines(out.str());
+    std::string        line;
+    while (std::getline(lines, line))
+        for (size_t at = line.find(" B"); at != std::string::npos; at = line.find(" B", at + 1))
+            max_b = std::max(max_b, std::stod(line.substr(at + 2)));
+    CHECK_THAT(max_b, WithinAbs(30., 1e-6));
+}

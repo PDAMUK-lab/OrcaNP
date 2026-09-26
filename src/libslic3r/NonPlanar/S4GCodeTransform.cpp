@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <istream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <ostream>
@@ -77,6 +79,8 @@ private:
     void pass_drop_degenerate();
     void pass_limit_z_rate();
     void pass_travel_safety();
+    void pass_head_clearance();
+    double shape_tilt(double tilt);
     std::vector<std::string> emit();
     void validate(const std::vector<std::string> &out_lines);
 
@@ -318,7 +322,7 @@ void Transform::map_moves()
                 it = cache.emplace(key, m_mapper.map(m.source - m_cfg.offset)).first;
             const S4Mapper::Result &res = it->second;
             m.pos  = res.point + m_cfg.offset;
-            m.tilt = res.tilt;
+            m.tilt = shape_tilt(res.tilt);
             m.flow = res.flow;
             m.tier = res.tier;
             switch (res.tier) {
@@ -329,6 +333,21 @@ void Transform::map_moves()
             }
             last = &m;
         }
+}
+
+// The nozzle stays vertical over gently sloped layers, catches up with the layer between the
+// threshold and twice the threshold, and never leans past max_tilt.
+double Transform::shape_tilt(double tilt)
+{
+    const double th  = m_cfg.tilt_threshold;
+    double       mag = std::abs(tilt);
+    if (th > 0.)
+        mag = mag <= th ? 0. : std::min(mag, 2. * (mag - th));
+    if (mag > m_cfg.max_tilt) {
+        mag = m_cfg.max_tilt;
+        ++m_report.tilt_limited;
+    }
+    return std::copysign(mag, tilt);
 }
 
 void Transform::pass_z_floor()
@@ -490,6 +509,23 @@ public:
         const int n = std::max(int(std::ceil((p1 - p0).head<2>().norm() / (m_res * 0.5))), 1);
         for (int k = 0; k <= n; ++k)
             stamp(p0 + (p1 - p0) * (double(k) / n));
+    }
+    // Calls f(cell centre, height) for every cell holding material within `radius` of `c`.
+    template<class F> void for_each_within(const Eigen::Vector2d &c, double radius, F f) const
+    {
+        const int i0 = std::max(int(std::floor((c.x() - radius - m_origin.x()) / m_res)), 0);
+        const int i1 = std::min(int(std::floor((c.x() + radius - m_origin.x()) / m_res)), m_nx - 1);
+        const int j0 = std::max(int(std::floor((c.y() - radius - m_origin.y()) / m_res)), 0);
+        const int j1 = std::min(int(std::floor((c.y() + radius - m_origin.y()) / m_res)), m_ny - 1);
+        for (int i = i0; i <= i1; ++i)
+            for (int j = j0; j <= j1; ++j) {
+                const double h = m_grid[size_t(i) * m_ny + j];
+                if (h == -std::numeric_limits<double>::infinity())
+                    continue;
+                const Eigen::Vector2d centre = m_origin + Eigen::Vector2d(i + 0.5, j + 0.5) * m_res;
+                if ((centre - c).squaredNorm() <= radius * radius && ! f(centre, h))
+                    return;
+            }
     }
     double probe(const Eigen::Vector3d &p) const
     {
@@ -673,6 +709,107 @@ void Transform::pass_travel_safety()
     flush(run);
 }
 
+// Smallest value of a z^2 + b z + c over [lo, hi] is <= 0.
+bool quadratic_reaches_zero(double a, double b, double c, double lo, double hi)
+{
+    if (lo > hi)
+        return false;
+    auto f = [a, b, c](double z) { return (a * z + b) * z + c; };
+    if (f(lo) <= 0. || f(hi) <= 0.)
+        return true;
+    if (a > 0.) {
+        const double v = -b / (2. * a);
+        return v > lo && v < hi && f(v) <= 0.;
+    }
+    return false;
+}
+
+void Transform::pass_head_clearance()
+{
+    // Material printed so far is a height field; each checked nozzle position tests every column
+    // of it against the nozzle cone and the head cylinder along the nozzle axis. A column is
+    // solid from the bed to its top, so it hits the head when the vertical line below its top
+    // (less the tolerance) enters either volume: a quadratic in height for each.
+    if (! m_cfg.clearance_check)
+        return;
+    Eigen::Vector2d lo = Eigen::Vector2d::Constant(std::numeric_limits<double>::max()), hi = -lo;
+    for (const Record &r : m_records)
+        for (const Move &m : r.moves)
+            if (! m.pure_e) {
+                lo = lo.cwiseMin(m.pos.head<2>());
+                hi = hi.cwiseMax(m.pos.head<2>());
+            }
+    if (lo.x() > hi.x())
+        return;
+    HeightField hf(lo, hi, m_cfg.height_field_res, m_cfg.nozzle_radius);
+
+    const double k        = std::tan(std::clamp(m_cfg.nozzle_cone_angle, 0., 1.5));
+    const double r0       = m_cfg.nozzle_radius;
+    const double len      = std::max(m_cfg.nozzle_length, 0.);
+    const double big_r    = std::max(m_cfg.head_radius, r0 + k * len);
+    const double ignore2  = m_cfg.clearance_ignore_radius * m_cfg.clearance_ignore_radius;
+    double       top_z    = -std::numeric_limits<double>::infinity();
+    auto         collides = [&](const Eigen::Vector3d &tip, double tilt) {
+        Eigen::Vector2d rhat = tip.head<2>() - m_cfg.offset.head<2>() - m_mapper.axis();
+        rhat                 = rhat.norm() > 1e-9 ? Eigen::Vector2d(rhat.normalized()) : Eigen::Vector2d(1., 0.);
+        const Eigen::Vector3d axis(std::sin(tilt) * rhat.x(), std::sin(tilt) * rhat.y(), std::cos(tilt));
+        const double          az = axis.z();
+        // The head reaches sideways by its radius plus how far its axis leans below the highest
+        // material.
+        const double s_max = (std::max(top_z - tip.z(), 0.) + big_r * axis.head<2>().norm()) / az;
+        const double reach = big_r + std::max(len, s_max) * axis.head<2>().norm() + m_cfg.height_field_res;
+        bool         hit   = false;
+        hf.for_each_within(tip.head<2>(), std::min(reach, 250.), [&](const Eigen::Vector2d &c, double h) {
+            const Eigen::Vector2d d = c - tip.head<2>();
+            if (d.squaredNorm() <= ignore2)
+                return true;
+            const double top = h - m_cfg.clearance_tolerance - tip.z(); // column top, relative to the tip
+            const double s0  = d.x() * axis.x() + d.y() * axis.y();       // axis coordinate at the tip's height
+            const double w2  = d.squaredNorm();
+            // Along the column, z -> axis coordinate s = s0 + az z and squared distance from
+            // the axis w2 + z^2 - s^2.
+            const double cone_a = 1. - az * az - k * k * az * az;
+            const double cone_b = -2. * s0 * az - 2. * k * az * (r0 + k * s0);
+            const double cone_c = w2 - s0 * s0 - (r0 + k * s0) * (r0 + k * s0);
+            const double cyl_a = 1. - az * az, cyl_b = -2. * s0 * az, cyl_c = w2 - s0 * s0 - big_r * big_r;
+            hit = quadratic_reaches_zero(cone_a, cone_b, cone_c, -s0 / az, std::min((len - s0) / az, top)) ||
+                  quadratic_reaches_zero(cyl_a, cyl_b, cyl_c, (len - s0) / az, top);
+            return ! hit;
+        });
+        return hit;
+    };
+
+    std::optional<Eigen::Vector3d> prev;
+    double                         travelled = std::numeric_limits<double>::infinity();
+    int                            layer     = 0;
+    for (const Record &r : m_records) {
+        if (! r.motion && is_layer_marker(r.raw))
+            ++layer;
+        for (const Move &m : r.moves) {
+            if (m.pure_e || m.dropped)
+                continue;
+            if (prev) {
+                travelled += (m.pos - *prev).norm();
+                if (travelled >= m_cfg.clearance_check_interval) {
+                    travelled = 0.;
+                    if (collides(m.pos, m_cfg.emit_tilt ? m.tilt : 0.)) {
+                        if (m_report.head_collisions++ < 5) {
+                            char buf[160];
+                            std::snprintf(buf, sizeof(buf), "layer %d at X%.2f Y%.2f Z%.2f", layer, m.pos.x(), m.pos.y(), m.pos.z());
+                            m_report.head_collision_samples.emplace_back(buf);
+                        }
+                    }
+                }
+                if (m.printing && m.e && *m.e > 0.) {
+                    hf.stamp_segment(*prev, m.pos);
+                    top_z = std::max(top_z, std::max(prev->z(), m.pos.z()));
+                }
+            }
+            prev = m.pos;
+        }
+    }
+}
+
 std::vector<std::string> Transform::emit()
 {
     // Modal output: an axis word is written when its value changes, or when the source line
@@ -808,6 +945,7 @@ S4GCodeReport Transform::run(std::istream &in, std::ostream &out)
     pass_limit_z_rate();
     pass_travel_safety();
     pass_drop_degenerate(); // lift/descend twins at the same spot
+    pass_head_clearance();
     const std::vector<std::string> body = emit();
     validate(body);
 

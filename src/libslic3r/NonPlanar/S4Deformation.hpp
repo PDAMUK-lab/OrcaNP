@@ -49,6 +49,9 @@ struct S4Params
     double max_rotation_falloff = 1.75; // exponent of the taper
     // Boundary cells whose lowest face is within this height of the lowest face sit on the bed.
     double bottom_threshold = 0.3;
+    // The part up to this height above its lowest point stays as it is (flat layers) and is the
+    // base the rest is deformed from, in place of the bed. 0: the bed.
+    double planar_height = 0.;
     // A cell is "in air" when its path to the bed rises more than this above it.
     double in_air_threshold = 1.;
     // Printer rotation axis in the mesh frame.

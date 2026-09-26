@@ -855,6 +855,15 @@ void PrintObject::deform_s4()
     params.max_rotation_near   = m_config.s4_max_rotation_near.value;
     params.max_rotation_far    = m_config.s4_max_rotation_far.value;
     params.passes              = m_config.s4_passes.value;
+    params.planar_height       = m_config.s4_planar_height.value;
+    params.zero_initial_rotation = m_config.s4_hold_non_overhangs.value;
+    // A tilting nozzle follows the layers, so they may lean no further than it can on either side.
+    const PrintConfig &pc = m_print->config();
+    if (pc.polar_kinematics.value && pc.polar_tilt_axis.value) {
+        const double reach       = std::min(-pc.polar_tilt_min.value, pc.polar_tilt_max.value);
+        params.max_rotation_near = std::min(params.max_rotation_near, reach);
+        params.max_rotation_far  = std::min(params.max_rotation_far, reach);
+    }
     try {
         s4->mesh = NonPlanar::tetrahedralize(vertices, triangles, tp);
         m_print->throw_if_canceled();

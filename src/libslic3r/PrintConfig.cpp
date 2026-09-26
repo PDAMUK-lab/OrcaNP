@@ -5001,6 +5001,25 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionFloat(0));
 
+    def = this->add("s4_planar_height", coFloat);
+    def->label    = L("Planar up to height");
+    def->category = L("Quality");
+    def->tooltip  = L("The part is printed with flat layers up to this height above the bed, and non-planar above it, where "
+                      "the flat part is the base the deformation starts from. Overhangs below this height are not corrected. "
+                      "0 deforms from the bed up.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("s4_hold_non_overhangs", coBool);
+    def->label    = L("Keep other areas planar");
+    def->category = L("Quality");
+    def->tooltip  = L("Hold the walls that do not overhang at no rotation, so the layers only curve where overhangs need it "
+                      "instead of the bend spreading through the whole part.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("layer_change_gcode", coString);
     def->label = L("Layer change G-code");
     def->tooltip = L("This G-code is inserted at every layer change after the Z lift.");
@@ -8077,6 +8096,69 @@ void PrintConfigDef::init_fff_params()
     def->min      = 0;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("polar_tilt_min", coFloat);
+    def->label    = L("Minimum tilt");
+    def->tooltip  = L("Lower end of the tilt axis travel, leaning toward the rotation axis. Non-planar (S4) layers are kept "
+                      "within what the nozzle can follow, and any pose beyond the travel is printed at the limit.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = -90;
+    def->max      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(-45));
+
+    def = this->add("polar_tilt_max", coFloat);
+    def->label    = L("Maximum tilt");
+    def->tooltip  = L("Upper end of the tilt axis travel, leaning away from the rotation axis. Non-planar (S4) layers are kept "
+                      "within what the nozzle can follow, and any pose beyond the travel is printed at the limit.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0;
+    def->max      = 90;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(45));
+
+    def = this->add("polar_tilt_threshold", coFloat);
+    def->label    = L("Tilt only above");
+    def->tooltip  = L("The nozzle stays vertical where a non-planar layer leans less than this, and only tilts on the steeper "
+                      "layers overhangs need, catching up with the layer by twice this angle. 0 always follows the layer.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0;
+    def->max      = 45;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("nonplanar_clearance_check", coBool);
+    def->label    = L("Check toolhead clearance");
+    def->tooltip  = L("Check non-planar (S4) toolpaths for the nozzle or the toolhead hitting what is already printed, and "
+                      "warn where they would.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("nonplanar_nozzle_cone_angle", coFloat);
+    def->label    = L("Nozzle cone angle");
+    def->tooltip  = L("Half-angle of the nozzle's conical tip, from its axis.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0;
+    def->max      = 85;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(40));
+
+    def = this->add("nonplanar_nozzle_length", coFloat);
+    def->label    = L("Nozzle length");
+    def->tooltip  = L("Length of the nozzle cone, from the tip to where the wider toolhead begins.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(5));
+
+    def = this->add("nonplanar_head_radius", coFloat);
+    def->label    = L("Toolhead radius");
+    def->tooltip  = L("Radius of the toolhead (heater block, fan duct) above the nozzle, taken as a cylinder around the nozzle "
+                      "axis.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(20));
 
     def = this->add("wall_generator", coEnum);
     def->label = L("Wall generator");

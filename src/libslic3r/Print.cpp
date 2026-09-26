@@ -127,6 +127,13 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "polar_max_rotation_speed",
         "polar_max_tilt_speed",
         "polar_tilt_pivot_length",
+        "polar_tilt_min",
+        "polar_tilt_max",
+        "polar_tilt_threshold",
+        "nonplanar_clearance_check",
+        "nonplanar_nozzle_cone_angle",
+        "nonplanar_nozzle_length",
+        "nonplanar_head_radius",
         //BBS: add bed_exclude_area
         "bed_exclude_area",
         "thumbnail_size",
@@ -465,11 +472,15 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
     for (PrintObjectStep ostep : osteps)
         for (PrintObject *object : m_objects)
             invalidated |= object->invalidate_step(ostep);
-    // S4 deforms objects about the printer's rotation axis, the centre of the printable area.
-    if (std::find(opt_keys.begin(), opt_keys.end(), "printable_area") != opt_keys.end())
-        for (PrintObject *object : m_objects)
-            if (object->config().s4_enabled.value)
-                invalidated |= object->invalidate_step(posSlice);
+    // S4 deforms objects about the printer's rotation axis, the centre of the printable area, and
+    // keeps the layers within the tilt the nozzle can follow.
+    for (const char *key : { "printable_area", "polar_kinematics", "polar_tilt_axis", "polar_tilt_min", "polar_tilt_max" })
+        if (std::find(opt_keys.begin(), opt_keys.end(), key) != opt_keys.end()) {
+            for (PrintObject *object : m_objects)
+                if (object->config().s4_enabled.value)
+                    invalidated |= object->invalidate_step(posSlice);
+            break;
+        }
 
     return invalidated;
 }

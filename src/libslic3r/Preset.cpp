@@ -1362,7 +1362,7 @@ static std::vector<std::string> s_Preset_print_options{
     "zaa_min_z",
     // S4 non-planar deformation
     "s4_enabled", "s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far",
-    "s4_passes", "s4_cell_size",
+    "s4_passes", "s4_cell_size", "s4_planar_height", "s4_hold_non_overhangs",
     "ironing_expansion",
 };
 
@@ -1466,6 +1466,8 @@ static std::vector<std::string> s_Preset_printer_options {
     "use_relative_e_distances", "extruder_type", "use_firmware_retraction", "printer_notes",
     "polar_kinematics", "polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_angle_step", "polar_min_radius",
     "polar_inverse_time_feed", "polar_max_rotation_speed", "polar_max_tilt_speed", "polar_tilt_pivot_length",
+    "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold",
+    "nonplanar_clearance_check", "nonplanar_nozzle_cone_angle", "nonplanar_nozzle_length", "nonplanar_head_radius",
     "grab_length", "support_object_skip_flush", "physical_extruder_map",
     "cooling_tube_retraction",
     "cooling_tube_length", "high_current_on_filament_swap", "parking_pos_retraction", "extra_loading_move", "wipe_tower_type", "purge_in_prime_tower", "enable_filament_ramming", "tool_change_on_wipe_tower", "wait_for_temp_on_wipe_tower",

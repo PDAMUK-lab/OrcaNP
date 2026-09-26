@@ -44,6 +44,9 @@ struct PolarKinematicsConfig
     bool inverse_time_feed = true;
     // The machine has a tilt axis. Without one the tilt is ignored and never emitted.
     bool has_tilt_axis = true;
+    // Travel of the tilt axis (degrees). A pose leaning further is printed at the limit.
+    double min_tilt = -90.;
+    double max_tilt = 90.;
     // Distance from the nozzle tip to the tilt pivot. Non-zero when the firmware positions the
     // pivot rather than the tip, so the commanded radius and Z must be compensated.
     double tilt_pivot_length = 0.;
@@ -68,6 +71,7 @@ struct MachinePose
     double radius = 0.; // mm along the head's radial line, signed when signed_radius
     double z      = 0.;
     double tilt   = 0.; // degrees, positive when the nozzle leans toward +radius
+    bool   tilt_limited = false; // the pose wanted more tilt than the axis travel allows
 };
 
 class PolarKinematics
@@ -113,6 +117,7 @@ public:
         size_t machine_moves    = 0;
         size_t arcs_linearized  = 0;
         size_t held_near_center = 0; // machine poses inside min_radius
+        size_t tilt_limited     = 0; // machine poses whose tilt was cut back to the tilt travel
         double total_angle      = 0.; // degrees of angle-axis travel
     };
 

@@ -46,6 +46,13 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    - Inversion repair: cells turned inside out get their limits, and those of their two-ring
      neighbourhood, cut to 70 % and the pass is solved again, up to ten times. Zero rotation
      cannot invert, so this converges.
+   - Planar base (`planar_height`): the part up to that height keeps its shape and plays the
+     bed's role. Its vertices are pinned, its cells get a zero limit (so the rotation field
+     starts from zero at its top), its cells are the Dijkstra sources, and the Z floor keeps the
+     rest above it. The base prints with ordinary flat layers.
+   - Holding the rest (`zero_initial_rotation`): boundary cells that do not overhang get a zero
+     target instead of none, so the bend stays near the overhangs instead of spreading through
+     the part.
 3. **Slice** the deformed mesh with flat layers. The G-code must use relative extrusion and no
    arcs are required (arcs are linearized).
 4. **Map back** (`S4Mapping`, `S4GCodeTransform`): every move is subdivided in the sliced space
@@ -57,6 +64,8 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
      `F = D1 D0^-1`, interpolated from volume-weighted vertex normals and measured in the radial
      plane;
    - the flow factor: the cell's undeformed / deformed volume ratio.
+   The tilt is then shaped for the machine: below `tilt_threshold` the nozzle stays vertical,
+   between it and twice it the tilt ramps up to the layer's, and it never exceeds `max_tilt`.
    Repair passes follow: extrusion scaled by the flow factor (clipped to 0.25–3 with the clipped
    material carried forward, redistributed by mapped length within each source line), a Z
    floor, zero-length moves folded into the next move (a move that only turns the nozzle is not
@@ -65,6 +74,13 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    climbs and descends vertically and is retracted when long or when it had to hop, unless the
    slicer already retracted. One record per source line owns its output, so layer markers,
    feedrates and the end block stay in step with the motion.
+   A last, optional pass checks the head's clearance: material printed so far is a height field,
+   and every couple of millimetres of nozzle motion each column of it is tested against a cone
+   (the nozzle, from its tip radius at the given half-angle up to the nozzle length) and a
+   cylinder (the head) around the nozzle axis. A column is solid from the bed up, so it hits
+   either volume when the vertical line below its top enters it, a quadratic in height. Columns
+   next to the tip, which are the beads being laid and touched, and overlaps under a small
+   tolerance are ignored. Hits are counted and reported, not fixed.
 5. **Convert to polar** (`PolarKinematics`): each Cartesian move (tip position plus radial tilt)
    becomes machine moves in angle, radius, Z and tilt. Moves are split until each segment turns
    the bed by at most `max_angle_step` and covers at most `max_segment_length`. The angle is
@@ -74,6 +90,8 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    inverse time (G93) by default, with each segment's duration taken from the Cartesian feed and
    stretched to respect the angle and tilt speed limits; retractions switch to G94. An optional
    pivot length compensates for firmware that positions the tilt pivot rather than the tip.
+   Machine tilt is kept within the axis travel (`min_tilt` .. `max_tilt`); poses beyond it are
+   printed at the limit and counted.
 
 ## Frames and placement
 
@@ -96,11 +114,21 @@ Two groups of settings switch the pipeline on:
 - **Print settings > Quality > Non-planar (S4)** (`s4_*`, per object): `s4_enabled` plus the
   deformation parameters above. Any change re-slices the object.
 - **Printer settings > Basic information > Polar kinematics** (`polar_*`): `polar_kinematics`, the
-  axis letters, the tilt axis, and the conversion and speed limits. These only affect G-code export.
+  axis letters, the tilt axis and its travel (`polar_tilt_min`, `polar_tilt_max`), the tilt
+  threshold, and the conversion and speed limits.
+- **Printer settings > Basic information > Non-planar toolhead** (`nonplanar_*`): the clearance
+  check and the nozzle cone angle, nozzle length and head radius it uses.
+
+Most printer settings only affect G-code export. The tilt travel also bounds the deformation:
+with a tilting nozzle the S4 rotation limits are capped at the travel both sides of vertical
+share, because the polar conversion may reach a point from either side of the rotation axis,
+which flips the sign of the tilt. The G-code transform caps the tilt at the same value. Changing
+the travel, the tilt axis or polar kinematics therefore re-slices S4 objects.
 
 The pipeline hooks into the print steps as follows:
 
-- **Slicing** (`PrintObject::slice()`): with `s4_enabled`, `deform_s4()` meshes and deforms the
+- **Slicing** (`PrintObject::slice()`): with `s4_enabled` (plus `s4_planar_height` and
+  `s4_hold_non_overhangs`), `deform_s4()` meshes and deforms the
   object's single model part in its slicing frame (`trafo_centered()`) before the layers are
   laid out. The layer heights are then computed for the deformed height, and `slice_volumes()`
   slices the deformed surface in place of the part. Perimeters, infill, supports, seams and the
@@ -118,7 +146,7 @@ The pipeline hooks into the print steps as follows:
   statistics describe the curved toolpath that will be printed. With `polar_kinematics`, the
   processed file is converted to machine coordinates last, just before the export rename. The
   preview therefore stays Cartesian, and its G-code text view does not match the polar file line
-  for line.
+  for line. Clearance hits become a slicing warning that names the first few places.
 
 ## Tool
 

@@ -1015,7 +1015,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
 
     bool has_s4 = config->opt_bool("s4_enabled");
     for (auto el : {"s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far", "s4_passes",
-                    "s4_cell_size"})
+                    "s4_cell_size", "s4_planar_height", "s4_hold_non_overhangs"})
         toggle_line(el, has_s4);
 
     bool have_sequential_printing = (config->opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject);

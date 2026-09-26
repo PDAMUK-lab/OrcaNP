@@ -1286,6 +1286,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "s4_max_rotation_far"
             || opt_key == "s4_passes"
             || opt_key == "s4_cell_size"
+            || opt_key == "s4_planar_height"
+            || opt_key == "s4_hold_non_overhangs"
             || opt_key == "slowdown_for_curled_perimeters"
             || opt_key == "make_overhang_printable"
             || opt_key == "make_overhang_printable_angle"

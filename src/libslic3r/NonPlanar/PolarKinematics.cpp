@@ -72,8 +72,11 @@ MachinePose PolarKinematics::to_machine(const ToolPose &pose, const MachinePose 
     double tilt = c.has_tilt_axis ? pose.tilt : 0.;
     if (radius < 0.)
         tilt = -tilt;
+    const double limited = std::max(deg2rad(c.min_tilt), std::min(deg2rad(c.max_tilt), tilt));
 
     MachinePose m;
+    m.tilt_limited = limited != tilt;
+    tilt           = limited;
     m.angle  = rad2deg(phi) * c.angle_sign;
     m.radius = radius + c.tilt_pivot_length * std::sin(tilt);
     m.z      = pose.tip.z() + c.tilt_pivot_length * (std::cos(tilt) - 1.);
@@ -182,6 +185,7 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
         // First move after the start block: the machine position is unknown, so go straight
         // to the target as a single positioning move.
         const MachinePose m = m_kinematics.to_machine(to, nullptr);
+        m_stats.tilt_limited += m.tilt_limited;
         set_feed_mode(false, out);
         m_e += e;
         write_pose(m, e, feed, true);
@@ -209,6 +213,7 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
             continue;
         }
         pending_e = 0.;
+        m_stats.tilt_limited += w.pose.tilt_limited;
         set_feed_mode(c.inverse_time_feed, out);
         m_e += seg_e;
         m_stats.total_angle += std::abs(w.pose.angle - m_machine.angle);

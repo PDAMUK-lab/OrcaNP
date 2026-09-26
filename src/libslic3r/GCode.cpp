@@ -2591,6 +2591,18 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
                                     << report.filament_in << " -> " << report.filament_out << " mm";
             for (const std::string &failed : report.failed)
                 BOOST_LOG_TRIVIAL(warning) << "S4 G-code check failed: " << failed;
+            if (report.tilt_limited > 0)
+                BOOST_LOG_TRIVIAL(warning) << "S4: " << report.tilt_limited << " points lean further than the tilt axis travel";
+            if (report.head_collisions > 0) {
+                std::string where;
+                for (const std::string &sample : report.head_collision_samples)
+                    where += "\n" + sample;
+                print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                    Slic3r::format(_(L("The nozzle or toolhead may hit already printed parts at %1% places of the non-planar "
+                                       "toolpath, first at:%2%\nLower the rotation limits, raise the planar height, or check the "
+                                       "toolhead dimensions in the printer settings.")),
+                                   report.head_collisions, where));
+            }
         }
         boost::nowide::remove(path_sliced.c_str());
         GCodeOutputStream out(boost::nowide::fopen(path_tmp.c_str(), "wb"), &m_processor);
@@ -2724,7 +2736,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
                 throw Slic3r::RuntimeError(std::string("G-code export to ") + path + " failed.\nCannot write the polar G-code.\n");
         }
         BOOST_LOG_TRIVIAL(info) << "Polar: " << converter.stats().cartesian_moves << " moves -> " << converter.stats().machine_moves
-                                << " machine moves, bed turns " << converter.stats().total_angle << " degrees";
+                                << " machine moves, bed turns " << converter.stats().total_angle << " degrees, "
+                                << converter.stats().tilt_limited << " poses at the tilt limit";
         boost::nowide::remove(path_tmp.c_str());
         path_tmp = path_polar;
     }

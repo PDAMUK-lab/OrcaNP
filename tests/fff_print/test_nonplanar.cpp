@@ -12,6 +12,7 @@
 
 using namespace Slic3r::Test;
 using namespace Slic3r;
+using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 
 namespace {
@@ -125,6 +126,30 @@ TEST_CASE("S4 printing curves the layers of an overhanging part", "[NonPlanar]")
     CHECK_FALSE(has_word(moves, 'B'));
     for (const Move &m : moves)
         REQUIRE(axis(m, 'Z') > 0.);
+}
+
+TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlanar]")
+{
+    DynamicPrintConfig config = s4_config();
+    config.set_deserialize_strict({ { "s4_planar_height", 6. } });
+    const std::vector<Move> moves = body_moves(slice({ inverted_frustum() }, config));
+
+    // Layers wholly below 6 mm are flat; above it the part still bends.
+    std::map<int, std::pair<double, double>> span;
+    for (const Move &m : moves)
+        if (m.e > 0.) {
+            auto it = span.emplace(m.layer, std::make_pair(axis(m, 'Z'), axis(m, 'Z'))).first;
+            it->second.first  = std::min(it->second.first, axis(m, 'Z'));
+            it->second.second = std::max(it->second.second, axis(m, 'Z'));
+        }
+    size_t flat = 0;
+    for (const auto &[layer, s] : span)
+        if (s.second < 5.5) {
+            CHECK_THAT(s.second - s.first, WithinAbs(0., 1e-3));
+            ++flat;
+        }
+    CHECK(flat >= 15); // 0.3 mm layers
+    CHECK(max_layer_z_span(moves) > 0.3);
 }
 
 TEST_CASE("S4 printing requires relative extrusion", "[NonPlanar]")
