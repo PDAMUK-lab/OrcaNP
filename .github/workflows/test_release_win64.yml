@@ -77,13 +77,28 @@ jobs:
           portable=$(find artifacts -maxdepth 1 -type d -name 'OrcaSlicer_Windows_*_portable' | head -n 1)
           installer=$(find artifacts -type f -name 'OrcaSlicer*.exe' -not -path '*_portable/*' | head -n 1)
           [ -n "$portable" ] || { echo "::error::no portable build downloaded"; exit 1; }
+          # A data_dir folder beside the executable makes it keep its settings and profiles there,
+          # apart from any installed OrcaSlicer.
+          mkdir -p "$portable/data_dir"
           (cd "$portable" && zip -qr "$GITHUB_WORKSPACE/OrcaNP_${tag}_Windows_x64_portable.zip" .)
           assets=("OrcaNP_${tag}_Windows_x64_portable.zip")
           if [ -n "$installer" ]; then
             cp "$installer" "OrcaNP_${tag}_Windows_x64_installer.exe"
             assets+=("OrcaNP_${tag}_Windows_x64_installer.exe")
           fi
+          cat > notes.md <<EOF
+          Test build of OrcaNP (${GITHUB_SHA}), a fork of OrcaSlicer for polar non-planar printing. Not for production use.
+
+          **Windows x64, portable** (\`OrcaNP_${tag}_Windows_x64_portable.zip\`): unzip anywhere and run \`orca-slicer.exe\`. Settings and profiles stay in the \`data_dir\` folder next to it, apart from any installed OrcaSlicer.
+
+          **Windows x64, installer** (\`OrcaNP_${tag}_Windows_x64_installer.exe\`): installs as OrcaSlicer, replacing an installed OrcaSlicer and sharing its settings. Prefer the portable build to keep both.
+
+          What is new:
+          - Non-planar printing (Print settings > Quality > Non-planar (S4)): optimized S4 layers, conical layers, and layers offset from a print surface (support-like core parts, or a generated sphere or cylinder fitted to the part's cavity, with a surface gap all around).
+          - Polar printers (Printer settings > Basic information > Polar kinematics and Non-planar toolhead): machine G-code in bed angle, radius, Z and tilt with inverse time feed, tilt and radius travel limits, toolhead clearance checks.
+          - Printer profile "ThetaFirm Core R-Theta" (Custom printers) for the Core R-Theta 4-axis printer with the ThetaFirm RepRapFirmware configuration.
+          EOF
           gh release create "$tag" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "OrcaNP ${tag}: polar non-planar (S4) test build, Windows x64" \
-            --notes "Test build of OrcaNP from ${GITHUB_SHA}. Adds S4 non-planar printing (Print settings > Quality > Non-planar (S4)) and polar printer output (Printer settings > Basic information > Polar kinematics). Not for production use."
+            --notes-file notes.md
