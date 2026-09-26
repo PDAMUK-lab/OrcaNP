@@ -4924,6 +4924,83 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionFloat(0.05));
 
+    def = this->add("s4_enabled", coBool);
+    def->label    = L("Non-planar (S4)");
+    def->category = L("Quality");
+    def->tooltip  = L("Print overhangs without support by bending the part: the model is filled with tetrahedra, each is "
+                      "rotated towards printable, the mesh is deformed and sliced flat, and the toolpath is mapped back into the "
+                      "real part as curved layers. Needs relative extrusion. On a polar printer with a tilting nozzle the nozzle "
+                      "follows the layers.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("s4_max_overhang", coFloat);
+    def->label    = L("Maximum overhang");
+    def->category = L("Quality");
+    def->tooltip  = L("Overhangs steeper than this angle from vertical are rotated towards printable.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0;
+    def->max      = 90;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(30));
+
+    def = this->add("s4_smoothing", coFloat);
+    def->label    = L("Rotation smoothing");
+    def->category = L("Quality");
+    def->tooltip  = L("How strongly neighbouring parts of the model are kept at similar rotations, against following each "
+                      "overhang's own target. Larger values give gentler, more even layer curvature.");
+    def->min      = 0.01;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(20));
+
+    def = this->add("s4_rotation_multiplier", coFloat);
+    def->label    = L("Rotation strength");
+    def->category = L("Quality");
+    def->tooltip  = L("Scales the rotation each overhang asks for.");
+    def->min      = 0;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(2));
+
+    def = this->add("s4_max_rotation_near", coFloat);
+    def->label    = L("Maximum rotation near the support");
+    def->category = L("Quality");
+    def->tooltip  = L("Largest rotation for the parts of an overhang closest to where it is supported. The limit tapers to the "
+                      "far value for the parts farthest away. Keep it within what the nozzle can reach without colliding.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0;
+    def->max      = 90;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(45));
+
+    def = this->add("s4_max_rotation_far", coFloat);
+    def->label    = L("Maximum rotation far from the support");
+    def->category = L("Quality");
+    def->tooltip  = L("Largest rotation for the parts of an overhang farthest from where it is supported.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0;
+    def->max      = 90;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(20));
+
+    def = this->add("s4_passes", coInt);
+    def->label    = L("Deformation passes");
+    def->category = L("Quality");
+    def->tooltip  = L("Each pass deforms the result of the previous one, for overhangs one pass cannot fix.");
+    def->min      = 1;
+    def->max      = 10;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionInt(1));
+
+    def = this->add("s4_cell_size", coFloat);
+    def->label    = L("Tetrahedron size");
+    def->category = L("Quality");
+    def->tooltip  = L("Edge length of the tetrahedra the model is filled with. Smaller follows the geometry more closely and is "
+                      "slower. 0 uses 1/20 of the model's largest dimension.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(0));
+
     def = this->add("layer_change_gcode", coString);
     def->label = L("Layer change G-code");
     def->tooltip = L("This G-code is inserted at every layer change after the Z lift.");
@@ -7921,6 +7998,85 @@ void PrintConfigDef::init_fff_params()
                    "most printers. Default is checked.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("polar_kinematics", coBool);
+    def->label   = L("Polar kinematics");
+    def->tooltip = L("The printer has a rotating bed under a head that moves along one radial line through the bed's rotation "
+                     "axis (an R-theta printer). The G-code is converted to machine coordinates: bed angle, radius, Z and, "
+                     "with a tilt axis, nozzle tilt. The rotation axis is the center of the printable area. The machine start "
+                     "and end G-code are copied as written.");
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("polar_tilt_axis", coBool);
+    def->label   = L("Tilting nozzle");
+    def->tooltip = L("The nozzle tilts in the radial plane. Non-planar (S4) layers then set the tilt so the nozzle stays normal "
+                     "to the layer.");
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("polar_axis_names", coString);
+    def->label   = L("Axis letters");
+    def->tooltip = L("G-code letters of the bed rotation, radius and tilt axes, in that order.");
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionString("CXB"));
+
+    def = this->add("polar_reverse_rotation", coBool);
+    def->label   = L("Reverse bed rotation");
+    def->tooltip = L("Negate the bed angle, for beds that turn the other way.");
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("polar_angle_step", coFloat);
+    def->label    = L("Maximum rotation per segment");
+    def->tooltip  = L("Straight moves are split so that no segment turns the bed further than this. Smaller follows straight "
+                      "lines more closely.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0.01;
+    def->max      = 45;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(1));
+
+    def = this->add("polar_min_radius", coFloat);
+    def->label    = L("Rotation axis dead zone");
+    def->tooltip  = L("Within this distance of the rotation axis the bed angle is held and only the radius moves; the path "
+                      "deviates from the straight line by at most this much.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0.001;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(0.05));
+
+    def = this->add("polar_inverse_time_feed", coBool);
+    def->label   = L("Inverse time feed (G93)");
+    def->tooltip = L("Give each move's duration (G93) so the nozzle moves at the requested speed over the part. Off, the "
+                     "requested speed is written as a plain feedrate (G94).");
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("polar_max_rotation_speed", coFloat);
+    def->label    = L("Maximum bed rotation speed");
+    def->tooltip  = L("Moves that would turn the bed faster than this are slowed down (inverse time feed only).");
+    def->sidetext = L("°/s");
+    def->min      = 1;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(600));
+
+    def = this->add("polar_max_tilt_speed", coFloat);
+    def->label    = L("Maximum tilt speed");
+    def->tooltip  = L("Moves that would tilt the nozzle faster than this are slowed down (inverse time feed only).");
+    def->sidetext = L("°/s");
+    def->min      = 1;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(300));
+
+    def = this->add("polar_tilt_pivot_length", coFloat);
+    def->label    = L("Tilt pivot distance");
+    def->tooltip  = L("Distance from the nozzle tip to the tilt pivot, when the firmware positions the pivot rather than the "
+                      "tip. 0 when the firmware compensates.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
 
     def = this->add("wall_generator", coEnum);
     def->label = L("Wall generator");

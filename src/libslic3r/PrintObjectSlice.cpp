@@ -9,6 +9,7 @@
 #include "Layer.hpp"
 #include "MultiMaterialSegmentation.hpp"
 #include "Print.hpp"
+#include "NonPlanar/Tetrahedralize.hpp"
 //BBS
 #include "ShortestPath.hpp"
 #include "libslic3r/Feature/Interlocking/InterlockingGenerator.hpp"
@@ -821,10 +822,77 @@ void groupingVolumesForBrim(PrintObject* object, LayerPtrs& layers, int firstLay
 // 5) Applies size compensation (offsets the slices in XY plane)
 // 6) Replaces bad slices by the slices reconstructed from the upper/lower layer
 // Resulting expolygons of layer regions are marked as Internal.
+void PrintObject::deform_s4()
+{
+    // Print::validate() guarantees one model part and one instance.
+    const ModelVolume *part = nullptr;
+    for (const ModelVolume *v : this->model_object()->volumes)
+        if (v->is_model_part()) {
+            part = v;
+            break;
+        }
+    if (part == nullptr || m_instances.size() != 1)
+        throw Slic3r::SlicingError(L("Non-planar (S4) printing needs a single-part object with a single instance."));
+
+    m_print->set_status(5, L("Deforming the model for non-planar printing"));
+    indexed_triangle_set its = part->mesh().its;
+    its_transform(its, this->trafo_centered() * part->get_matrix());
+    std::vector<Eigen::Vector3d>    vertices;
+    std::vector<std::array<int, 3>> triangles;
+    vertices.reserve(its.vertices.size());
+    for (const stl_vertex &v : its.vertices)
+        vertices.emplace_back(v.cast<double>());
+    triangles.reserve(its.indices.size());
+    for (const stl_triangle_vertex_indices &t : its.indices)
+        triangles.push_back({ t[0], t[1], t[2] });
+
+    // The printer's rotation axis is the centre of the printable area. G-code coordinates are the
+    // slicing frame shifted by the instance and back by the plate origin.
+    const Vec2d bed_center = BoundingBoxf(m_print->config().printable_area.values).center();
+    const Vec2d shift      = unscale(m_instances.front().shift);
+    auto        s4         = std::make_unique<S4Deformation>();
+    s4->axis               = bed_center + m_print->get_plate_origin().head<2>() - shift;
+
+    NonPlanar::TetrahedralizeParams tp;
+    tp.cell_size = m_config.s4_cell_size.value;
+    NonPlanar::S4Params params;
+    params.axis                = s4->axis;
+    params.max_overhang        = m_config.s4_max_overhang.value;
+    params.neighbour_weight    = m_config.s4_smoothing.value;
+    params.rotation_multiplier = m_config.s4_rotation_multiplier.value;
+    params.max_rotation_near   = m_config.s4_max_rotation_near.value;
+    params.max_rotation_far    = m_config.s4_max_rotation_far.value;
+    params.passes              = m_config.s4_passes.value;
+    try {
+        s4->mesh = NonPlanar::tetrahedralize(vertices, triangles, tp);
+        m_print->throw_if_canceled();
+        s4->deformed = NonPlanar::s4_deform(s4->mesh, params).deformed;
+    } catch (const std::runtime_error &e) {
+        throw Slic3r::SlicingError(e.what(), this->id().id);
+    }
+    m_print->throw_if_canceled();
+
+    float max_z = 0.f;
+    for (const Eigen::Vector3d &p : s4->deformed) {
+        s4->surface.vertices.emplace_back(p.cast<float>());
+        max_z = std::max(max_z, float(p.z()));
+    }
+    for (const std::array<int, 3> &t : NonPlanar::s4_boundary_triangles(s4->mesh, s4->deformed))
+        s4->surface.indices.emplace_back(t[0], t[1], t[2]);
+
+    // Layers span the deformed height.
+    m_slicing_params = SlicingParameters::create_from_config(this->print()->config(), m_config, max_z, this->object_extruders(),
+                                                             this->print()->shrinkage_compensation());
+    m_s4 = std::move(s4);
+}
+
 void PrintObject::slice()
 {
     if (! this->set_started(posSlice))
         return;
+    m_s4.reset();
+    if (m_config.s4_enabled.value)
+        this->deform_s4();
     //BBS: add flag to reload scene for shell rendering
     m_print->set_status(5, L("Slicing mesh"), PrintBase::SlicingStatus::RELOAD_SCENE);
     std::vector<coordf_t> layer_height_profile;
@@ -1174,7 +1242,18 @@ void PrintObject::slice_volumes()
 
     std::vector<float>                   slice_zs      = zs_from_layers(m_layers);
     std::vector<VolumeSlices> objSliceByVolume;
-    if (!slice_zs.empty()) {
+    if (!slice_zs.empty() && m_s4) {
+        // S4: the deformed surface stands in for the object's single model part.
+        MeshSlicingParamsEx params;
+        params.closing_radius = m_config.slice_closing_radius.value;
+        params.resolution     = print->config().resolution <= 0.001 ? 0.0f : 0.0025;
+        params.trafo          = Transform3d::Identity();
+        for (const ModelVolume *v : this->model_object()->volumes)
+            if (v->is_model_part()) {
+                objSliceByVolume.push_back({ v->id(), slice_mesh_ex(m_s4->surface, slice_zs, params, throw_on_cancel_callback) });
+                break;
+            }
+    } else if (!slice_zs.empty()) {
         objSliceByVolume = slice_volumes_inner(
             print->config(), this->config(), this->trafo_centered(),
             this->model_object()->volumes, m_shared_regions->layer_ranges, slice_zs, throw_on_cancel_callback);

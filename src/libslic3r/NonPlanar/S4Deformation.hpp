@@ -83,6 +83,10 @@ struct S4Result
 
 S4Result s4_deform(const TetMesh &mesh, const S4Params &params);
 
+// Boundary triangles of the tetrahedral mesh, oriented outward for the vertex positions `pts`
+// (numbered like mesh.points): the surface to slice once the mesh has been deformed.
+std::vector<std::array<int, 3>> s4_boundary_triangles(const TetMesh &mesh, const std::vector<Eigen::Vector3d> &pts);
+
 // Solves  min  w * sum_{(i,j) in pairs} (x_i - x_j)^2 + sum_{i in targets} (x_i - t_i)^2
 //         s.t. -limit_i <= x_i <= limit_i
 // Cells without a target (NaN) follow their neighbours. Exposed for testing.

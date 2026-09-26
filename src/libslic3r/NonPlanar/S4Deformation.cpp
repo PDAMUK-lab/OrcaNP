@@ -495,6 +495,21 @@ std::vector<double> s4_solve_rotation_field(size_t n, const std::vector<std::arr
     return std::vector<double>(x.data(), x.data() + n);
 }
 
+std::vector<std::array<int, 3>> s4_boundary_triangles(const TetMesh &mesh, const std::vector<Eigen::Vector3d> &pts)
+{
+    const Topology                  topo = build_topology(mesh);
+    std::vector<std::array<int, 3>> out;
+    out.reserve(topo.boundary.size());
+    for (const BoundaryFace &f : topo.boundary) {
+        std::array<int, 3>    t = f.v;
+        const Eigen::Vector3d n = (pts[t[1]] - pts[t[0]]).cross(pts[t[2]] - pts[t[0]]);
+        if (n.dot(pts[f.opposite] - pts[t[0]]) > 0.)
+            std::swap(t[1], t[2]);
+        out.push_back(t);
+    }
+    return out;
+}
+
 S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
 {
     if (mesh.tets.empty())

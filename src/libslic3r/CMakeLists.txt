@@ -247,6 +247,8 @@ set(lisbslic3r_sources
     GCode/GCodeProcessor.hpp
     GCode/ElegooGCodeProcessorHelper.cpp
     GCode.hpp
+    GCode/NonPlanarExport.cpp
+    GCode/NonPlanarExport.hpp
     GCode/PchipInterpolatorHelper.cpp
     GCode/PchipInterpolatorHelper.hpp
     GCode/PressureEqualizer.cpp

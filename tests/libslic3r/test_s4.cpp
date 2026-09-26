@@ -363,7 +363,7 @@ TEST_CASE("Mapping through an identity deformation returns the point, upright an
     const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
     const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
 
-    for (const Eigen::Vector3d p : { Eigen::Vector3d(1.3, -0.7, 5.1), Eigen::Vector3d(12.2, 1.9, 17.3), Eigen::Vector3d(3.99, 0., 0.2) }) {
+    for (const Eigen::Vector3d &p : { Eigen::Vector3d(1.3, -0.7, 5.1), Eigen::Vector3d(12.2, 1.9, 17.3), Eigen::Vector3d(3.99, 0., 0.2) }) {
         const S4Mapper::Result r = mapper.map(p);
         CHECK(r.tier == S4Mapper::Tier::Inside);
         CHECK_THAT((r.point - p).norm(), WithinAbs(0., 1e-9));

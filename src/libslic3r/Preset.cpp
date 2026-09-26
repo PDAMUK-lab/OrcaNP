@@ -1360,6 +1360,9 @@ static std::vector<std::string> s_Preset_print_options{
     "zaa_minimize_perimeter_height",
     "zaa_dont_alternate_fill_direction",
     "zaa_min_z",
+    // S4 non-planar deformation
+    "s4_enabled", "s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far",
+    "s4_passes", "s4_cell_size",
     "ironing_expansion",
 };
 
@@ -1461,6 +1464,8 @@ static std::vector<std::string> s_Preset_printer_options {
     "printhost_cafile","printhost_port","printhost_authorization_type",
     "printhost_user", "printhost_password", "printhost_ssl_ignore_revoke", "thumbnails", "thumbnails_format",
     "use_relative_e_distances", "extruder_type", "use_firmware_retraction", "printer_notes",
+    "polar_kinematics", "polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_angle_step", "polar_min_radius",
+    "polar_inverse_time_feed", "polar_max_rotation_speed", "polar_max_tilt_speed", "polar_tilt_pivot_length",
     "grab_length", "support_object_skip_flush", "physical_extruder_map",
     "cooling_tube_retraction",
     "cooling_tube_length", "high_current_on_filament_swap", "parking_pos_retraction", "extra_loading_move", "wipe_tower_type", "purge_in_prime_tower", "enable_filament_ramming", "tool_change_on_wipe_tower", "wait_for_temp_on_wipe_tower",

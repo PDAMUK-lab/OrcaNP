@@ -335,7 +335,8 @@ public:
 private:
     class GCodeOutputStream {
     public:
-        GCodeOutputStream(FILE *f, GCodeProcessor &processor) : f(f), m_processor(processor) {}
+        // Every line written is fed to `processor`, unless it is null.
+        GCodeOutputStream(FILE *f, GCodeProcessor *processor) : f(f), m_processor(processor) {}
         ~GCodeOutputStream() { this->close(); }
 
         bool is_open() const { return f; }
@@ -358,7 +359,7 @@ private:
 
     private:
         FILE *f = nullptr;
-        GCodeProcessor &m_processor;
+        GCodeProcessor *m_processor = nullptr;
     };
     void            _do_export(Print &print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb);
 

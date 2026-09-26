@@ -106,45 +106,21 @@ void load_stl(const std::string &path, std::vector<Eigen::Vector3d> &vertices, s
 // Binary STL of the tetrahedral mesh's boundary at the given vertex positions.
 void write_boundary_stl(const std::string &path, const TetMesh &mesh, const std::vector<Eigen::Vector3d> &pts)
 {
-    std::map<std::array<int, 3>, std::pair<int, std::array<int, 4>>> faces; // sorted face -> (count, face + opposite)
-    for (const auto &t : mesh.tets)
-        for (int k = 0; k < 4; ++k) {
-            std::array<int, 3> f;
-            for (int i = 0, j = 0; i < 4; ++i)
-                if (i != k)
-                    f[j++] = t[i];
-            std::array<int, 3> key = f;
-            std::sort(key.begin(), key.end());
-            auto &e = faces[key];
-            ++e.first;
-            e.second = { f[0], f[1], f[2], t[k] };
-        }
-    std::vector<std::array<float, 12>> facets;
-    for (const auto &[key, e] : faces) {
-        if (e.first != 1)
-            continue;
-        std::array<int, 3> f = { e.second[0], e.second[1], e.second[2] };
-        Eigen::Vector3d    n = (pts[f[1]] - pts[f[0]]).cross(pts[f[2]] - pts[f[0]]);
-        if (n.dot(pts[e.second[3]] - pts[f[0]]) > 0.) {
-            std::swap(f[1], f[2]);
-            n = -n;
-        }
-        n.normalize();
-        std::array<float, 12> rec;
+    const std::vector<std::array<int, 3>> faces = s4_boundary_triangles(mesh, pts);
+    std::ofstream                         out(path, std::ios::binary);
+    char                                  header[80] = "S4 deformed model";
+    out.write(header, 80);
+    const uint32_t count = uint32_t(faces.size());
+    out.write(reinterpret_cast<const char *>(&count), 4);
+    for (const std::array<int, 3> &f : faces) {
+        const Eigen::Vector3d n = (pts[f[1]] - pts[f[0]]).cross(pts[f[2]] - pts[f[0]]).normalized();
+        float                 rec[12];
         for (int c = 0; c < 3; ++c)
             rec[c] = float(n[c]);
         for (int v = 0; v < 3; ++v)
             for (int c = 0; c < 3; ++c)
                 rec[3 + v * 3 + c] = float(pts[f[v]][c]);
-        facets.push_back(rec);
-    }
-    std::ofstream out(path, std::ios::binary);
-    char          header[80] = "S4 deformed model";
-    out.write(header, 80);
-    const uint32_t count = uint32_t(facets.size());
-    out.write(reinterpret_cast<const char *>(&count), 4);
-    for (const auto &rec : facets) {
-        out.write(reinterpret_cast<const char *>(rec.data()), 48);
+        out.write(reinterpret_cast<const char *>(rec), 48);
         const uint16_t attr = 0;
         out.write(reinterpret_cast<const char *>(&attr), 2);
     }

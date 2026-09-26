@@ -12,6 +12,7 @@
 #include "ExtrusionEntity.hpp"
 #include "EdgeGrid.hpp"
 #include "Geometry/ConvexHull.hpp"
+#include "GCode/NonPlanarExport.hpp"
 #include "GCode/PrintExtents.hpp"
 #include "GCode/Thumbnails.hpp"
 #include "GCode/WipeTower.hpp"
@@ -50,6 +51,8 @@
 #include <boost/nowide/iostream.hpp>
 #include <boost/nowide/cstdio.hpp>
 #include <boost/nowide/cstdlib.hpp>
+#include <boost/nowide/fstream.hpp>
+#include <sstream>
 
 #include "SVG.hpp"
 
@@ -2517,9 +2520,16 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     std::string path_tmp(path);
     path_tmp += ".tmp";
 
+    // Orca: G-code for S4-deformed objects is generated in the deformed space, mapped back into the
+    // real parts and only then processed, so the preview and statistics show what will be printed.
+    // A polar printer then gets the processed G-code in machine coordinates.
+    const bool        s4          = NonPlanarExport::has_s4(*print);
+    const bool        polar       = print->config().polar_kinematics.value;
+    const std::string path_sliced = path_tmp + ".sliced";
+
     m_processor.initialize(path_tmp);
     m_processor.set_print(print);
-    GCodeOutputStream file(boost::nowide::fopen(path_tmp.c_str(), "wb"), m_processor);
+    GCodeOutputStream file(boost::nowide::fopen((s4 ? path_sliced : path_tmp).c_str(), "wb"), s4 ? nullptr : &m_processor);
     if (! file.is_open()) {
         std::string err_msg = std::string("G-code export to ") + path + " failed.\nCannot open the file for writing.\n";
         BOOST_LOG_TRIVIAL(error) << err_msg << std::endl;
@@ -2553,6 +2563,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         // Close and remove the file.
         file.close();
         boost::nowide::remove(path_tmp.c_str());
+        boost::nowide::remove(path_sliced.c_str());
         {
             LifecycleEventContext ctx;
             ctx.name = std::to_string(print->model().id().id);
@@ -2564,6 +2575,37 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         throw;
     }
     file.close();
+
+    if (s4) {
+        // Map the toolpath back, then feed it to the processor in whole lines as generation would.
+        std::stringstream real;
+        {
+            const std::unique_ptr<NonPlanar::S4Mapper> mapper = NonPlanarExport::s4_mapper(*print);
+            boost::nowide::ifstream                    sliced(path_sliced);
+            const NonPlanar::S4GCodeReport report = NonPlanar::s4_transform_gcode(sliced, real, *mapper,
+                                                                                  NonPlanarExport::s4_gcode_config(print->config()));
+            BOOST_LOG_TRIVIAL(info) << "S4: " << report.segments << " segments mapped (" << report.nearest << " beside the mesh), "
+                                    << report.lifts << " travel lifts, " << report.retractions_added << " retractions added, filament "
+                                    << report.filament_in << " -> " << report.filament_out << " mm";
+            for (const std::string &failed : report.failed)
+                BOOST_LOG_TRIVIAL(warning) << "S4 G-code check failed: " << failed;
+        }
+        boost::nowide::remove(path_sliced.c_str());
+        GCodeOutputStream out(boost::nowide::fopen(path_tmp.c_str(), "wb"), &m_processor);
+        if (! out.is_open())
+            throw Slic3r::RuntimeError(std::string("G-code export to ") + path + " failed.\nCannot open the file for writing.\n");
+        std::string line, chunk;
+        while (std::getline(real, line)) {
+            chunk += line;
+            chunk += '\n';
+            if (chunk.size() > (1 << 16)) {
+                out.write(chunk);
+                chunk.clear();
+            }
+        }
+        out.write(chunk);
+        out.close();
+    }
 
     check_placeholder_parser_failed();
 
@@ -2664,6 +2706,22 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     //BBS: add some log for error output
     BOOST_LOG_TRIVIAL(debug) << boost::format("Finished processing gcode to %1% ") % path_tmp;
 
+    if (polar) {
+        // The processed Cartesian G-code (preview, estimates) becomes machine G-code on its way out.
+        const std::string              path_polar = path_tmp + ".polar";
+        NonPlanar::PolarGCodeConverter converter(NonPlanarExport::polar_config(print->config()));
+        {
+            boost::nowide::ifstream in(path_tmp);
+            boost::nowide::ofstream out(path_polar);
+            converter.process(in, out);
+            if (! out)
+                throw Slic3r::RuntimeError(std::string("G-code export to ") + path + " failed.\nCannot write the polar G-code.\n");
+        }
+        BOOST_LOG_TRIVIAL(info) << "Polar: " << converter.stats().cartesian_moves << " moves -> " << converter.stats().machine_moves
+                                << " machine moves, bed turns " << converter.stats().total_angle << " degrees";
+        boost::nowide::remove(path_tmp.c_str());
+        path_tmp = path_polar;
+    }
     std::error_code ret = rename_file(path_tmp, path);
     if (ret) {
         {
@@ -7871,7 +7929,8 @@ void GCode::GCodeOutputStream::write(const char *what)
         // writes string to file
         fwrite(gcode, 1, ::strlen(gcode), this->f);
         //FIXME don't allocate a string, maybe process a batch of lines?
-        m_processor.process_buffer(std::string(gcode));
+        if (m_processor != nullptr)
+            m_processor->process_buffer(std::string(gcode));
     }
 }
 

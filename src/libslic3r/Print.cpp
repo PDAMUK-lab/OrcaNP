@@ -117,6 +117,16 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "reduce_crossing_wall",
         "max_travel_detour_distance",
         "printable_area",
+        "polar_kinematics",
+        "polar_tilt_axis",
+        "polar_axis_names",
+        "polar_reverse_rotation",
+        "polar_angle_step",
+        "polar_min_radius",
+        "polar_inverse_time_feed",
+        "polar_max_rotation_speed",
+        "polar_max_tilt_speed",
+        "polar_tilt_pivot_length",
         //BBS: add bed_exclude_area
         "bed_exclude_area",
         "thumbnail_size",
@@ -1747,6 +1757,27 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
 
     if (extruders.empty())
         return { L("No extrusions under current settings.") };
+
+    // S4 non-planar printing slices one deformed surface in place of the object's model part, and maps
+    // the relative extrusion of every move back into the real part.
+    for (const PrintObject *object : m_objects) {
+        if (! object->config().s4_enabled.value)
+            continue;
+        size_t parts = 0, others = 0;
+        for (const ModelVolume *v : object->model_object()->volumes) {
+            if (v->is_model_part())
+                ++parts;
+            else if (v->is_modifier() || v->is_negative_volume())
+                ++others;
+        }
+        if (parts != 1 || others != 0 || object->instances().size() != 1)
+            return { L("Non-planar (S4) printing supports objects made of a single part, without modifiers or negative volumes, "
+                       "placed once."), object, "s4_enabled" };
+        if (! m_config.use_relative_e_distances)
+            return { L("Non-planar (S4) printing needs relative extrusion (use_relative_e_distances)."), object, "use_relative_e_distances" };
+        if (m_config.spiral_mode)
+            return { L("Non-planar (S4) printing does not support spiral vase mode."), object, "spiral_mode" };
+    }
 
     // Orca: a gradient mixed filament only renders its gradient with "Mixed color sublayer" on;
     // without it ToolOrdering::resolve_mixed_filaments prints one whole component per layer and

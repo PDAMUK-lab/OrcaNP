@@ -1013,6 +1013,11 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
     for (auto el : {"zaa_minimize_perimeter_height", "zaa_min_z", "zaa_dont_alternate_fill_direction", "ironing_expansion"})
         toggle_line(el, has_zaa);
 
+    bool has_s4 = config->opt_bool("s4_enabled");
+    for (auto el : {"s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far", "s4_passes",
+                    "s4_cell_size"})
+        toggle_line(el, has_s4);
+
     bool have_sequential_printing = (config->opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject);
     // for (auto el : { "extruder_clearance_radius", "extruder_clearance_height_to_rod", "extruder_clearance_height_to_lid" })
     //     toggle_field(el, have_sequential_printing);

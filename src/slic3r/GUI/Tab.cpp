@@ -2770,6 +2770,16 @@ void TabPrint::build()
         optgroup->append_single_option_line("zaa_minimize_perimeter_height", "quality_settings_z_contouring#minimize-wall-height-angle");
         optgroup->append_single_option_line("zaa_min_z", "quality_settings_z_contouring#minimum-z-height");
         optgroup->append_single_option_line("zaa_dont_alternate_fill_direction", "quality_settings_z_contouring#dont-alternate-fill-direction");
+
+        optgroup = page->new_optgroup(L("Non-planar (S4)"), L"param_z_contouring");
+        optgroup->append_single_option_line("s4_enabled");
+        optgroup->append_single_option_line("s4_max_overhang");
+        optgroup->append_single_option_line("s4_max_rotation_near");
+        optgroup->append_single_option_line("s4_max_rotation_far");
+        optgroup->append_single_option_line("s4_smoothing");
+        optgroup->append_single_option_line("s4_rotation_multiplier");
+        optgroup->append_single_option_line("s4_passes");
+        optgroup->append_single_option_line("s4_cell_size");
         // Orca: it's not used yet, so hide it in UI for now
         // optgroup->append_single_option_line("ironing_expansion");
 
@@ -5177,6 +5187,18 @@ void TabPrinter::build_fff()
         // optgroup->append_single_option_line("spaghetti_detector");
         optgroup->append_single_option_line("time_cost", "printer_basic_information_advanced#time-cost");
 
+        optgroup = page->new_optgroup(L("Polar kinematics"), L"param_advanced");
+        optgroup->append_single_option_line("polar_kinematics");
+        optgroup->append_single_option_line("polar_tilt_axis");
+        optgroup->append_single_option_line("polar_axis_names");
+        optgroup->append_single_option_line("polar_reverse_rotation");
+        optgroup->append_single_option_line("polar_inverse_time_feed");
+        optgroup->append_single_option_line("polar_max_rotation_speed");
+        optgroup->append_single_option_line("polar_max_tilt_speed");
+        optgroup->append_single_option_line("polar_tilt_pivot_length");
+        optgroup->append_single_option_line("polar_angle_step");
+        optgroup->append_single_option_line("polar_min_radius");
+
         optgroup = page->new_optgroup(L("Plugin Configuration"), L"param_gcode");
         optgroup->append_single_option_line("printer_plugin_config_overrides");
 
@@ -6138,6 +6160,13 @@ void TabPrinter::toggle_options()
     //}
     if (m_active_page->title() == L("Basic information")) {
         const auto &printer_cfg = m_preset_bundle->printers.get_edited_preset().config;
+        const bool polar = m_config->opt_bool("polar_kinematics");
+        for (auto el : {"polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_inverse_time_feed", "polar_max_rotation_speed",
+                        "polar_max_tilt_speed", "polar_tilt_pivot_length", "polar_angle_step", "polar_min_radius"})
+            toggle_line(el, polar);
+        toggle_line("polar_tilt_pivot_length", polar && m_config->opt_bool("polar_tilt_axis"));
+        for (auto el : {"polar_max_rotation_speed", "polar_max_tilt_speed"})
+            toggle_field(el, polar && m_config->opt_bool("polar_inverse_time_feed"));
 
         // SoftFever: hide BBL specific settings
         for (auto el : {"scan_first_layer", "bbl_calib_mark_logo", "bbl_use_printhost"})

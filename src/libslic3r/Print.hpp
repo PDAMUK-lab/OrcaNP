@@ -17,6 +17,7 @@
 #include "GCode/ThumbnailData.hpp"
 #include "GCode/GCodeProcessor.hpp"
 #include "MultiMaterialSegmentation.hpp"
+#include "NonPlanar/S4Deformation.hpp"
 #include "ObjectID.hpp"
 #include "libslic3r.h"
 
@@ -378,6 +379,18 @@ public:
     // Centering offset of the sliced mesh from the scaled and rotated mesh of the model.
     const Point& 			     center_offset() const  { return m_center_offset; }
 
+    // S4 non-planar deformation of the object, in its slicing frame (trafo_centered()). The deformed
+    // surface is sliced instead of the model; the G-code export maps the toolpath back through the
+    // tetrahedra. Null unless s4_enabled.
+    struct S4Deformation
+    {
+        NonPlanar::TetMesh           mesh;     // undeformed tetrahedra
+        std::vector<Eigen::Vector3d> deformed; // deformed vertex positions
+        indexed_triangle_set         surface;  // deformed boundary
+        Vec2d                        axis;     // the printer's rotation axis
+    };
+    const S4Deformation*         s4_deformation() const { return m_s4.get(); }
+
     // BBS
     void generate_support_preview();
     const std::vector<VolumeSlices>& firstLayerObjSlice() const { return firstLayerObjSliceByVolume; }
@@ -540,6 +553,8 @@ private:
     std::vector<std::set<int>> detect_extruder_geometric_unprintables() const;
 
     void slice_volumes();
+    // Computes m_s4 and the slicing parameters of the deformed object.
+    void deform_s4();
     //BBS
     ExPolygons _shrink_contour_holes(double contour_delta, double hole_delta, const ExPolygons& polys) const;
     // BBS
@@ -575,6 +590,7 @@ private:
     // The mesh is being centered before thrown to Clipper, so that the Clipper's fixed coordinates require less bits.
     // This is the adjustment of the  the Object's coordinate system towards PrintObject's coordinate system.
     Point                                   m_center_offset;
+    std::unique_ptr<S4Deformation>          m_s4;
 
     // Object split into layer ranges and regions with their associated configurations.
     // Shared among PrintObjects created for the same ModelObject.
