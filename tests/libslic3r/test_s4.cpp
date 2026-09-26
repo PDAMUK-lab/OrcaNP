@@ -1,6 +1,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "libslic3r/NonPlanar/S4Deformation.hpp"
+#include "libslic3r/NonPlanar/S4GCodeTransform.hpp"
 #include "libslic3r/NonPlanar/S4Mapping.hpp"
 #include "libslic3r/NonPlanar/Tetrahedralize.hpp"
 
@@ -9,6 +10,8 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <sstream>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -153,6 +156,73 @@ double arm_underside_overhang(const TetMesh &mesh, const std::vector<Eigen::Vect
     }
     return steepest;
 }
+
+struct Parsed
+{
+    std::vector<Eigen::Vector3d> printing; // end points of extruding moves
+    double                       e_total  = 0.;
+    double                       max_z    = 0.;
+    size_t                       retracts = 0;
+};
+
+// Positions of the extruding moves and the extrusion total of a Cartesian G-code body.
+Parsed parse_body(const std::string &gcode)
+{
+    Parsed             p;
+    std::istringstream in(gcode);
+    std::string        line;
+    Eigen::Vector3d    pos = Eigen::Vector3d::Zero();
+    while (std::getline(in, line)) {
+        if (line.rfind("G1", 0) != 0 && line.rfind("G0", 0) != 0)
+            continue;
+        std::istringstream words(line.substr(0, line.find(';')));
+        std::string        w;
+        words >> w;
+        double e     = 0.;
+        bool   has_e = false, moves = false;
+        while (words >> w) {
+            const double v = std::stod(w.substr(1));
+            if (w[0] == 'X' || w[0] == 'Y' || w[0] == 'Z') {
+                pos[w[0] - 'X'] = v;
+                moves           = true;
+            } else if (w[0] == 'E') {
+                e     = v;
+                has_e = true;
+            }
+        }
+        p.max_z = std::max(p.max_z, pos.z());
+        if (has_e) {
+            p.e_total += e;
+            if (moves && e > 0.)
+                p.printing.push_back(pos);
+            if (! moves && e < 0.)
+                ++p.retracts;
+        }
+    }
+    return p;
+}
+
+std::string transform(const std::string &gcode, const S4Mapper &mapper, S4GCodeReport *report = nullptr)
+{
+    std::istringstream  in(gcode);
+    std::ostringstream  out;
+    const S4GCodeReport r = s4_transform_gcode(in, out, mapper, S4GCodeConfig());
+    if (report)
+        *report = r;
+    return out.str();
+}
+
+// A square perimeter inside the cantilever's post at height z, with relative extrusion.
+std::string square(double z)
+{
+    std::ostringstream g;
+    g << "G1 X1 Y-1 Z" << z << " F3000\n"
+      << "G1 X3 Y-1 E0.1 F1200\nG1 X3 Y1 E0.1\nG1 X1 Y1 E0.1\nG1 X1 Y-1 E0.1\n";
+    return g.str();
+}
+
+const std::string start_block = "G28 ; home\nM83\n; MACHINE_START_GCODE_END\n";
+const std::string end_block   = "; MACHINE_END_GCODE_START\nG1 X170 Y180 F3000 ; park\nM84\n";
 
 } // namespace
 
@@ -356,4 +426,72 @@ TEST_CASE("Points beside the mesh are extrapolated and far points are left alone
     const S4Mapper::Result far = mapper.map(Eigen::Vector3d(-40., 0., 6.));
     CHECK(far.tier == S4Mapper::Tier::Outside);
     CHECK_THAT((far.point - Eigen::Vector3d(-40., 0., 6.)).norm(), WithinAbs(0., 1e-12));
+}
+
+TEST_CASE("G-code mapped through an identity deformation keeps its path and extrusion", "[S4]")
+{
+    const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
+
+    S4GCodeReport     report;
+    const std::string out = transform(start_block + ";LAYER_CHANGE\n" + square(0.2) + end_block, mapper, &report);
+    const Parsed      p   = parse_body(out.substr(out.find("MACHINE_START_GCODE_END")));
+
+    CHECK(report.failed.empty());
+    CHECK_THAT(p.e_total, WithinAbs(0.4, 1e-9));
+    for (const Eigen::Vector3d &q : p.printing) {
+        // Each 2 mm side is split into 0.6 mm segments; all of them stay on the square.
+        const bool on_x = std::abs(q.x() - 1.) < 1e-9 || std::abs(q.x() - 3.) < 1e-9;
+        const bool on_y = std::abs(q.y() - 1.) < 1e-9 || std::abs(q.y() + 1.) < 1e-9;
+        CHECK((on_x || on_y));
+        CHECK_THAT(q.z(), WithinAbs(0.2, 1e-9));
+    }
+    CHECK(p.printing.size() == 4 * 4);
+    CHECK(out.find("B0") != std::string::npos); // upright nozzle
+    // Machine blocks are copied untouched.
+    CHECK(out.find("G28 ; home\n") != std::string::npos);
+    CHECK(out.find("G1 X170 Y180 F3000 ; park\nM84\n") != std::string::npos);
+}
+
+TEST_CASE("Material follows the volume of squashed layers", "[S4]")
+{
+    const TetMesh                mesh = voxel_mesh(cantilever_voxels(), 2.);
+    std::vector<Eigen::Vector3d> deformed;
+    for (const Eigen::Vector3d &p : mesh.points)
+        deformed.emplace_back(p.x(), p.y(), 0.5 * p.z()); // sliced layers are twice as thick in the part
+    const S4Mapper mapper(mesh, deformed, Eigen::Vector2d::Zero());
+
+    const Parsed p = parse_body(transform(start_block + square(2.), mapper));
+    CHECK_THAT(p.e_total, WithinAbs(0.8, 1e-6));
+    for (const Eigen::Vector3d &q : p.printing)
+        CHECK_THAT(q.z(), WithinAbs(4., 1e-9));
+}
+
+TEST_CASE("A travel through printed material is lifted over it and retracted", "[S4]")
+{
+    const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
+
+    // A wall printed up to z = 3, then a travel back across it at z = 0.6 (as on a layer that
+    // curves down): the nozzle would plough through the wall.
+    std::string g = start_block;
+    for (double z : { 1., 2., 3. })
+        g += "G1 X2 Y-1.8 Z" + std::to_string(z) + " F3000\nG1 X2 Y1.8 E0.2 F1200\n";
+    g += "G1 X0.5 Y1.8 Z0.6 F6000\nG1 X0.5 Y-1.8\nG1 X3.5 Y-1.8\nG1 X3.5 Y1.8\nG1 X2.5 Y1.8 E0.1 F1200\n";
+
+    S4GCodeReport     report;
+    const std::string out = transform(g, mapper, &report);
+    CHECK(report.collisions >= 1);
+    CHECK(report.lifts >= 1);
+    CHECK(report.retractions_added >= 1);
+    CHECK(report.failed.empty());
+    // Lifted to the wall top + clearance + hop.
+    CHECK_THAT(parse_body(out).max_z, WithinAbs(3. + 0.15 + 0.5, 1e-6));
+}
+
+TEST_CASE("Absolute extrusion is refused", "[S4]")
+{
+    const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
+    CHECK_THROWS(transform("G28\nM82\n; MACHINE_START_GCODE_END\n" + square(0.2), mapper));
 }

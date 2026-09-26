@@ -340,10 +340,13 @@ set(lisbslic3r_sources
     MutablePolygon.cpp
     MutablePolygon.hpp
     MutablePriorityQueue.hpp
+    NonPlanar/GCodeWords.hpp
     NonPlanar/PolarKinematics.cpp
     NonPlanar/PolarKinematics.hpp
     NonPlanar/S4Deformation.cpp
     NonPlanar/S4Deformation.hpp
+    NonPlanar/S4GCodeTransform.cpp
+    NonPlanar/S4GCodeTransform.hpp
     NonPlanar/S4Mapping.cpp
     NonPlanar/S4Mapping.hpp
     NormalUtils.cpp

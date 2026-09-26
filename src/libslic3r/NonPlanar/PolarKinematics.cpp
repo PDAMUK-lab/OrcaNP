@@ -1,4 +1,5 @@
 #include "PolarKinematics.hpp"
+#include "GCodeWords.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -136,87 +137,6 @@ std::vector<PolarKinematics::Waypoint> PolarKinematics::interpolate(const ToolPo
 // ------------------------------------------------------------------------------------------
 // G-code conversion
 
-namespace {
-
-struct ParsedLine
-{
-    std::string code;    // without comment, trimmed
-    std::string comment; // including the leading ';', or empty
-};
-
-ParsedLine split_comment(const std::string &line)
-{
-    ParsedLine p;
-    const size_t semi = line.find(';');
-    p.code = semi == std::string::npos ? line : line.substr(0, semi);
-    if (semi != std::string::npos)
-        p.comment = line.substr(semi);
-    while (! p.code.empty() && std::isspace((unsigned char) p.code.back()))
-        p.code.pop_back();
-    size_t first = 0;
-    while (first < p.code.size() && std::isspace((unsigned char) p.code[first]))
-        ++first;
-    p.code.erase(0, first);
-    return p;
-}
-
-// Returns the command ("G1", "M83", ...) with leading zeros removed from its number.
-std::string command_of(const std::string &code)
-{
-    if (code.empty() || ! std::isalpha((unsigned char) code[0]))
-        return {};
-    size_t i = 1;
-    while (i < code.size() && std::isdigit((unsigned char) code[i]))
-        ++i;
-    if (i == 1)
-        return {};
-    std::string num = code.substr(1, i - 1);
-    num.erase(0, std::min(num.find_first_not_of('0'), num.size() - 1));
-    // G92.1 and similar dotted commands are not motion; keep them distinct.
-    if (i < code.size() && code[i] == '.')
-        return {};
-    return std::string(1, (char) std::toupper((unsigned char) code[0])) + num;
-}
-
-// Parses the address words after the command letter+number.
-bool find_word(const std::string &code, char letter, double &value)
-{
-    // Skip the command itself.
-    size_t i = 1;
-    while (i < code.size() && (std::isdigit((unsigned char) code[i]) || code[i] == '.'))
-        ++i;
-    for (; i < code.size(); ++i) {
-        if (std::toupper((unsigned char) code[i]) != letter)
-            continue;
-        const char *start = code.c_str() + i + 1;
-        char       *end   = nullptr;
-        const double v    = std::strtod(start, &end);
-        if (end != start) {
-            value = v;
-            return true;
-        }
-    }
-    return false;
-}
-
-std::string format_number(double v, int decimals)
-{
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.*f", decimals, v);
-    std::string s(buf);
-    if (s.find('.') != std::string::npos) {
-        while (s.back() == '0')
-            s.pop_back();
-        if (s.back() == '.')
-            s.pop_back();
-    }
-    if (s == "-0")
-        s = "0";
-    return s;
-}
-
-} // namespace
-
 void PolarGCodeConverter::set_feed_mode(bool inverse_time, std::ostream &out)
 {
     const int mode = inverse_time ? 1 : 0;
@@ -233,10 +153,10 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
     ++m_stats.cartesian_moves;
 
     auto write_pose = [&](const MachinePose &m, double seg_e, double seg_feed, bool with_comment) {
-        out << cmd << ' ' << c.angle_axis << format_number(m.angle, 4) << ' ' << c.radius_axis << format_number(m.radius, 4) << " Z"
-            << format_number(m.z, 4);
+        out << cmd << ' ' << c.angle_axis << GCodeWords::number(m.angle, 4) << ' ' << c.radius_axis << GCodeWords::number(m.radius, 4) << " Z"
+            << GCodeWords::number(m.z, 4);
         if (c.has_tilt_axis)
-            out << ' ' << c.tilt_axis << format_number(m.tilt, 3);
+            out << ' ' << c.tilt_axis << GCodeWords::number(m.tilt, 3);
         if (seg_e != 0.) {
             if (m_relative_e) {
                 // Carry the rounding error forward: splitting one move into hundreds of short
@@ -244,12 +164,12 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
                 const double wanted = seg_e + m_e_rounding;
                 const double shown  = std::round(wanted * 1e5) * 1e-5;
                 m_e_rounding        = wanted - shown;
-                out << " E" << format_number(shown, 5);
+                out << " E" << GCodeWords::number(shown, 5);
             } else
-                out << " E" << format_number(m_e, 5);
+                out << " E" << GCodeWords::number(m_e, 5);
         }
         if (seg_feed > 0.)
-            out << " F" << format_number(seg_feed, 4);
+            out << " F" << GCodeWords::number(seg_feed, 4);
         if (with_comment && ! comment.empty())
             out << ' ' << comment;
         out << '\n';
@@ -299,7 +219,7 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
         // A zero-length move that still extrudes: emit the material as an E-only move.
         set_feed_mode(false, out);
         m_e += pending_e;
-        out << "G1 E" << format_number(m_relative_e ? pending_e : m_e, 5) << " F" << format_number(feed, 4);
+        out << "G1 E" << GCodeWords::number(m_relative_e ? pending_e : m_e, 5) << " F" << GCodeWords::number(feed, 4);
         if (! comment.empty())
             out << ' ' << comment;
         out << '\n';
@@ -320,8 +240,8 @@ void PolarGCodeConverter::process_line(const std::string &raw, std::ostream &out
         return;
     }
 
-    const ParsedLine  line = split_comment(raw);
-    const std::string cmd  = command_of(line.code);
+    const GCodeWords::Line line = GCodeWords::split(raw);
+    const std::string      cmd  = GCodeWords::command(line.code);
 
     // Modal state applies to the machine blocks too.
     if (cmd == "M82")
@@ -334,7 +254,7 @@ void PolarGCodeConverter::process_line(const std::string &raw, std::ostream &out
         m_absolute_xyz = false;
     else if (cmd == "G92") {
         double v;
-        if (find_word(line.code, 'E', v))
+        if (GCodeWords::find(line.code, 'E', v))
             m_e = v;
     }
 
@@ -356,23 +276,23 @@ void PolarGCodeConverter::process_line(const std::string &raw, std::ostream &out
     }
 
     double v;
-    if (find_word(line.code, 'F', v))
+    if (GCodeWords::find(line.code, 'F', v))
         m_feed = v;
 
     ToolPose target = m_pose;
     bool     moves  = false;
     for (int axis = 0; axis < 3; ++axis) {
-        if (find_word(line.code, "XYZ"[axis], v)) {
+        if (GCodeWords::find(line.code, "XYZ"[axis], v)) {
             target.tip[axis] = m_absolute_xyz ? v : target.tip[axis] + v;
             moves            = true;
         }
     }
-    if (c.has_tilt_axis && find_word(line.code, c.tilt_axis, v)) {
+    if (c.has_tilt_axis && GCodeWords::find(line.code, c.tilt_axis, v)) {
         target.tilt = deg2rad(v);
         moves       = true;
     }
     double e = 0.;
-    if (find_word(line.code, 'E', v))
+    if (GCodeWords::find(line.code, 'E', v))
         e = m_relative_e ? v : v - m_e;
 
     if (! moves) {
@@ -398,8 +318,8 @@ void PolarGCodeConverter::process_line(const std::string &raw, std::ostream &out
 
     // Linearize the arc in the XY plane; Z and tilt change linearly along it.
     double i_off = 0., j_off = 0.;
-    find_word(line.code, 'I', i_off);
-    find_word(line.code, 'J', j_off);
+    GCodeWords::find(line.code, 'I', i_off);
+    GCodeWords::find(line.code, 'J', j_off);
     const Eigen::Vector2d start  = m_pose.tip.head<2>();
     const Eigen::Vector2d centre = start + Eigen::Vector2d(i_off, j_off);
     const double          radius = (start - centre).norm();
