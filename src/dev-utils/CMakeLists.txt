@@ -34,6 +34,11 @@ if (ORCA_TOOLS)
     target_link_libraries(profile_include_dump libslic3r boost_headeronly)
     target_compile_definitions(profile_include_dump PRIVATE ${_DEV_DEFS})
 
+    # s4_polar: the S4 non-planar pipeline for polar printers, run around any slicer.
+    add_executable(s4_polar s4_polar.cpp)
+    target_link_libraries(s4_polar libslic3r boost_headeronly)
+    target_compile_definitions(s4_polar PRIVATE ${_DEV_DEFS})
+
 endif()
 
 # Function that adds source file encoding check to a target
