@@ -1,0 +1,88 @@
+name: Win64 test release
+
+# Builds OrcaNP for Windows x64 and publishes it as a pre-release for testing. Runs when
+# .github/test-release-win64 or this workflow changes on the polar non-planar branch, or by hand.
+# The first line of .github/test-release-win64 is the release tag (bump it to request a new
+# release); without that file the run only builds.
+
+on:
+  push:
+    branches:
+      - claude/s4-slicer-parsing-tfwcjo
+    paths:
+      - '.github/test-release-win64'
+      - '.github/workflows/test_release_win64.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_windows:
+    name: Build Windows x64
+    uses: ./.github/workflows/build_check_cache.yml
+    with:
+      os: windows-latest
+      arch: x64
+      compiler: clang
+      build-deps-only: false
+      force-build: false
+    secrets: inherit
+
+  unit_tests_windows:
+    name: Unit tests Windows x64
+    needs: build_windows
+    uses: ./.github/workflows/unit_tests.yml
+    with:
+      os: windows-latest
+      artifact: ${{ github.sha }}-tests-windows-x64
+
+  release:
+    name: Publish pre-release
+    needs: [build_windows, unit_tests_windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          lfs: 'false'
+
+      - name: Read release tag
+        id: tag
+        run: |
+          tag=$(head -n 1 .github/test-release-win64 2>/dev/null | tr -d '[:space:]' || true)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          [ -n "$tag" ] || echo "No release tag in .github/test-release-win64; build only."
+
+      - name: Download Windows build
+        if: steps.tag.outputs.tag != ''
+        uses: actions/download-artifact@v8
+        with:
+          pattern: OrcaSlicer_Windows_*
+          path: artifacts
+
+      - name: Create pre-release
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          portable=$(find artifacts -maxdepth 1 -type d -name 'OrcaSlicer_Windows_*_portable' | head -n 1)
+          installer=$(find artifacts -type f -name 'OrcaSlicer*.exe' -not -path '*_portable/*' | head -n 1)
+          [ -n "$portable" ] || { echo "::error::no portable build downloaded"; exit 1; }
+          (cd "$portable" && zip -qr "$GITHUB_WORKSPACE/OrcaNP_${tag}_Windows_x64_portable.zip" .)
+          assets=("OrcaNP_${tag}_Windows_x64_portable.zip")
+          if [ -n "$installer" ]; then
+            cp "$installer" "OrcaNP_${tag}_Windows_x64_installer.exe"
+            assets+=("OrcaNP_${tag}_Windows_x64_installer.exe")
+          fi
+          gh release create "$tag" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "OrcaNP ${tag}: polar non-planar (S4) test build, Windows x64" \
+            --notes "Test build of OrcaNP from ${GITHUB_SHA}. Adds S4 non-planar printing (Print settings > Quality > Non-planar (S4)) and polar printer output (Printer settings > Basic information > Polar kinematics). Not for production use."
