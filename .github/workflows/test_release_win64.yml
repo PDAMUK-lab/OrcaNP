@@ -3,7 +3,8 @@ name: Win64 test release
 # Builds OrcaNP for Windows x64 and publishes it as a pre-release for testing. Runs when
 # .github/test-release-win64 or this workflow changes on the polar non-planar branch, or by hand.
 # The first line of .github/test-release-win64 is the release tag (bump it to request a new
-# release); without that file the run only builds.
+# release); without that file the run only builds and tests. Changing this workflow also starts
+# a build-only run.
 
 on:
   push:
