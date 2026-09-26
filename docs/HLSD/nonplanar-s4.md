@@ -97,6 +97,35 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    radius travel past the axis is short. Commanded radii outside the radius travel (after pivot
    compensation) are counted, not changed. The machine end block runs in units per minute (G94).
 
+## Layer shapes
+
+Besides the optimized S4 field, the same deform → slice → map-back pipeline takes deformations
+whose flat slices are chosen surfaces (`LayerShapes`):
+
+- **Offset from a print surface.** Parts of the object set as print surface form a core that is
+  printed first with flat layers. The object's other part is printed over it in layers at
+  constant distance from the core's surface, like support: a point at signed distance d from
+  the core goes to height H + d - gap. H is the top of the layer holding the core's top, so the
+  core's layers all come first, the first layer over the core lies the gap away from it all
+  around (not only above it), and what is within the gap or inside the core falls below H and
+  is cut off the deformed part before slicing.
+  - The distance is exact (a uniform grid of the core's triangles, and a vertical ray for
+    inside/outside).
+  - Laid out *from above*: the horizontal position is the direction from a centre below the
+    core's top, as an azimuthal equidistant projection scaled to be undistorted at the top, for
+    domes, spheres and capped cylinders. Circumferential lengths shrink towards the equator
+    (to 64 % there); the flow correction keeps the material right.
+  - Laid out *around the rotation axis*: the angle becomes length and the height width, for
+    sleeves. A closed ring has no seam-free unwrap: sliced as a strip, its ends would become
+    walls. So the part is cut in half through the axis, each half unwrapped and placed twice,
+    giving a strip of two turns. Only one turn from the middle of it (a window in sliced X) is
+    printed: the walls at the strip's ends are never printed, and paths leaving the window
+    meet their continuation at the other edge.
+- **Conical** (the radial slicer's layers): z' = z + tan(angle) r about the rotation axis.
+
+These shapes have no optimization and no inversion repair: the offset map is injective where
+the core is star-shaped about the layout's centre (or axis), and the cone's is always.
+
 ## Frames and placement
 
 The rotation axis is a point in the model's frame (by default the centre of its bounding box);
@@ -130,42 +159,58 @@ takes inverse time feed. That gives the "ThetaFirm Core R-Theta" printer profile
 
 Two groups of settings switch the pipeline on:
 
-- **Print settings > Quality > Non-planar (S4)** (`s4_*`, per object): `s4_enabled` plus the
-  deformation parameters above. Any change re-slices the object.
+- **Print settings > Quality > Non-planar (S4)** (`s4_*`, per object): `s4_enabled`, the layer
+  shape (`s4_layer_shape`), the S4 deformation parameters, the surface gap and layout, and the
+  cone angle. Any change re-slices the object.
+- **Print surface** (`s4_print_surface`, a per-part setting added to a part in the object list):
+  the part is the core that layers are offset from. OrcaSlicer places every object on the bed,
+  so a core and what is printed over it are two parts of one object.
 - **Printer settings > Basic information > Polar kinematics** (`polar_*`): `polar_kinematics`, the
-  axis letters, the tilt axis and its travel (`polar_tilt_min`, `polar_tilt_max`), the tilt
-  threshold, and the conversion and speed limits.
+  axis letters and directions, axis crossing, the radius and tilt travel, the tilt threshold,
+  and the conversion and speed limits.
 - **Printer settings > Basic information > Non-planar toolhead** (`nonplanar_*`): the clearance
   check and the nozzle cone angle, nozzle length and head radius it uses.
 
-Most printer settings only affect G-code export. The tilt travel also bounds the deformation:
+Most printer settings only affect G-code export. The tilt travel also bounds the S4 deformation:
 with a tilting nozzle the S4 rotation limits are capped at the travel both sides of vertical
-share, because the polar conversion may reach a point from either side of the rotation axis,
-which flips the sign of the tilt. The G-code transform caps the tilt at the same value. Changing
-the travel, the tilt axis or polar kinematics therefore re-slices S4 objects.
+share, because with axis crossing the polar conversion may reach a point from either side of
+the rotation axis, which flips the sign of the tilt. The G-code transform caps the tilt at the
+same value, or, without axis crossing, at the travel on each side. Changing the travel, the tilt
+axis or polar kinematics therefore re-slices S4 objects.
 
 The pipeline hooks into the print steps as follows:
 
-- **Slicing** (`PrintObject::slice()`): with `s4_enabled` (plus `s4_planar_height` and
-  `s4_hold_non_overhangs`), `deform_s4()` meshes and deforms the
-  object's single model part in its slicing frame (`trafo_centered()`) before the layers are
-  laid out. The layer heights are then computed for the deformed height, and `slice_volumes()`
-  slices the deformed surface in place of the part. Perimeters, infill, supports, seams and the
-  rest of the pipeline run unchanged on those flat slices. The rotation axis in that frame is
-  the centre of the printable area moved into the object's frame through the instance shift and
-  plate origin. So moving the object, or changing the bed shape, re-slices it.
-- **Validation** (`Print::validate()`): an S4 object must be one model part with no modifiers or
-  negative volumes, placed once. The mapping only handles relative extrusion, and spiral vase
-  is refused.
-- **Export** (`GCode::do_export()`): when an object is deformed, generation writes the sliced-space
-  G-code to a side file without the G-code processor. `NonPlanarExport::s4_mapper()` joins every
-  deformed object's tetrahedra in G-code coordinates (instance shift less plate origin in XY;
-  Z offset and raft height in Z), and `s4_transform_gcode()` maps the file back. Only the mapped
-  G-code is then streamed through the processor, so the preview, time estimate and filament
-  statistics describe the curved toolpath that will be printed. With `polar_kinematics`, the
-  processed file is converted to machine coordinates last, just before the export rename. The
-  preview therefore stays Cartesian, and its G-code text view does not match the polar file line
-  for line. Clearance hits become a slicing warning that names the first few places.
+- **Slicing** (`PrintObject::slice()`): with `s4_enabled`, `deform_s4()` meshes the object's
+  non-planar part in its slicing frame (`trafo_centered()`) and deforms it by the layer shape
+  before the layers are laid out. The layer heights are then computed for the deformed height,
+  and `slice_volumes()` slices the deformed surface in place of the part (and the print surface
+  parts as they are). Perimeters, infill, supports, seams and the rest of the pipeline run
+  unchanged on those flat slices, per region, so the core can have its own settings. The
+  rotation axis in that frame is the centre of the printable area moved into the object's
+  frame through the instance shift and plate origin. So moving the object, or changing the bed
+  shape, re-slices it.
+- **Validation** (`Print::validate()`): an S4 object has one part printed non-planar, besides
+  print surface parts (only, and at least one, with offset layers), no modifiers or negative
+  volumes, and one instance. The mapping only handles relative extrusion, and spiral vase is
+  refused.
+- **Export** (`GCode::do_export()`): when an object is deformed, generation writes the
+  sliced-space G-code to a side file without the G-code processor, marking each object's
+  toolpath (`; NONPLANAR_OBJECT <id>` ... `; NONPLANAR_OBJECT_END`).
+  - `NonPlanarExport::s4_mappers()` builds a mapper per deformed object in G-code coordinates
+    (instance shift less plate origin in XY; Z offset and raft height in Z). It also records the
+    height up to which the object is its print surface, and the window of an unwrapped layout.
+  - `s4_transform_gcode()` maps each object through its own mapper. Its print surface layers
+    and everything outside objects (skirt, brim, other objects) are printed as sliced.
+  - A travel between toolpaths mapped differently was planned in unrelated spaces. It becomes a
+    straight line in the part from where one print ends to where the next starts, and the
+    travel pass lifts it over whatever is in the way.
+  - Only the mapped G-code is then streamed through the processor, so the preview, time
+    estimate and filament statistics describe the curved toolpath that will be printed.
+  - With `polar_kinematics`, the processed file is converted to machine coordinates last, just
+    before the export rename. The preview therefore stays Cartesian, and its G-code text view
+    does not match the polar file line for line.
+  - Clearance hits (with printed material or, for a leaning head, the bed) and radius travel
+    overruns become slicing warnings.
 
 ## Tool
 
@@ -176,9 +221,25 @@ The pipeline hooks into the print steps as follows:
 
 ## Tests
 
-`tests/libslic3r/test_polar_kinematics.cpp` and `tests/libslic3r/test_s4.cpp` cover the
-kinematics round trip, continuity and axis crossing, G-code conversion (path, extrusion,
-timing, machine blocks, arcs), the deformation's guarantees (pinned base, bed clearance, no
-inverted cells, limits and rotation direction), the bounded rotation solver against closed-form
-solutions, meshing volume, the mapper (identity, rigid tilt, squash, outside points) and the
-G-code transform (identity, flow, travel lifts, absolute extrusion refused).
+`tests/libslic3r/test_polar_kinematics.cpp` and `tests/libslic3r/test_s4.cpp` cover the kinematics
+and the non-planar building blocks:
+- **Polar kinematics:** round trip (also with a reversed tilt and pivot compensation),
+  continuity and axis crossing, tilt and radius travel.
+- **Polar G-code conversion:** path, extrusion, timing, machine blocks and their feed mode,
+  arcs.
+- **S4 deformation:** its guarantees (pinned base, planar base height, bed clearance, no
+  inverted cells, limits and rotation direction), and the bounded rotation solver against
+  closed-form solutions.
+- **Meshing:** volume.
+- **Layer shapes:** signed distance, the gap all around, the unwrap, cones.
+- **Mapper:** identity, rigid tilt, squash, outside points.
+- **G-code transform:**
+  - identity, flow, travel lifts, absolute extrusion refused;
+  - tilt threshold and limits;
+  - toolhead clearance against printed material and the bed;
+  - per-object mapping with flat print surfaces, and kept windows.
+
+`tests/fff_print/test_nonplanar.cpp` slices through the whole pipeline:
+- S4 curves layers, holds them flat below the planar height, and needs relative extrusion;
+- polar export drives angle and radius, and tilts the nozzle over S4 layers;
+- a dome printed over a print surface dome keeps the gap all around it, after the whole core.
