@@ -2,6 +2,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
+#include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleMeshSlicer.hpp"
 
 #include <algorithm>
@@ -73,6 +74,8 @@ bool has_word(const std::vector<Move> &moves, char axis)
     return std::any_of(moves.begin(), moves.end(), [axis](const Move &m) { return m.axes.count(axis) > 0; });
 }
 
+double axis(const Move &m, char a) { return m.axes.count(a) ? m.axes.at(a) : 0.; }
+
 // The largest Z range covered by the extrusion of one layer.
 double max_layer_z_span(const std::vector<Move> &moves)
 {
@@ -89,8 +92,6 @@ double max_layer_z_span(const std::vector<Move> &moves)
         out = std::max(out, s.second - s.first);
     return out;
 }
-
-double axis(const Move &m, char a) { return m.axes.count(a) ? m.axes.at(a) : 0.; }
 
 // An upside-down square frustum, 10 mm across at the bed and 40 mm across 15 mm up: every side
 // overhangs 45 degrees from vertical, more than s4_max_overhang (30).

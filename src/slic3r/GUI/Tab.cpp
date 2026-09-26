@@ -6188,9 +6188,9 @@ void TabPrinter::toggle_options()
         for (auto el : {"polar_tilt_pivot_length", "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold", "polar_reverse_tilt"})
             toggle_line(el, polar && m_config->opt_bool("polar_tilt_axis"));
         for (auto el : {"nonplanar_nozzle_cone_angle", "nonplanar_nozzle_length", "nonplanar_head_radius"})
-            toggle_field(el, m_config->opt_bool("nonplanar_clearance_check"));
+            toggle_option(el, m_config->opt_bool("nonplanar_clearance_check"));
         for (auto el : {"polar_max_rotation_speed", "polar_max_tilt_speed"})
-            toggle_field(el, polar && m_config->opt_bool("polar_inverse_time_feed"));
+            toggle_option(el, polar && m_config->opt_bool("polar_inverse_time_feed"));
 
         // SoftFever: hide BBL specific settings
         for (auto el : {"scan_first_layer", "bbl_calib_mark_logo", "bbl_use_printhost"})
