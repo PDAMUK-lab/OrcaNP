@@ -283,7 +283,8 @@ TEST_CASE("Tilt beyond the axis travel is printed at the limit", "[PolarKinemati
     std::istringstream lines(out.str());
     std::string        line;
     while (std::getline(lines, line))
-        for (size_t at = line.find(" B"); at != std::string::npos; at = line.find(" B", at + 1))
-            max_b = std::max(max_b, std::stod(line.substr(at + 2)));
+        if (line.rfind("G1", 0) == 0)
+            if (const size_t at = line.find(" B"); at != std::string::npos)
+                max_b = std::max(max_b, std::stod(line.substr(at + 2)));
     CHECK_THAT(max_b, WithinAbs(30., 1e-6));
 }

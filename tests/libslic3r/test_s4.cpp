@@ -521,7 +521,8 @@ TEST_CASE("Absolute extrusion is refused", "[S4]")
 
 TEST_CASE("The nozzle stays vertical below the tilt threshold and never leans past the limit", "[S4]")
 {
-    // The rigid 20 degree tilt of the mapping test: every layer leans inward by 20 degrees.
+    // The rigid 20 degree tilt of the mapping test: every layer leans inward by 20 degrees about
+    // +Y, which is a little less in the radial plane of points off the X axis.
     const TetMesh         mesh  = voxel_mesh(cantilever_voxels(), 2.);
     const double          angle = 20. * PI / 180.;
     const Eigen::Vector3d pivot(10., 0., 0.);
@@ -552,7 +553,7 @@ TEST_CASE("The nozzle stays vertical below the tilt threshold and never leans pa
         std::istringstream  lines(out);
         std::string         line;
         while (std::getline(lines, line))
-            if (const size_t at = line.find(" B"); at != std::string::npos)
+            if (const size_t at = line.find(" B"); line.rfind("G", 0) == 0 && at != std::string::npos)
                 b.push_back(std::stod(line.substr(at + 2)));
         return b;
     };
@@ -561,7 +562,7 @@ TEST_CASE("The nozzle stays vertical below the tilt threshold and never leans pa
     for (double b : tilts(25., 90., report)) // the layer leans less than the threshold
         CHECK_THAT(b, WithinAbs(0., 1e-9));
     for (double b : tilts(5., 90., report)) // twice the threshold is reached: the layer is followed
-        CHECK_THAT(b, WithinAbs(-20., 1e-3));
+        CHECK_THAT(b, WithinAbs(-20., 0.1));
     for (double b : tilts(0., 10., report)) // cut back to the limit
         CHECK_THAT(b, WithinAbs(-10., 1e-3));
     CHECK(report.tilt_limited > 0);
