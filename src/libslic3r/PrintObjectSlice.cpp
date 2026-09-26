@@ -860,7 +860,7 @@ void append_tets(NonPlanar::TetMesh &mesh, std::vector<Eigen::Vector3d> &deforme
 
 bool PrintObject::is_s4_print_surface(const ModelVolume &volume)
 {
-    return volume.is_model_part() && volume.config.has("s4_print_surface") && volume.config.opt_bool("s4_print_surface");
+    return volume.is_model_part() && volume.config.has("s4_print_surface") && volume.config.get().opt_bool("s4_print_surface");
 }
 
 void PrintObject::deform_s4()
