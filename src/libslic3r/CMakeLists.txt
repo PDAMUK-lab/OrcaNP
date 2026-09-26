@@ -344,6 +344,8 @@ set(lisbslic3r_sources
     NonPlanar/PolarKinematics.hpp
     NonPlanar/S4Deformation.cpp
     NonPlanar/S4Deformation.hpp
+    NonPlanar/S4Mapping.cpp
+    NonPlanar/S4Mapping.hpp
     NormalUtils.cpp
     NormalUtils.hpp
     NSVGUtils.cpp
@@ -573,6 +575,7 @@ add_library(libslic3r_cgal STATIC
     CutSurface.hpp CutSurface.cpp
     IntersectionPoints.hpp IntersectionPoints.cpp
     MeshBoolean.hpp MeshBoolean.cpp
+    NonPlanar/Tetrahedralize.hpp NonPlanar/Tetrahedralize.cpp
     TryCatchSignal.hpp TryCatchSignal.cpp
     Triangulation.hpp Triangulation.cpp
 )
