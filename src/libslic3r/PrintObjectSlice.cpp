@@ -814,14 +814,6 @@ void groupingVolumesForBrim(PrintObject* object, LayerPtrs& layers, int firstLay
     reGroupingLayerPolygons(object->firstLayerObjGroupsMod(), layers.front()->lslices, scaled_resolution);
 }
 
-// Called by make_perimeters()
-// 1) Decides Z positions of the layers,
-// 2) Initializes layers and their regions
-// 3) Slices the object meshes
-// 4) Slices the modifier meshes and reclassifies the slices of the object meshes by the slices of the modifier meshes
-// 5) Applies size compensation (offsets the slices in XY plane)
-// 6) Replaces bad slices by the slices reconstructed from the upper/lower layer
-// Resulting expolygons of layer regions are marked as Internal.
 void PrintObject::deform_s4()
 {
     // Print::validate() guarantees one model part and one instance.
@@ -886,13 +878,27 @@ void PrintObject::deform_s4()
     m_s4 = std::move(s4);
 }
 
+// Called by make_perimeters()
+// 1) Decides Z positions of the layers,
+// 2) Initializes layers and their regions
+// 3) Slices the object meshes
+// 4) Slices the modifier meshes and reclassifies the slices of the object meshes by the slices of the modifier meshes
+// 5) Applies size compensation (offsets the slices in XY plane)
+// 6) Replaces bad slices by the slices reconstructed from the upper/lower layer
+// Resulting expolygons of layer regions are marked as Internal.
 void PrintObject::slice()
 {
     if (! this->set_started(posSlice))
         return;
+    const bool had_s4 = m_s4 != nullptr;
     m_s4.reset();
     if (m_config.s4_enabled.value)
         this->deform_s4();
+    else if (had_s4) {
+        // The last slicing used the deformed height.
+        m_slicing_params.valid = false;
+        this->update_slicing_parameters();
+    }
     //BBS: add flag to reload scene for shell rendering
     m_print->set_status(5, L("Slicing mesh"), PrintBase::SlicingStatus::RELOAD_SCENE);
     std::vector<coordf_t> layer_height_profile;

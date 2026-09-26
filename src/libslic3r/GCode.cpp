@@ -2576,11 +2576,13 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     }
     file.close();
 
-    if (s4) {
+    if (s4) try {
         // Map the toolpath back, then feed it to the processor in whole lines as generation would.
         std::stringstream real;
         {
             const std::unique_ptr<NonPlanar::S4Mapper> mapper = NonPlanarExport::s4_mapper(*print);
+            if (! mapper)
+                throw Slic3r::RuntimeError("Non-planar (S4) objects have no deformation to map the G-code through.");
             boost::nowide::ifstream                    sliced(path_sliced);
             const NonPlanar::S4GCodeReport report = NonPlanar::s4_transform_gcode(sliced, real, *mapper,
                                                                                   NonPlanarExport::s4_gcode_config(print->config()));
@@ -2605,6 +2607,10 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         }
         out.write(chunk);
         out.close();
+    } catch (const std::exception &ex) {
+        boost::nowide::remove(path_sliced.c_str());
+        boost::nowide::remove(path_tmp.c_str());
+        throw Slic3r::RuntimeError(std::string("Non-planar (S4) G-code export failed: ") + ex.what());
     }
 
     check_placeholder_parser_failed();
