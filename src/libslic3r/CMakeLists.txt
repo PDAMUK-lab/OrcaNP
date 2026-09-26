@@ -342,6 +342,8 @@ set(lisbslic3r_sources
     MutablePriorityQueue.hpp
     NonPlanar/PolarKinematics.cpp
     NonPlanar/PolarKinematics.hpp
+    NonPlanar/S4Deformation.cpp
+    NonPlanar/S4Deformation.hpp
     NormalUtils.cpp
     NormalUtils.hpp
     NSVGUtils.cpp
