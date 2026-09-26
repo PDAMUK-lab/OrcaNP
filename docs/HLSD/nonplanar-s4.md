@@ -180,7 +180,9 @@ Two groups of settings switch the pipeline on:
   axis letters and directions, axis crossing, the radius and tilt travel, the tilt threshold,
   and the conversion and speed limits.
 - **Printer settings > Basic information > Non-planar toolhead** (`nonplanar_*`): the clearance
-  check and the nozzle cone angle, nozzle length and head radius it uses.
+  check and what it models. The nozzle tip's flat diameter and the angle of absolute clearance
+  (rising from the tip's face, 0 degrees flat) define the nozzle cone. The nozzle length, where
+  the toolhead's radius takes over, and that radius complete it.
 
 Most printer settings only affect G-code export. The tilt travel also bounds the S4 deformation:
 with a tilting nozzle the S4 rotation limits are capped at the travel both sides of vertical

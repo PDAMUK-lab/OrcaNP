@@ -5215,7 +5215,8 @@ void TabPrinter::build_fff()
 
         optgroup = page->new_optgroup(L("Non-planar toolhead"), L"param_advanced");
         optgroup->append_single_option_line("nonplanar_clearance_check");
-        optgroup->append_single_option_line("nonplanar_nozzle_cone_angle");
+        optgroup->append_single_option_line("nonplanar_nozzle_tip_diameter");
+        optgroup->append_single_option_line("nonplanar_nozzle_clearance_angle");
         optgroup->append_single_option_line("nonplanar_nozzle_length");
         optgroup->append_single_option_line("nonplanar_head_radius");
 
@@ -6187,7 +6188,7 @@ void TabPrinter::toggle_options()
             toggle_line(el, polar);
         for (auto el : {"polar_tilt_pivot_length", "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold", "polar_reverse_tilt"})
             toggle_line(el, polar && m_config->opt_bool("polar_tilt_axis"));
-        for (auto el : {"nonplanar_nozzle_cone_angle", "nonplanar_nozzle_length", "nonplanar_head_radius"})
+        for (auto el : {"nonplanar_nozzle_tip_diameter", "nonplanar_nozzle_clearance_angle", "nonplanar_nozzle_length", "nonplanar_head_radius"})
             toggle_option(el, m_config->opt_bool("nonplanar_clearance_check"));
         for (auto el : {"polar_max_rotation_speed", "polar_max_tilt_speed"})
             toggle_option(el, polar && m_config->opt_bool("polar_inverse_time_feed"));

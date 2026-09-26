@@ -899,7 +899,7 @@ void Transform::pass_head_clearance()
     HeightField hf(lo, hi, m_cfg.height_field_res, m_cfg.nozzle_radius);
 
     const double k        = std::tan(std::clamp(m_cfg.nozzle_cone_angle, 0., 1.5));
-    const double r0       = m_cfg.nozzle_radius;
+    const double r0       = m_cfg.nozzle_tip_radius;
     const double len      = std::max(m_cfg.nozzle_length, 0.);
     const double big_r    = std::max(m_cfg.head_radius, r0 + k * len);
     const double ignore2  = m_cfg.clearance_ignore_radius * m_cfg.clearance_ignore_radius;

@@ -135,7 +135,8 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "polar_radius_min",
         "polar_radius_max",
         "nonplanar_clearance_check",
-        "nonplanar_nozzle_cone_angle",
+        "nonplanar_nozzle_clearance_angle",
+        "nonplanar_nozzle_tip_diameter",
         "nonplanar_nozzle_length",
         "nonplanar_head_radius",
         //BBS: add bed_exclude_area

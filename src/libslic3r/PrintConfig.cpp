@@ -8264,18 +8264,30 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
-    def = this->add("nonplanar_nozzle_cone_angle", coFloat);
-    def->label    = L("Nozzle cone angle");
-    def->tooltip  = L("Half-angle of the nozzle's conical tip, from its axis.");
-    def->sidetext = u8"°";	// degrees, don't need translation
+    def = this->add("nonplanar_nozzle_tip_diameter", coFloat);
+    def->label    = L("Nozzle tip diameter");
+    def->tooltip  = L("Outer diameter of the flat face at the nozzle tip, around the bore. The clearance angle is measured "
+                      "from its edge.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
-    def->max      = 85;
     def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(40));
+    def->set_default_value(new ConfigOptionFloat(0.8));
+
+    def = this->add("nonplanar_nozzle_clearance_angle", coFloat);
+    def->label    = L("Nozzle clearance angle");
+    def->tooltip  = L("Angle of absolute clearance: from the edge of the flat nozzle tip, the nozzle and hotend stay above a "
+                      "cone rising at this angle from the tip's face (0 degrees is flat). With a vertical nozzle, surfaces "
+                      "sloping more steeply than this reach into it.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 5;
+    def->max      = 90;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(50));
 
     def = this->add("nonplanar_nozzle_length", coFloat);
     def->label    = L("Nozzle length");
-    def->tooltip  = L("Length of the nozzle cone, from the tip to where the wider toolhead begins.");
+    def->tooltip  = L("Height of the clearance cone above the nozzle tip, up to where the toolhead's radius takes over. With "
+                      "an angle of absolute clearance for the whole hotend, its full height.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->mode     = comAdvanced;

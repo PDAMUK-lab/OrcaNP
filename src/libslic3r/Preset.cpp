@@ -1469,7 +1469,7 @@ static std::vector<std::string> s_Preset_printer_options {
     "polar_inverse_time_feed", "polar_max_rotation_speed", "polar_max_tilt_speed", "polar_tilt_pivot_length",
     "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold", "polar_reverse_tilt", "polar_signed_radius", "polar_radius_min",
     "polar_radius_max",
-    "nonplanar_clearance_check", "nonplanar_nozzle_cone_angle", "nonplanar_nozzle_length", "nonplanar_head_radius",
+    "nonplanar_clearance_check", "nonplanar_nozzle_clearance_angle", "nonplanar_nozzle_tip_diameter", "nonplanar_nozzle_length", "nonplanar_head_radius",
     "grab_length", "support_object_skip_flush", "physical_extruder_map",
     "cooling_tube_retraction",
     "cooling_tube_length", "high_current_on_filament_swap", "parking_pos_retraction", "extra_loading_move", "wipe_tower_type", "purge_in_prime_tower", "enable_filament_ramming", "tool_change_on_wipe_tower", "wait_for_temp_on_wipe_tower",

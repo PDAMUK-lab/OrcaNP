@@ -70,7 +70,9 @@ NonPlanar::S4GCodeConfig s4_gcode_config(const PrintConfig &config)
         cfg.max_tilt_away   = Geometry::deg2rad(config.polar_tilt_max.value);
     }
     cfg.clearance_check   = config.nonplanar_clearance_check.value;
-    cfg.nozzle_cone_angle = Geometry::deg2rad(config.nonplanar_nozzle_cone_angle.value);
+    // The clearance angle rises from the tip's face; the cone's half-angle is from the nozzle axis.
+    cfg.nozzle_cone_angle = Geometry::deg2rad(90. - config.nonplanar_nozzle_clearance_angle.value);
+    cfg.nozzle_tip_radius = 0.5 * config.nonplanar_nozzle_tip_diameter.value;
     cfg.nozzle_length     = config.nonplanar_nozzle_length.value;
     cfg.head_radius       = config.nonplanar_head_radius.value;
     return cfg;

@@ -72,13 +72,14 @@ struct S4GCodeConfig
     double max_tilt_away   = 1.5707963267948966;
 
     // Clearance of the nozzle and the head around material already printed, and above the bed
-    // (at z_floor). The nozzle is a
-    // cone of half-angle `nozzle_cone_angle` (radians) widening from `nozzle_radius` at the tip
-    // up to `nozzle_length`, and the head above it a cylinder of `head_radius`, both along the
-    // nozzle axis. Material within `clearance_ignore_radius` of the tip (the beads it is laying
+    // (at z_floor). The nozzle is a cone of half-angle `nozzle_cone_angle` (radians, from the
+    // nozzle axis) widening from `nozzle_tip_radius` (the edge of the flat tip) up to
+    // `nozzle_length`, and the head above it a cylinder of `head_radius`, both along the nozzle
+    // axis. Material within `clearance_ignore_radius` of the tip (the beads it is laying
     // and touching) and less than `clearance_tolerance` inside the head is not a collision.
     bool   clearance_check          = false;
     double nozzle_cone_angle        = 0.698; // 40 degrees
+    double nozzle_tip_radius        = 0.4;
     double nozzle_length            = 5.;
     double head_radius              = 20.;
     double clearance_tolerance      = 0.2;
