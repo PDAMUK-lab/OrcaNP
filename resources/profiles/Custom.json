@@ -1,6 +1,6 @@
 {
 	"name": "Custom Printer",
-	"version": "02.04.00.05",
+	"version": "02.04.00.06",
 	"force_update": "0",
 	"description": "My configurations",
 	"machine_model_list": [
@@ -11,6 +11,10 @@
 		{
 			"name": "Generic Marlin Printer",
 			"sub_path": "machine/MyMarlin.json"
+		},
+		{
+			"name": "Generic Polar Non-planar Printer",
+			"sub_path": "machine/Generic Polar Non-planar Printer.json"
 		},
 		{
 			"name": "Generic RRF Printer",
@@ -29,6 +33,10 @@
 		{
 			"name": "fdm_process_common",
 			"sub_path": "process/fdm_process_common.json"
+		},
+		{
+			"name": "0.20mm Non-planar S4 @MyPolar",
+			"sub_path": "process/0.20mm Non-planar S4 @MyPolar.json"
 		},
 		{
 			"name": "fdm_process_klipper_common",
@@ -233,6 +241,10 @@
 		{
 			"name": "MyMarlin 0.4 nozzle",
 			"sub_path": "machine/MyMarlin 0.4 nozzle.json"
+		},
+		{
+			"name": "MyPolar 0.4 nozzle",
+			"sub_path": "machine/MyPolar 0.4 nozzle.json"
 		},
 		{
 			"name": "fdm_klipper_common",
