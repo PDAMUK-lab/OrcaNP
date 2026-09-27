@@ -570,11 +570,11 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         float machine_w = 0.0f;
         if (m_machine_pose) {
             char buf[64];
-            sprintf(buf, "%s %.2f°", _u8L("Bed").c_str(), (*m_machine_pose)[0]);
+            sprintf(buf, "%s %.2f\u00B0", _u8L("Bed").c_str(), (*m_machine_pose)[0]);
             machine_texts[0] = buf;
             sprintf(buf, "%s %.3f", _u8L("Radius").c_str(), (*m_machine_pose)[1]);
             machine_texts[1] = buf;
-            sprintf(buf, "%s %.2f°", _u8L("Tilt").c_str(), (*m_machine_pose)[3]);
+            sprintf(buf, "%s %.2f\u00B0", _u8L("Tilt").c_str(), (*m_machine_pose)[3]);
             machine_texts[2] = buf;
             for (const std::string& text : machine_texts)
                 machine_w += ImGui::CalcTextSize(text.c_str()).x;
