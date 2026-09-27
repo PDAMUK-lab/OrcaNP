@@ -945,3 +945,23 @@ TEST_CASE("A part is lifted onto a post the surface gap above it", "[S4]")
     post.height = 1.;
     CHECK_THAT(lift_onto_post(lens.vertices, lens.triangles, post, 0.2), WithinAbs(0., 1e-12));
 }
+
+TEST_CASE("An automatic dome fits the part's underside over the post", "[S4]")
+{
+    // The concave slab's underside rises from 1.5 mm at 10 mm out to 3 mm in the middle: a dome
+    // about 1.5 mm high over a 10 mm radius nests it. A flat base gets a flat post.
+    const Surface lens = concave_slab();
+    Post          post;
+    post.radius = 10.;
+    post.height = 2.;
+    CHECK_THAT(fit_dome_height(lens.vertices, lens.triangles, post, 0.2), WithinAbs(1.5, 0.2));
+
+    std::vector<std::array<int, 3>> voxels;
+    for (int x = 0; x < 5; ++x)
+        for (int y = 0; y < 5; ++y)
+            voxels.push_back({ x, y, 0 });
+    const Surface box = voxel_surface(voxels, 2.);
+    post.centre       = Eigen::Vector2d(5., 5.);
+    post.radius       = 4.;
+    CHECK_THAT(fit_dome_height(box.vertices, box.triangles, post, 0.2), WithinAbs(0., 1e-12));
+}

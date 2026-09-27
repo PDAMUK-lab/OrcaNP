@@ -324,6 +324,12 @@ static t_config_enum_values s_keys_map_S4SurfaceProjection{
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceProjection)
 
+static t_config_enum_values s_keys_map_S4PostSize{
+    { "auto",   int(S4PostSize::Auto) },
+    { "custom", int(S4PostSize::Custom) },
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4PostSize)
+
 static t_config_enum_values s_keys_map_S4SurfaceCore{
     { "parts",    int(S4SurfaceCore::Parts) },
     { "sphere",   int(S4SurfaceCore::Sphere) },
@@ -5109,6 +5115,20 @@ void PrintConfigDef::init_fff_params()
     def->max      = 60;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(20));
+
+    def = this->add("s4_post_size", coEnum);
+    def->label    = L("Post size");
+    def->category = L("Quality");
+    def->tooltip  = L("Automatic: as wide as the part's base, as high as the toolhead needs to lean as far as the tilt axis "
+                      "goes under the part without reaching the bed, with a dome fitted to a concave underside.\n"
+                      "Custom: the post diameter, height and dome height set below.");
+    def->enum_keys_map = &ConfigOptionEnum<S4PostSize>::get_enum_values();
+    def->enum_values.push_back("auto");
+    def->enum_values.push_back("custom");
+    def->enum_labels.push_back(L("Automatic"));
+    def->enum_labels.push_back(L("Custom"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<S4PostSize>(S4PostSize::Auto));
 
     def = this->add("s4_post_diameter", coFloat);
     def->label    = L("Post diameter");

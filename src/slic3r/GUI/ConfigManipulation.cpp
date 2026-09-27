@@ -1024,8 +1024,9 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
         toggle_line(el, has_s4 && s4_shape == S4LayerShape::Offset);
     const bool has_post = has_s4 && s4_shape == S4LayerShape::Offset &&
                           config->opt_enum<S4SurfaceCore>("s4_surface_core") == S4SurfaceCore::Post;
+    toggle_line("s4_post_size", has_post);
     for (auto el : {"s4_post_diameter", "s4_post_height", "s4_dome_height"})
-        toggle_line(el, has_post);
+        toggle_line(el, has_post && config->opt_enum<S4PostSize>("s4_post_size") == S4PostSize::Custom);
     toggle_line("s4_cone_angle", has_s4 && s4_shape == S4LayerShape::Cone);
 
     bool have_sequential_printing = (config->opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject);

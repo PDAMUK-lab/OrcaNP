@@ -1296,6 +1296,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "s4_surface_projection"
             || opt_key == "s4_surface_core"
             || opt_key == "s4_cone_angle"
+            || opt_key == "s4_post_size"
             || opt_key == "s4_post_diameter"
             || opt_key == "s4_post_height"
             || opt_key == "s4_dome_height"

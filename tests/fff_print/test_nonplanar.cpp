@@ -391,7 +391,8 @@ TEST_CASE("A part is printed on a generated post, lifted off the bed", "[NonPlan
     object->add_instance()->set_offset(Vec3d(100., 100., 0.));
 
     DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "post" },
-                                              { "s4_post_diameter", post_diameter }, { "s4_post_height", post_height },
+                                              { "s4_post_size", "custom" }, { "s4_post_diameter", post_diameter },
+                                              { "s4_post_height", post_height },
                                               { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
                                               { "layer_change_gcode", "G92 E0" }, { "skirt_loops", 0 }, { "brim_type", "no_brim" },
                                               { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
@@ -439,6 +440,36 @@ TEST_CASE("A part is printed on a generated post, lifted off the bed", "[NonPlan
     CHECK(block_high >= post_height + gap + height - 0.35);
     CHECK(block_reach <= 5.05);
     CHECK(block_reach >= 4.5); // beyond the post
+}
+
+TEST_CASE("An automatic post is as high as the toolhead needs to lean under the part", "[NonPlanar]")
+{
+    // Leaning 60 degrees, the head's rim 20 mm out, 15 mm up the nozzle, drops 20 sin 60 - 15 cos 60
+    // below the tip: the part must stand that high. Its flat base gets a flat post as wide.
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "block.stl";
+    object->add_volume(TriangleMesh(its_make_cube(10., 10., 4.)));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "post" },
+                                              { "s4_post_size", "auto" }, { "use_relative_e_distances", true },
+                                              { "layer_change_gcode", "G92 E0" }, { "printable_area", "0x0,200x0,200x200,0x200" },
+                                              { "polar_kinematics", true }, { "polar_tilt_axis", true }, { "polar_tilt_min", -45 },
+                                              { "polar_tilt_max", 60 }, { "nonplanar_head_radius", 20 }, { "nonplanar_nozzle_length", 15 },
+                                              { "nonplanar_nozzle_tip_diameter", 0.8 }, { "nonplanar_nozzle_clearance_angle", 50 },
+                                              { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    Test::gcode(print);
+
+    const PrintObject::S4Deformation *s4 = print.objects().front()->s4_deformation();
+    REQUIRE(s4 != nullptr);
+    const BoundingBoxf3 post = bounding_box(s4->core);
+    CHECK_THAT(post.size().z(), WithinAbs(20. * std::sin(PI / 3.) - 15. * std::cos(PI / 3.), 1e-3));
+    CHECK_THAT(post.size().x(), WithinAbs(std::sqrt(50.) * 2., 0.05)); // the base's corners
 }
 
 namespace {

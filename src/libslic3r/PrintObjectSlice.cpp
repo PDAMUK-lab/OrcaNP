@@ -863,6 +863,21 @@ bool PrintObject::is_s4_print_surface(const ModelVolume &volume)
     return volume.is_model_part() && volume.config.has("s4_print_surface") && volume.config.get().opt_bool("s4_print_surface");
 }
 
+// How high the part must stand for the toolhead to lean as far as the tilt axis goes under it
+// without reaching the bed: the lowest points of the nozzle's tip, the top of its cone and the
+// head's rim, leaning that far.
+static double toolhead_clearance(const PrintConfig &config)
+{
+    if (! config.polar_kinematics.value || ! config.polar_tilt_axis.value)
+        return 0.;
+    const double lean = Geometry::deg2rad(std::clamp(std::max(-config.polar_tilt_min.value, config.polar_tilt_max.value), 0., 90.));
+    const double tip  = 0.5 * config.nonplanar_nozzle_tip_diameter.value;
+    const double len  = config.nonplanar_nozzle_length.value;
+    const double cone = tip + len * std::tan(std::clamp(Geometry::deg2rad(90. - config.nonplanar_nozzle_clearance_angle.value), 0., 1.5));
+    return std::max({ 0., tip * std::sin(lean), cone * std::sin(lean) - len * std::cos(lean),
+                      config.nonplanar_head_radius.value * std::sin(lean) - len * std::cos(lean) });
+}
+
 void PrintObject::deform_s4()
 {
     // Print::validate() guarantees one instance and one part printed non-planar; the others
@@ -952,9 +967,15 @@ void PrintObject::deform_s4()
                 post.bottom = std::numeric_limits<double>::infinity();
                 for (const Eigen::Vector3d &v : shell.vertices)
                     post.bottom = std::min(post.bottom, v.z());
-                post.radius      = m_config.s4_post_diameter.value > 0. ? 0.5 * m_config.s4_post_diameter.value : base_radius;
-                post.height      = m_config.s4_post_height.value;
-                post.dome_height = m_config.s4_dome_height.value;
+                const bool custom = m_config.s4_post_size.value == S4PostSize::Custom;
+                post.radius       = custom && m_config.s4_post_diameter.value > 0. ? 0.5 * m_config.s4_post_diameter.value : base_radius;
+                if (custom) {
+                    post.height      = m_config.s4_post_height.value;
+                    post.dome_height = m_config.s4_dome_height.value;
+                } else {
+                    post.height      = std::max(toolhead_clearance(m_print->config()), 2.);
+                    post.dome_height = NonPlanar::fit_dome_height(shell.vertices, shell.triangles, post, gap);
+                }
                 if (post.radius < 1.)
                     throw Slic3r::SlicingError(L("The part stands on too small a base for a post as wide: set the post diameter."), this->id().id);
                 if (post.height + post.dome_height < 0.5)

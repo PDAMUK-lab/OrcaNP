@@ -220,6 +220,12 @@ enum class S4LayerShape
 
 // What layers are offset from: the object's print surface parts, or a core generated to fit the
 // part's inner surface.
+enum class S4PostSize
+{
+    Auto,   // fitted to the part and the toolhead
+    Custom, // s4_post_diameter, s4_post_height, s4_dome_height
+};
+
 enum class S4SurfaceCore
 {
     Parts,
@@ -723,6 +729,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(PowerLossRecoveryMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SurfaceFillOrder)
 
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4LayerShape)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4PostSize)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceProjection)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceCore)
 
@@ -1179,6 +1186,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<S4SurfaceProjection>, s4_surface_projection))
     ((ConfigOptionEnum<S4SurfaceCore>, s4_surface_core))
     ((ConfigOptionFloat,               s4_cone_angle))
+    ((ConfigOptionEnum<S4PostSize>,    s4_post_size))
     ((ConfigOptionFloat,               s4_post_diameter))
     ((ConfigOptionFloat,               s4_post_height))
     ((ConfigOptionFloat,               s4_dome_height))

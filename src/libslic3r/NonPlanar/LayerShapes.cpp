@@ -241,11 +241,22 @@ std::pair<Eigen::Vector2d, double> part_base(const std::vector<Eigen::Vector3d> 
     return { middle, radius };
 }
 
-double lift_onto_post(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, const Post &post,
-                      double gap)
+namespace {
+
+// The part's lowest point over each cell of a grid over the post (infinity where the part is not
+// over it), by rasterizing its faces; cell centres off the round coordinates models are drawn in.
+struct Underside
 {
-    // The part's lowest point over each cell of a grid over the post, by rasterizing its faces;
-    // cell centres off the round coordinates models are drawn in.
+    Eigen::Vector2d     origin;
+    double              cell;
+    int                 n;
+    std::vector<double> lowest;
+
+    Eigen::Vector2d centre(int i, int j) const { return origin + cell * Eigen::Vector2d(i + 0.5, j + 0.5); }
+};
+
+Underside underside(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, const Post &post)
+{
     const double          cell   = std::max(0.25, post.radius / 200.);
     const int             n      = int(std::ceil(2. * post.radius / cell)) + 1;
     const Eigen::Vector2d origin = post.centre - Eigen::Vector2d::Constant(post.radius) + cell * Eigen::Vector2d(0.0137, 0.0291);
@@ -271,12 +282,58 @@ double lift_onto_post(const std::vector<Eigen::Vector3d> &vertices, const std::v
                 }
             }
     }
+    return { origin, cell, n, std::move(lowest) };
+}
+
+double lift_over(const Underside &u, const Post &post, double gap)
+{
     double lift = 0.;
-    for (int j = 0; j < n; ++j)
-        for (int i = 0; i < n; ++i)
-            if (const double z = lowest[size_t(j) * n + i]; std::isfinite(z))
-                lift = std::max(lift, post.top_at(origin + cell * Eigen::Vector2d(i + 0.5, j + 0.5)) + gap - z);
+    for (int j = 0; j < u.n; ++j)
+        for (int i = 0; i < u.n; ++i)
+            if (const double z = u.lowest[size_t(j) * u.n + i]; std::isfinite(z))
+                lift = std::max(lift, post.top_at(u.centre(i, j)) + gap - z);
     return lift;
+}
+
+} // namespace
+
+double lift_onto_post(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, const Post &post,
+                      double gap)
+{
+    return lift_over(underside(vertices, triangles, post), post, gap);
+}
+
+double fit_dome_height(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, Post post,
+                       double gap)
+{
+    const Underside u = underside(vertices, triangles, post);
+    double          lo = std::numeric_limits<double>::infinity(), hi = -lo;
+    for (int j = 0; j < u.n; ++j)
+        for (int i = 0; i < u.n; ++i)
+            if (const double z = u.lowest[size_t(j) * u.n + i]; std::isfinite(z) && (u.centre(i, j) - post.centre).norm() <= post.radius) {
+                lo = std::min(lo, z);
+                hi = std::max(hi, z);
+            }
+    double best = 0., least = std::numeric_limits<double>::infinity();
+    if (! (hi > lo))
+        return best;
+    for (int k = 0; k <= 48; ++k) {
+        post.dome_height  = (hi - lo) * k / 48.;
+        const double lift = lift_over(u, post, gap);
+        double       room = 0.;
+        int          count = 0;
+        for (int j = 0; j < u.n; ++j)
+            for (int i = 0; i < u.n; ++i)
+                if (const double z = u.lowest[size_t(j) * u.n + i], top = post.top_at(u.centre(i, j)); std::isfinite(z) && std::isfinite(top)) {
+                    room += z + lift - top - gap;
+                    ++count;
+                }
+        if (count > 0 && room / count < least - 1e-9) {
+            least = room / count;
+            best  = post.dome_height;
+        }
+    }
+    return best;
 }
 
 FittedCore fit_sphere_core(const SurfaceDistance &part)
