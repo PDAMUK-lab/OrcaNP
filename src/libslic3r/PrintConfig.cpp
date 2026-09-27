@@ -5025,8 +5025,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Planar up to height");
     def->category = L("Quality");
     def->tooltip  = L("The part is printed with flat layers up to this height above the bed, and non-planar above it, where "
-                      "the flat part is the base the deformation starts from. Overhangs below this height are not corrected. "
-                      "0 deforms from the bed up.");
+                      "the flat part is the base the deformation starts from. The layers blend from flat to curved over about "
+                      "one tetrahedron below this height. Overhangs below it are not corrected. 0 deforms from the bed up.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->mode     = comAdvanced;

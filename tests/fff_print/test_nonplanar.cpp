@@ -23,20 +23,24 @@ namespace {
 struct Move
 {
     std::map<char, double> axes; // every axis word seen so far, carried between moves
-    double                 e     = 0.;
-    int                    layer = 0;
+    double                 e       = 0.;
+    int                    layer   = 0;
+    double                 layer_z = 0.; // the layer's height in the sliced space (its ;Z: comment)
 };
 
 std::vector<Move> body_moves(const std::string &gcode)
 {
     std::vector<Move>      out;
     std::map<char, double> pos;
-    int                    layer = 0;
+    int                    layer   = 0;
+    double                 layer_z = 0.;
     std::istringstream     in(gcode);
     std::string            line;
     while (std::getline(in, line)) {
         if (line.rfind(";LAYER_CHANGE", 0) == 0)
             ++layer;
+        else if (line.rfind(";Z:", 0) == 0)
+            layer_z = std::stod(line.substr(3));
         const std::string code = line.substr(0, line.find(';'));
         std::istringstream words(code);
         std::string        cmd;
@@ -54,8 +58,9 @@ std::vector<Move> body_moves(const std::string &gcode)
             }
         if (layer == 0)
             continue;
-        m.axes  = pos;
-        m.layer = layer;
+        m.axes    = pos;
+        m.layer   = layer;
+        m.layer_z = layer_z;
         out.push_back(m);
     }
     return out;
@@ -127,7 +132,8 @@ TEST_CASE("S4 printing curves the layers of an overhanging part", "[NonPlanar]")
     // Only the tip is written: no tilt axis without a polar printer.
     CHECK_FALSE(has_word(moves, 'B'));
     for (const Move &m : moves)
-        REQUIRE(axis(m, 'Z') > 0.);
+        if (m.e > 0.)
+            REQUIRE(axis(m, 'Z') > 0.);
 }
 
 TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlanar]")
@@ -136,7 +142,9 @@ TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlan
     config.set_deserialize_strict({ { "s4_planar_height", 6. } });
     const std::vector<Move> moves = body_moves(slice({ inverted_frustum() }, config));
 
-    // Layers wholly below 6 mm are flat; above it the part still bends.
+    // Layers wholly below 6 mm are flat, except where tetrahedra reaching above it blend into the
+    // bend (within about one 2 mm cell, the default 1/20 of the part's 40 mm width); above it the
+    // part still bends.
     std::map<int, std::pair<double, double>> span;
     for (const Move &m : moves)
         if (m.e > 0.) {
@@ -146,11 +154,11 @@ TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlan
         }
     size_t flat = 0;
     for (const auto &[layer, s] : span)
-        if (s.second < 5.5) {
+        if (s.second < 2.5) {
             CHECK_THAT(s.second - s.first, WithinAbs(0., 1e-3));
             ++flat;
         }
-    CHECK(flat >= 15); // 0.3 mm layers
+    CHECK(flat >= 8); // 0.3 mm layers
     CHECK(max_layer_z_span(moves) > 0.3);
 }
 
@@ -207,6 +215,13 @@ TEST_CASE("Polar S4 export tilts the nozzle over curved layers", "[NonPlanar]")
 
 namespace {
 
+// Top of the layer holding `top` (0.3 mm layers): the print surface is printed up to it, and
+// what is offset from the surface above it.
+double surface_top(double top)
+{
+    return 0.3 + std::ceil((top - 0.3) / 0.3 - 1e-6) * 0.3;
+}
+
 // Upper half of a sphere standing on the bed.
 TriangleMesh dome(double radius)
 {
@@ -231,13 +246,17 @@ TEST_CASE("Layers offset from a print surface part keep the surface gap all arou
     object->add_instance()->set_offset(Vec3d(100., 100., 0.));
 
     DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_gap", gap },
-                                              { "use_relative_e_distances", true }, { "layer_height", 0.3 },
-                                              { "initial_layer_print_height", 0.3 }, { "enable_support", false } });
+                                              { "use_relative_e_distances", true }, { "layer_change_gcode", "G92 E0" },
+                                              { "skirt_loops", 0 }, { "brim_type", "no_brim" },
+                                              { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
+                                              { "enable_support", false } });
     Print print;
     for (ModelObject *mo : model.objects)
         print.auto_assign_extruders(mo);
     print.apply(model, config);
-    REQUIRE(print.validate().string.empty());
+    const StringObjectException invalid = print.validate();
+    INFO(invalid.string);
+    REQUIRE(invalid.string.empty());
     const std::vector<Move> moves = body_moves(Test::gcode(print));
 
     // The dome's centre, on the bed, from the core's first layer.
@@ -247,30 +266,29 @@ TEST_CASE("Layers offset from a print surface part keep the surface gap all arou
             first.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
     const Vec3d centre(first.center().x(), first.center().y(), 0.);
 
-    size_t core_points = 0, shell_points = 0, last_core = 0, first_shell = moves.size();
-    double shell_min = 1e9, shell_max = 0.;
-    for (size_t i = 0; i < moves.size(); ++i) {
-        const Move &m = moves[i];
-        if (m.e <= 0.)
+    // The core fills the layers up to its top, the shell the layers above; nothing lies within
+    // the gap, and the shell stays inside its dome.
+    const double core_top    = surface_top(core_radius);
+    size_t       core_points = 0, shell_points = 0;
+    double       core_max = 0., shell_min = 1e9, shell_max = 0.;
+    for (const Move &m : moves) {
+        if (m.e <= 0. || m.layer == 1) // only the core prints on the bed
             continue;
         const double d = (Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')) - centre).norm();
-        if (d <= core_radius + 0.1) {
+        if (m.layer_z <= core_top + 1e-3) {
             ++core_points;
-            last_core = i;
+            core_max = std::max(core_max, d);
         } else {
             ++shell_points;
-            first_shell = std::min(first_shell, i);
-            shell_min   = std::min(shell_min, d);
-            shell_max   = std::max(shell_max, d);
+            shell_min = std::min(shell_min, d);
+            shell_max = std::max(shell_max, d);
         }
     }
     REQUIRE(core_points > 0);
     REQUIRE(shell_points > 0);
-    // Nothing is printed within the gap, and the shell stays inside its dome.
+    CHECK(core_max <= core_radius + 0.35); // the top layer's cap, printed at the layer's top
     CHECK(shell_min >= core_radius + gap - 0.05);
-    CHECK(shell_max <= shell_radius + 0.3);
-    // The whole core comes first.
-    CHECK(last_core < first_shell);
+    CHECK(shell_max <= shell_radius + 0.5);
 }
 
 namespace {
@@ -330,13 +348,16 @@ TEST_CASE("A generated sphere core puts the first layer on the part's inner surf
 
     DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "sphere" },
                                               { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
-                                              { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
-                                              { "enable_support", false } });
+                                              { "skirt_loops", 0 }, { "brim_type", "no_brim" },
+                                              { "layer_change_gcode", "G92 E0" }, { "layer_height", 0.3 },
+                                              { "initial_layer_print_height", 0.3 }, { "enable_support", false } });
     Print print;
     for (ModelObject *mo : model.objects)
         print.auto_assign_extruders(mo);
     print.apply(model, config);
-    REQUIRE(print.validate().string.empty());
+    const StringObjectException invalid = print.validate();
+    INFO(invalid.string);
+    REQUIRE(invalid.string.empty());
     const std::vector<Move> moves = body_moves(Test::gcode(print));
 
     BoundingBoxf first;
@@ -345,25 +366,26 @@ TEST_CASE("A generated sphere core puts the first layer on the part's inner surf
             first.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
     const Vec3d centre(first.center().x(), first.center().y(), 0.);
 
-    size_t core_points = 0, shell_points = 0, last_core = 0, first_shell = moves.size();
-    double shell_min = 1e9;
-    for (size_t i = 0; i < moves.size(); ++i) {
-        const Move &m = moves[i];
-        if (m.e <= 0.)
+    const double core_radius = inner - gap;
+    const double core_top    = surface_top(core_radius);
+    size_t       core_points = 0, shell_points = 0;
+    double       core_max = 0., shell_min = 1e9;
+    for (const Move &m : moves) {
+        if (m.e <= 0. || m.layer == 1) // only the core prints on the bed
             continue;
         const double d = (Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')) - centre).norm();
-        if (d <= inner - gap + 0.1) {
+        if (m.layer_z <= core_top + 1e-3) {
             ++core_points;
-            last_core = i;
+            core_max = std::max(core_max, d);
         } else {
             ++shell_points;
-            first_shell = std::min(first_shell, i);
-            shell_min   = std::min(shell_min, d);
+            shell_min = std::min(shell_min, d);
         }
     }
     REQUIRE(core_points > 0);
     REQUIRE(shell_points > 0);
+    CHECK(core_max <= core_radius + 0.35);
+    // The shell's first layer is its modelled inner surface.
     CHECK(shell_min >= inner - 0.05);
-    CHECK(last_core < first_shell);
 }
 

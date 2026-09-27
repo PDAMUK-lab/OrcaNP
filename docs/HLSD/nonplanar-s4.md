@@ -49,7 +49,8 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    - Planar base (`planar_height`): the part up to that height keeps its shape and plays the
      bed's role. Its vertices are pinned, its cells get a zero limit (so the rotation field
      starts from zero at its top), its cells are the Dijkstra sources, and the Z floor keeps the
-     rest above it. The base prints with ordinary flat layers.
+     rest above it. The base prints with ordinary flat layers, blending into the curved ones over
+     the tetrahedra that reach above the base's top (about one cell).
    - Holding the rest (`zero_initial_rotation`): boundary cells that do not overhang get a zero
      target instead of none, so the bend stays near the overhangs instead of spreading through
      the part.

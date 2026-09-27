@@ -42,7 +42,8 @@ std::unique_ptr<S4Mappers> s4_mappers(const Print &print)
         out->storage.push_back(std::make_unique<NonPlanar::S4Mapper>(mesh, deformed, rotation_axis(print.config())));
         NonPlanar::S4ObjectMapping &m = out->set.objects[int(object->get_id())];
         m.mapper           = out->storage.back().get();
-        m.identity_below_z = s4->surface_top + offset.z();
+        // G-code heights carry three decimals: the surface's top layer must not read as above it.
+        m.identity_below_z = s4->surface_top + offset.z() + 1e-3;
         m.keep_min_x       = s4->keep_min_x + offset.x();
         m.keep_max_x       = s4->keep_max_x + offset.x();
     }

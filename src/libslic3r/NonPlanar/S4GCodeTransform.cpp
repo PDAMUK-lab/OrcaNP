@@ -229,6 +229,8 @@ void Transform::build_records()
             absolute = true;
         else if (cmd == "G91")
             absolute = false;
+        else if (cmd == "M83")
+            m_relative_e = true; // Orca's preamble follows the machine start block
         else if (cmd == "M82" && i < end_block)
             throw std::runtime_error("S4: the G-code switches to absolute extrusion (M82); relative extrusion is required");
 
