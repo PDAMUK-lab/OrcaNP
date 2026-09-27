@@ -829,5 +829,17 @@ TEST_CASE("A cylinder core is fitted up to the roof of the part's cavity", "[S4]
 
     // A part covering the axis at the bed has nowhere to stand a core.
     CHECK_THROWS(fit_cylinder_core(cup.vertices, cup.triangles, part, Eigen::Vector2d(1., 1.)));
+
+    // Nor has one standing over the axis on a bottom not quite level, 0.2 mm off the bed there.
+    std::vector<std::array<int, 3>> block;
+    for (int x = 0; x < 5; ++x)
+        for (int y = 0; y < 5; ++y)
+            block.push_back({ x, y, 0 });
+    Surface slab = voxel_surface(block, 2.);
+    for (Eigen::Vector3d &v : slab.vertices)
+        v.z() += 0.04 * v.x();
+    const SurfaceDistance tilted(slab.vertices, slab.triangles);
+    CHECK_THROWS_WITH(fit_cylinder_core(slab.vertices, slab.triangles, tilted, Eigen::Vector2d(5., 5.)),
+                      Catch::Matchers::ContainsSubstring("covers the rotation axis"));
 }
 

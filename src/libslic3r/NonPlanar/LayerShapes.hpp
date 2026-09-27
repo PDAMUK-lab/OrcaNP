@@ -56,8 +56,8 @@ struct FittedCore
 FittedCore fit_sphere_core(const SurfaceDistance &part);
 
 // A cylinder about a vertical axis, from the part's bottom up to the roof of its cavity, out to
-// the part's nearest wall below the roof. Throws when the part covers the axis at its bottom
-// (the core must stand on the bed) or has no cavity around the axis.
+// the part's nearest wall below the roof. Throws when the part covers the axis within 0.5 mm of
+// its bottom (the core must stand on the bed) or has no cavity around the axis.
 FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
                              const SurfaceDistance &part, const Eigen::Vector2d &axis);
 

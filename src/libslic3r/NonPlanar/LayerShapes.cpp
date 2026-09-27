@@ -195,15 +195,16 @@ FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const
     // The cavity must reach down to the bed, where the core stands; its roof is where the axis
     // enters the part again.
     const double step = 0.05;
-    if (part.inside({ axis.x(), axis.y(), lo.z() + step }))
-        throw std::runtime_error("Print surface: the part covers the rotation axis at the bed; a cylinder core needs a cavity "
-                                 "open to the bed around the axis");
-    double roof = hi.z();
+    double       roof = hi.z();
     for (double z = lo.z() + step; z < hi.z(); z += step)
         if (part.inside({ axis.x(), axis.y(), z })) {
             roof = z - step;
             break;
         }
+    // A part standing over the axis on a bottom not quite level meets it just above the bed.
+    if (roof - lo.z() <= 0.5)
+        throw std::runtime_error("Print surface: the part covers the rotation axis at the bed; a cylinder core needs a cavity "
+                                 "open to the bed around the axis");
     // Nearest wall: horizontal distance from the axis to the part below the roof.
     double r2 = std::numeric_limits<double>::infinity();
     for (const std::array<int, 3> &t : triangles) {
