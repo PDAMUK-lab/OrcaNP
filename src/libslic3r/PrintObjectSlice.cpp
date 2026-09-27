@@ -974,15 +974,20 @@ void PrintObject::deform_s4()
                 }
                 core = to_s4_mesh(s4->core);
             }
-            // The surface's faces on the bed are not printed over.
             auto lowest = [](const S4Mesh &m) {
                 double z = std::numeric_limits<double>::infinity();
                 for (const Eigen::Vector3d &v : m.vertices)
                     z = std::min(z, v.z());
                 return z;
             };
-            const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles, std::min(lowest(shell), lowest(core)));
-            const double first = m_print->config().initial_layer_print_height.value;
+            const double first   = m_print->config().initial_layer_print_height.value;
+            const double floor_z = std::min(lowest(shell), lowest(core));
+            // The print surface is printed first, from the bed: standing on the part, it would start in mid-air.
+            if (lowest(core) > floor_z + 0.5 * first)
+                throw Slic3r::SlicingError(L("The print surface is printed first, so it must stand on the bed. Extend the print "
+                                             "surface parts down to the bed."), this->id().id);
+            // The surface's faces on the bed are not printed over.
+            const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles, floor_z);
             const double layer = m_config.layer_height.value;
             const double top   = distance.bbox_max().z();
             s4->surface_top    = top <= first ? first : first + std::ceil((top - first) / layer - 1e-6) * layer;
@@ -1453,6 +1458,9 @@ void PrintObject::slice_volumes()
                 }
         }
         objSliceByVolume.push_back({ m_s4->part_id, std::move(part_slices) });
+        // slices_to_regions() looks the volumes up by id; print surfaces added after the part come later.
+        std::sort(objSliceByVolume.begin(), objSliceByVolume.end(),
+                  [](const VolumeSlices &l, const VolumeSlices &r) { return l.volume_id < r.volume_id; });
     } else if (!slice_zs.empty()) {
         objSliceByVolume = slice_volumes_inner(
             print->config(), this->config(), this->trafo_centered(),

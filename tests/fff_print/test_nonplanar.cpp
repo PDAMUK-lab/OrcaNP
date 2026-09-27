@@ -293,14 +293,20 @@ TriangleMesh dome(double radius)
 TEST_CASE("Layers offset from a print surface part keep the surface gap all around it", "[NonPlanar]")
 {
     // A 20 mm dome printed flat as the print surface, and over it a 26 mm dome: what is left of
-    // it is a shell from the gap out to 26 mm, printed after the whole core.
+    // it is a shell from the gap out to 26 mm, printed after the whole core. The print surface
+    // may be added before or after the part.
+    const bool core_first = GENERATE(true, false);
+    INFO("print surface added " << (core_first ? "before" : "after") << " the part");
     const double core_radius = 20., shell_radius = 26., gap = 0.4;
     Model        model;
     ModelObject *object = model.add_object();
     object->name        = "dome.stl";
-    ModelVolume *core   = object->add_volume(dome(core_radius));
+    if (! core_first)
+        object->add_volume(dome(shell_radius));
+    ModelVolume *core = object->add_volume(dome(core_radius));
     core->config.set_key_value("s4_print_surface", new ConfigOptionBool(true));
-    object->add_volume(dome(shell_radius));
+    if (core_first)
+        object->add_volume(dome(shell_radius));
     object->add_instance()->set_offset(Vec3d(100., 100., 0.));
 
     DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_gap", gap },
@@ -347,6 +353,29 @@ TEST_CASE("Layers offset from a print surface part keep the surface gap all arou
     CHECK(core_max <= core_radius + 0.35); // the top layer's cap, printed at the layer's top
     CHECK(shell_min >= core_radius + gap - 0.05);
     CHECK(shell_max <= shell_radius + 0.5);
+}
+
+TEST_CASE("A print surface part must stand on the bed", "[NonPlanar]")
+{
+    // The core is printed first: 3 mm up, inside the 26 mm dome, it would start in mid-air.
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "dome.stl";
+    object->add_volume(dome(26.));
+    TriangleMesh raised = dome(20.);
+    raised.translate(0.f, 0.f, 3.f);
+    object->add_volume(raised)->config.set_key_value("s4_print_surface", new ConfigOptionBool(true));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" },
+                                              { "use_relative_e_distances", true }, { "layer_change_gcode", "G92 E0" },
+                                              { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    CHECK_THROWS_WITH(Test::gcode(print), Catch::Matchers::ContainsSubstring("must stand on the bed"));
 }
 
 namespace {

@@ -112,6 +112,13 @@ whose flat slices are chosen surfaces (`LayerShapes`):
   core's layers all come first, the first layer over the core lies the gap away from it all
   around (not only above it), and what is within the gap or inside the core falls below H and
   is cut off the deformed part before slicing.
+  - The core is printed first, so it must stand on the bed; a core standing on the part would
+    start in mid-air and is refused. All of the part is layered by its distance from the core,
+    including what stands beside the core on the bed, where the layers stand vertical. So the
+    shape suits parts printed over their core (domes, spheres, cups upside down, sleeves), not a
+    core propping up one overhang of a part (a bracket's arm): the rest of that part, printed
+    after the core in shells around it, would need a horizontal nozzle next to the bed, which
+    the clearance check reports.
   - The core is either the object's parts set as print surface, or generated to fit the part:
     - A **sphere** centred below the part's top by half its width, out to the part's nearest
       point.
@@ -293,5 +300,6 @@ and the non-planar building blocks:
 - polar export drives angle and radius, and tilts the nozzle over S4 layers;
 - the preview of a polar print has each move's machine pose, and its line is the machine move
   that ends it;
-- a dome printed over a print surface dome keeps the gap all around it, after the whole core;
+- a dome printed over a print surface dome keeps the gap all around it, after the whole core,
+  whichever of the two parts was added first; a print surface above the bed is refused;
 - a hollow dome gets a generated core and its first layer on its inner surface.
