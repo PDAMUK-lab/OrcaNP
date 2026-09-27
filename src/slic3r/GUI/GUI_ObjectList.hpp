@@ -466,6 +466,10 @@ public:
     void update_printable_state(int obj_idx, int instance_idx);
     void toggle_printable_state();
     void toggle_auto_drop();
+    // Orca: parts set as the print surface that non-planar layers are offset from.
+    bool has_selected_parts() const;
+    bool selected_parts_are_print_surface() const;
+    void toggle_print_surface();
     void enable_layers_editing();
 
     //BBS: remove const qualifier

@@ -5106,8 +5106,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Print surface");
     def->category = L("Quality");
     def->tooltip  = L("Print this part first with flat layers, as the surface the rest of the object is printed on with "
-                      "non-planar layers offset from it (layer shape \"Offset from print surface\"). Set it on the part in the "
-                      "object list.");
+                      "non-planar layers offset from it (layer shape \"Offset from print surface\"). The print surface is a part "
+                      "of the same object: right-click the part in the object list > Print surface (non-planar).");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 

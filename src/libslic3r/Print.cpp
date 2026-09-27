@@ -1799,8 +1799,10 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         const bool offset = object->config().s4_layer_shape.value == S4LayerShape::Offset &&
                             object->config().s4_surface_core.value == S4SurfaceCore::Parts;
         if (offset && surfaces == 0)
-            return { L("Layers offset from a print surface need a part set as print surface (in the object list, add the "
-                       "\"Print surface\" setting to the part)."), object, "s4_layer_shape" };
+            return { L("Layers offset from a print surface need a part of the same object set as print surface: add it to the "
+                       "object as a part (right-click the object > Add part, or select both objects and Assemble them), then "
+                       "right-click the part > Print surface (non-planar). Or generate one with Print surface \"Sphere\" or "
+                       "\"Cylinder\"."), object, "s4_layer_shape" };
         if (! offset && surfaces > 0)
             return { L("Print surface parts need the layer shape \"Offset from print surface\" with the print surface \"Parts\"."),
                      object, "s4_layer_shape" };

@@ -43,6 +43,7 @@
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/Orient.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Print.hpp"
 
 #ifdef __WXMSW__
 #include "wx/uiaction.h"
@@ -6816,6 +6817,55 @@ void ObjectList::update_printable_state(int obj_idx, int instance_idx)
         instance_idx = -1;
 
     m_objects_model->SetPrintableState(printable, obj_idx, instance_idx);
+}
+
+bool ObjectList::has_selected_parts() const
+{
+    wxDataViewItemArray sels;
+    GetSelections(sels);
+    return std::any_of(sels.begin(), sels.end(), [this](const wxDataViewItem& item) {
+        return m_objects_model->GetItemType(item) == itVolume && m_objects_model->GetVolumeType(item) == ModelVolumeType::MODEL_PART;
+    });
+}
+
+bool ObjectList::selected_parts_are_print_surface() const
+{
+    wxDataViewItemArray sels;
+    GetSelections(sels);
+    bool any = false;
+    for (const wxDataViewItem& item : sels) {
+        if (m_objects_model->GetItemType(item) != itVolume || m_objects_model->GetVolumeType(item) != ModelVolumeType::MODEL_PART)
+            continue;
+        const ModelVolume* volume = (*m_objects)[m_objects_model->GetObjectIdByItem(item)]->volumes[m_objects_model->GetVolumeIdByItem(item)];
+        if (!PrintObject::is_s4_print_surface(*volume))
+            return false;
+        any = true;
+    }
+    return any;
+}
+
+void ObjectList::toggle_print_surface()
+{
+    const bool set = !selected_parts_are_print_surface();
+    take_snapshot(set ? _u8L("Set as print surface") : _u8L("Unset print surface"));
+    wxDataViewItemArray sels;
+    GetSelections(sels);
+    std::set<int> changed;
+    for (const wxDataViewItem& item : sels) {
+        if (m_objects_model->GetItemType(item) != itVolume || m_objects_model->GetVolumeType(item) != ModelVolumeType::MODEL_PART)
+            continue;
+        const int    obj_idx = m_objects_model->GetObjectIdByItem(item);
+        ModelVolume* volume  = (*m_objects)[obj_idx]->volumes[m_objects_model->GetVolumeIdByItem(item)];
+        if (set)
+            volume->config.set_key_value("s4_print_surface", new ConfigOptionBool(true));
+        else
+            volume->config.erase("s4_print_surface");
+        add_settings_item(item, &volume->config.get());
+        changed.insert(obj_idx);
+    }
+    for (int obj_idx : changed)
+        changed_object(obj_idx);
+    part_selection_changed();
 }
 
 void ObjectList::toggle_printable_state()
