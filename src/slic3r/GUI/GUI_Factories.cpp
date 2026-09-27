@@ -1657,6 +1657,7 @@ void MenuFactory::create_bbl_part_menu()
     append_submenu(menu, split_menu, wxID_ANY, _L("Split"), _L("Split the selected object"), "",
         []() { return plater()->can_split(true); }, m_parent);
     menu->AppendSeparator();
+    append_menu_item_print_surface(menu);
     append_menu_item_per_object_process(menu);
     append_menu_item_per_object_settings(menu);
     append_menu_item_change_type(menu);

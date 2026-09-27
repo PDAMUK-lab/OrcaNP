@@ -1240,7 +1240,10 @@ bool IMSlider::render(int canvas_width, int canvas_height)
     float scale = (float) wxGetApp().em_unit() / 10.0f;
 
     if (is_horizontal()) {
-        ImVec2 size  = ImVec2(canvas_width - 2 * std::max(LEFT_MARGIN * m_scale, 0.2f * canvas_width), HORIZONTAL_SLIDER_WINDOW_HEIGHT * m_scale);
+        // ORCA: the playback buttons at the left end keep clear of the view cube's buttons, which
+        // take about 170 pixels at the GUI scale.
+        const float margin = std::max({ LEFT_MARGIN * m_scale, 0.2f * canvas_width, m_show_playback ? 180.0f * scale : 0.0f });
+        ImVec2 size  = ImVec2(canvas_width - 2 * margin, HORIZONTAL_SLIDER_WINDOW_HEIGHT * m_scale);
         imgui.set_next_window_pos(0.5f * static_cast<float>(canvas_width), canvas_height, ImGuiCond_Always, 0.5f, 1.0f);
         imgui.begin(std::string("moves_slider"), windows_flag);
         if (m_show_playback) {
