@@ -102,13 +102,13 @@ jobs:
           - Print surface parts: right-click a part in the object list > "Print surface (non-planar)". The print surface must be a part of the same object (Add part, or select both objects and Assemble).
 
           Fixed since the previous test build:
-          - OrcaSlicer closed after any slicing error (the error is now shown).
-          - "Floating regions/cantilever" warnings no longer appear for layers offset from a print surface.
-          - A non-planar object standing on the bed on a point or an edge now gets a clear message (place it on a flat face: Lay on face or Auto orient).
+          - Slicing a model with fine detail (such as 3DBenchy's lettering) with optimized S4 layers stayed at 5% forever. 3DBenchy now slices in under a minute.
+          - Conical layers are flat where the part stands on the bed and conical outside that, so a flat-bottomed part (3DBenchy, a cube) has its whole footprint in the first layer. It no longer fails with an empty first layer or prints its skirt inside its footprint.
 
           Known limitations:
           - The Non-planar (S4) settings and the wall generator are Advanced settings: switch the process settings to Advanced (the toggle next to "Process") to see them.
-          - The progress bar stays at 5% while a large model is deformed for S4 (several minutes for complex models); it is working.
+          - The progress bar stays at 5% while a model is deformed for S4 (half a minute for 3DBenchy, minutes for complex models); it is working.
+          - Offset from print surface with a generated sphere or cylinder needs a part with a cavity open to the bed (a dome, a cup upside down, a sleeve); other parts, such as 3DBenchy, get a message saying so.
           - Opening a polar .gcode file on its own (G-code viewer) shows it as Cartesian; preview polar prints after slicing them.
           - Offset layers meeting the bed stand vertical there; a tilting nozzle reaches them only within its tilt range, and the clearance check warns where the head would hit.
           - A non-planar object has one part printed non-planar (besides print surface parts) and one instance.
