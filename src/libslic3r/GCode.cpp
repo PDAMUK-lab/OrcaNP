@@ -2530,6 +2530,9 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     // A polar printer then gets the processed G-code in machine coordinates.
     const bool        s4          = NonPlanarExport::has_s4(*print);
     const bool        polar       = print->config().polar_kinematics.value;
+    // Raised together at the end: the notification of a step repeats its earlier warnings when
+    // another one is added.
+    std::vector<std::string> nonplanar_warnings;
     const std::string path_sliced = path_tmp + ".sliced";
 
     m_processor.initialize(path_tmp);
@@ -2602,7 +2605,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
                 std::string where;
                 for (const std::string &sample : report.head_collision_samples)
                     where += "\n" + sample;
-                print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                nonplanar_warnings.push_back(
                     Slic3r::format(_(L("The nozzle or toolhead may hit already printed parts at %1% places of the non-planar "
                                        "toolpath, first at:%2%\nLower the rotation limits, raise the planar height, or check the "
                                        "toolhead dimensions in the printer settings.")),
@@ -2749,7 +2752,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
                                 << stats.total_angle << " degrees, " << stats.tilt_limited << " poses at the tilt limit, radius "
                                 << stats.min_radius << " .. " << stats.max_radius;
         if (stats.radius_outside > 0)
-            print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+            nonplanar_warnings.push_back(
                 Slic3r::format(_(L("%1% machine moves reach a radius of %2% to %3% mm, beyond the radius axis travel of %4% to %5% mm. "
                                    "Move the part toward the centre, or lower the tilt near the edge of the bed.")),
                                stats.radius_outside, stats.min_radius, stats.max_radius, print->config().polar_radius_min.value,
@@ -2757,6 +2760,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         boost::nowide::remove(path_tmp.c_str());
         path_tmp = path_polar;
     }
+    if (! nonplanar_warnings.empty())
+        print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, boost::algorithm::join(nonplanar_warnings, "\n"));
     std::error_code ret = rename_file(path_tmp, path);
     if (ret) {
         {
