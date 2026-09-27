@@ -2206,6 +2206,11 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
         // Check that there are extrusions on the very first layer. The case with empty
         // first layer may result in skirt/brim in the air and maybe other issues.
         if (layers_to_print.size() == 1u) {
+            // Orca: non-planar layers keep off the bed wherever the object does not stand on it.
+            if (!has_extrusions && object.s4_deformation() != nullptr)
+                throw Slic3r::SlicingError(_(L("This non-planar (S4) object has an empty first layer: it stands on the bed on too small an "
+                                               "area for its layers to start there. Place it on a flat face (Lay on face or Auto orient).")),
+                                           object.id().id);
             if (!has_extrusions)
                 throw Slic3r::SlicingError(_(L("One object has an empty first layer and can't be printed. Please Cut the bottom or enable supports.")), object.id().id);
         }
