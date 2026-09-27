@@ -14,6 +14,17 @@ Vec2d rotation_axis(const PrintConfig &config) { return BoundingBoxf(config.prin
 
 } // namespace
 
+int marker_id(const Print &print, const PrintObject &object)
+{
+    int id = 0;
+    for (const PrintObject *o : print.objects()) {
+        if (o == &object)
+            break;
+        ++id;
+    }
+    return id;
+}
+
 bool has_s4(const Print &print)
 {
     for (const PrintObject *object : print.objects())
@@ -40,7 +51,7 @@ std::unique_ptr<S4Mappers> s4_mappers(const Print &print)
         for (Eigen::Vector3d &p : deformed)
             p += offset;
         out->storage.push_back(std::make_unique<NonPlanar::S4Mapper>(mesh, deformed, rotation_axis(print.config())));
-        NonPlanar::S4ObjectMapping &m = out->set.objects[int(object->get_id())];
+        NonPlanar::S4ObjectMapping &m = out->set.objects[marker_id(print, *object)];
         m.mapper           = out->storage.back().get();
         // G-code heights carry three decimals: the surface's top layer must not read as above it.
         m.identity_below_z = s4->surface_top + offset.z() + 1e-3;

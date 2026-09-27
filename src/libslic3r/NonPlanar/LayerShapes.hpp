@@ -7,17 +7,21 @@
 #include <Eigen/Core>
 
 #include <array>
+#include <limits>
 #include <vector>
 
 namespace Slic3r {
 namespace NonPlanar {
 
 // Signed distance to a closed triangle surface (positive outside), from a uniform grid of the
-// triangles and a vertical ray for inside/outside.
+// triangles and a vertical ray for inside/outside. Faces lying at `floor_z` stand on the bed:
+// they close the surface for inside/outside but are no surface to measure from, so the distance
+// inside near the bed is to the walls.
 class SurfaceDistance
 {
 public:
-    SurfaceDistance(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles);
+    SurfaceDistance(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                    double floor_z = -std::numeric_limits<double>::infinity());
 
     double signed_distance(const Eigen::Vector3d &p) const;
     double distance(const Eigen::Vector3d &p) const;
@@ -34,7 +38,8 @@ private:
     Eigen::Vector3d                 m_min, m_max;
     double                          m_cell = 1.;
     int                             m_n[3] { 1, 1, 1 };
-    std::vector<std::vector<int>>   m_grid; // triangles overlapping each cell
+    std::vector<std::vector<int>>   m_grid;     // triangles overlapping each cell
+    std::vector<bool>               m_on_floor; // per triangle: lies at the floor
 };
 
 // A core fitted into a part's cavity, for the part to be printed over.

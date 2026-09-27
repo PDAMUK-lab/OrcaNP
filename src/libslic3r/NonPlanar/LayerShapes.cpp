@@ -48,8 +48,9 @@ double wrap_2pi(double a)
 
 } // namespace
 
-SurfaceDistance::SurfaceDistance(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles)
-    : m_vertices(vertices), m_triangles(triangles)
+SurfaceDistance::SurfaceDistance(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                                 double floor_z)
+    : m_vertices(vertices), m_triangles(triangles), m_on_floor(triangles.size(), false)
 {
     if (m_vertices.empty() || m_triangles.empty())
         throw std::runtime_error("Print surface: empty mesh");
@@ -59,6 +60,8 @@ SurfaceDistance::SurfaceDistance(const std::vector<Eigen::Vector3d> &vertices, c
         m_max = m_max.cwiseMax(v);
     }
     const Eigen::Vector3d span = m_max - m_min;
+    if (m_max.z() <= floor_z + 1e-4)
+        throw std::runtime_error("Print surface: flat on the bed");
     m_cell                     = std::max(span.maxCoeff() / 48., 0.25);
     for (int d = 0; d < 3; ++d)
         m_n[d] = std::max(int(std::ceil(span[d] / m_cell)), 1);
@@ -69,6 +72,7 @@ SurfaceDistance::SurfaceDistance(const std::vector<Eigen::Vector3d> &vertices, c
             lo = lo.cwiseMin(m_vertices[m_triangles[t][k]]);
             hi = hi.cwiseMax(m_vertices[m_triangles[t][k]]);
         }
+        m_on_floor[t] = hi.z() <= floor_z + 1e-4;
         int i0, j0, k0, i1, j1, k1;
         cell_of(lo, i0, j0, k0);
         cell_of(hi, i1, j1, k1);
@@ -97,6 +101,8 @@ double SurfaceDistance::distance(const Eigen::Vector3d &p) const
         if (k < 0 || k >= m_n[2])
             return;
         for (int t : m_grid[(size_t(i) * m_n[1] + j) * m_n[2] + k]) {
+            if (m_on_floor[t])
+                continue;
             const std::array<int, 3> &tri = m_triangles[t];
             const Eigen::Vector3d     q   = closest_on_triangle(p, m_vertices[tri[0]], m_vertices[tri[1]], m_vertices[tri[2]]);
             best2                         = std::min(best2, (q - p).squaredNorm());

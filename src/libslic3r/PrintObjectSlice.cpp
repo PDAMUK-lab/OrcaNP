@@ -969,7 +969,14 @@ void PrintObject::deform_s4()
                 }
                 core = to_s4_mesh(s4->core);
             }
-            const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles);
+            // The surface's faces on the bed are not printed over.
+            auto lowest = [](const S4Mesh &m) {
+                double z = std::numeric_limits<double>::infinity();
+                for (const Eigen::Vector3d &v : m.vertices)
+                    z = std::min(z, v.z());
+                return z;
+            };
+            const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles, std::min(lowest(shell), lowest(core)));
             const double first = m_print->config().initial_layer_print_height.value;
             const double layer = m_config.layer_height.value;
             const double top   = distance.bbox_max().z();

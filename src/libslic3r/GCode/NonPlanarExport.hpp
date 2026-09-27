@@ -15,11 +15,15 @@ namespace Slic3r {
 
 class Print;
 class PrintConfig;
+class PrintObject;
 
 namespace NonPlanarExport {
 
 // True when any object of the print was deformed for S4.
 bool has_s4(const Print &print);
+
+// The object's id in its NONPLANAR_OBJECT markers: its place in the print's objects.
+int marker_id(const Print &print, const PrintObject &object);
 
 // How the G-code of each deformed object (in G-code coordinates) maps back into the real part,
 // by the object ids of its NONPLANAR_OBJECT markers. Everything else is printed as sliced.

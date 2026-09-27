@@ -607,6 +607,15 @@ TEST_CASE("The distance to a print surface is signed, negative inside", "[S4]")
     CHECK_THAT(d.signed_distance({ 25., -5., 30. }), WithinAbs(std::sqrt(15. * 15. + 5. * 5. + 20. * 20.), 1e-9));
 }
 
+TEST_CASE("A print surface's faces on the bed close it but are not measured from", "[S4]")
+{
+    const Surface         cube = voxel_surface({ { 0, 0, 0 } }, 10.);
+    const SurfaceDistance d(cube.vertices, cube.triangles, 0.);
+    // Just above the bottom face: 0.5 mm from it, but measured to the nearest wall.
+    CHECK_THAT(d.signed_distance({ 2., 5., 0.5 }), WithinAbs(-2., 1e-9));
+    CHECK_THAT(d.signed_distance({ 5., 5., 13. }), WithinAbs(3., 1e-9));
+}
+
 TEST_CASE("Layers offset from a print surface start the gap away from it, all around", "[S4]")
 {
     // A 10 mm cube core from -5 to 5 in X and Y; seen from (0, 0, 5), 5 mm below its top.

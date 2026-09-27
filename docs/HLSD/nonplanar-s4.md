@@ -121,7 +121,8 @@ whose flat slices are chosen surfaces (`LayerShapes`):
     not reach the bed, is too small, or (for a cylinder) does not surround the axis is refused:
     the core must stand on the bed to be printed first.
   - The distance is exact (a uniform grid of the core's triangles, and a vertical ray for
-    inside/outside).
+    inside/outside). The core's faces on the bed close it but are not measured from: nothing is
+    printed over them, and counting them would pull the layers meeting the bed into the core.
   - Laid out *from above*: the horizontal position is the direction from a centre below the
     core's top, as an azimuthal equidistant projection scaled to be undistorted at the top, for
     domes, spheres and capped cylinders. Circumferential lengths shrink towards the equator
@@ -209,7 +210,8 @@ The pipeline hooks into the print steps as follows:
   refused.
 - **Export** (`GCode::do_export()`): when an object is deformed, generation writes the
   sliced-space G-code to a side file without the G-code processor, marking each object's
-  toolpath (`; NONPLANAR_OBJECT <id>` ... `; NONPLANAR_OBJECT_END`).
+  toolpath (`; NONPLANAR_OBJECT <id>` ... `; NONPLANAR_OBJECT_END`, the id being the object's
+  place in the print).
   - `NonPlanarExport::s4_mappers()` builds a mapper per deformed object in G-code coordinates
     (instance shift less plate origin in XY; Z offset and raft height in Z). It also records the
     height up to which the object is its print surface, and the window of an unwrapped layout.

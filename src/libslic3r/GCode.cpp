@@ -6609,7 +6609,7 @@ LayerResult GCode::process_layer(
 
                 // Orca: the non-planar (S4) pass maps each object's toolpath through its own deformation.
                 if (m_nonplanar_markers)
-                    gcode += "; NONPLANAR_OBJECT " + std::to_string(instance_to_print.print_object.get_id()) + "\n";
+                    gcode += "; NONPLANAR_OBJECT " + std::to_string(NonPlanarExport::marker_id(print, instance_to_print.print_object)) + "\n";
                 if (this->config().gcode_label_objects) {
                     gcode += std::string("; printing object ") + instance_to_print.print_object.model_object()->name +
                              " id:" + std::to_string(instance_to_print.print_object.get_id()) + " copy " +
@@ -6839,7 +6839,7 @@ LayerResult GCode::process_layer(
 
                 // Orca: the non-planar (S4) pass maps each object's toolpath through its own deformation.
                 if (m_nonplanar_markers)
-                    gcode += "; NONPLANAR_OBJECT " + std::to_string(instance_to_print.print_object.get_id()) + "\n";
+                    gcode += "; NONPLANAR_OBJECT " + std::to_string(NonPlanarExport::marker_id(print, instance_to_print.print_object)) + "\n";
                 if (this->config().gcode_label_objects) {
                     gcode += std::string("; printing object ") + instance_to_print.print_object.model_object()->name +
                              " id:" + std::to_string(instance_to_print.print_object.get_id()) + " copy " +
