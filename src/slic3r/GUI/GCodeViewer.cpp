@@ -264,6 +264,49 @@ void GCodeViewer::SequentialView::Marker::init(std::string filename)
         m_model.init_from_file(filename);
     }
     m_model.set_color({ 1.0f, 1.0f, 1.0f, 0.5f });
+    // Orca: the toolhead's switches are kept between sessions; the toolhead is shown by default.
+    const AppConfig* config = wxGetApp().app_config;
+    m_show_toolhead = config == nullptr || config->get("preview_nonplanar_toolhead") != "0";
+    m_turn_bed      = config != nullptr && config->get_bool("preview_polar_turn_bed");
+}
+
+void GCodeViewer::SequentialView::Marker::init_toolhead(float tip_radius, float cone_angle_deg, float nozzle_length, float head_radius)
+{
+    // A surface of revolution about Z of a profile in (radius, height), from the tip's centre
+    // out, up the nozzle and the head, and in to the top's centre. The head is drawn two of its
+    // radii tall.
+    const float cone_top    = tip_radius + nozzle_length * std::tan(static_cast<float>(Geometry::deg2rad(cone_angle_deg)));
+    const float head_top    = nozzle_length + 2.0f * head_radius;
+    const std::vector<Vec2f> profile{ { 0.0f, 0.0f }, { tip_radius, 0.0f }, { cone_top, nozzle_length },
+                                      { head_radius, nozzle_length }, { head_radius, head_top }, { 0.0f, head_top } };
+    const unsigned int sectors = 48;
+
+    GLModel::Geometry data;
+    data.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3 };
+    for (size_t k = 0; k + 1 < profile.size(); ++k) {
+        const Vec2f a = profile[k], b = profile[k + 1];
+        const Vec2f d = b - a;
+        if (d.norm() < 1e-4f)
+            continue;
+        // The profile runs counterclockwise in (radius, height), so its outward normal is d turned clockwise.
+        const Vec2f        n     = Vec2f(d.y(), -d.x()).normalized();
+        const unsigned int first = static_cast<unsigned int>(data.vertices_count());
+        for (unsigned int i = 0; i <= sectors; ++i) {
+            const float angle = 2.0f * float(M_PI) * float(i) / float(sectors);
+            const float c = std::cos(angle), s = std::sin(angle);
+            data.add_vertex(Vec3f(a.x() * c, a.x() * s, a.y()), Vec3f(n.x() * c, n.x() * s, n.y()));
+            data.add_vertex(Vec3f(b.x() * c, b.x() * s, b.y()), Vec3f(n.x() * c, n.x() * s, n.y()));
+        }
+        for (unsigned int i = 0; i < sectors; ++i) {
+            const unsigned int a0 = first + 2 * i, b0 = a0 + 1, a1 = a0 + 2, b1 = a0 + 3;
+            data.add_triangle(a0, a1, b1);
+            data.add_triangle(a0, b1, b0);
+        }
+    }
+    m_toolhead.reset();
+    m_toolhead.init_from(std::move(data));
+    m_toolhead.set_color({ 0.35f, 0.65f, 1.0f, 0.25f });
+    m_has_toolhead = true;
 }
 
 //BBS: GUI refactor: add canvas size from parameters
@@ -285,7 +328,10 @@ void GCodeViewer::SequentialView::Marker::render(int canvas_width, int canvas_he
     const Camera& camera = wxGetApp().plater()->get_camera();
     const Transform3d& view_matrix = camera.get_view_matrix();
     float scale_factor = m_scale_factor;
-    const Transform3d model_matrix = (Geometry::translation_transform((m_world_position + m_model_z_offset * Vec3f::UnitZ()).cast<double>()) *
+    // Orca: the marker and the toolhead lean with the nozzle, about its tip.
+    const Transform3d nozzle = Geometry::translation_transform(m_world_position.cast<double>()) *
+        Transform3d(Eigen::Quaterniond::FromTwoVectors(Vec3d::UnitZ(), m_nozzle_axis.cast<double>().normalized()));
+    const Transform3d model_matrix = nozzle * (Geometry::translation_transform((m_model_z_offset * Vec3f::UnitZ()).cast<double>()) *
         Geometry::translation_transform(scale_factor * m_model.get_bounding_box().size().z() * Vec3d::UnitZ()) * Geometry::rotation_transform({ M_PI, 0.0, 0.0 })) *
         Geometry::scale_transform(scale_factor);
     shader->set_uniform("view_model_matrix", view_matrix * model_matrix);
@@ -294,6 +340,15 @@ void GCodeViewer::SequentialView::Marker::render(int canvas_width, int canvas_he
     shader->set_uniform("view_normal_matrix", view_normal_matrix);
 
     m_model.render();
+
+    if (m_has_toolhead && m_show_toolhead) {
+        // See-through, and leaving the toolpaths behind it visible.
+        glsafe(::glDepthMask(GL_FALSE));
+        shader->set_uniform("view_model_matrix", view_matrix * nozzle);
+        shader->set_uniform("view_normal_matrix", Matrix3d(view_matrix.matrix().block(0, 0, 3, 3) * nozzle.matrix().block(0, 0, 3, 3)));
+        m_toolhead.render();
+        glsafe(::glDepthMask(GL_TRUE));
+    }
 
     shader->stop_using();
 
@@ -510,7 +565,31 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         const float speed_width    = ImGui::CalcTextSize((_u8L("Speed: ") + "9999  ").c_str()).x;  // Width of the longest possible speed label
         const float detail_width   = ImGui::CalcTextSize(detail_buf).x;                            // Width of the detail text
         const float info_content_w = speed_width + detail_width;                                   // Speed + detail
-        const float info_group_w   = std::max(axes_content_w, info_content_w);                     // The width of the group containing position and detail info, whichever is wider
+        // ORCA: a polar machine's pose, and the switches of a non-planar print's toolhead.
+        std::array<std::string, 3> machine_texts;
+        float machine_w = 0.0f;
+        if (m_machine_pose) {
+            char buf[64];
+            sprintf(buf, "%s %.2f°", _u8L("Bed").c_str(), (*m_machine_pose)[0]);
+            machine_texts[0] = buf;
+            sprintf(buf, "%s %.3f", _u8L("Radius").c_str(), (*m_machine_pose)[1]);
+            machine_texts[1] = buf;
+            sprintf(buf, "%s %.2f°", _u8L("Tilt").c_str(), (*m_machine_pose)[3]);
+            machine_texts[2] = buf;
+            for (const std::string& text : machine_texts)
+                machine_w += ImGui::CalcTextSize(text.c_str()).x;
+            machine_w += 2.0f * axes_spacing_x;
+        }
+        const std::string toolhead_label = _u8L("Toolhead");
+        const std::string turn_bed_label = _u8L("Turn bed");
+        const bool  show_switches = m_has_toolhead || m_polar;
+        const float switch_w      = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x;
+        float       switches_w    = 0.0f;
+        if (m_has_toolhead)
+            switches_w += switch_w + ImGui::CalcTextSize(toolhead_label.c_str()).x + axes_spacing_x;
+        if (m_polar)
+            switches_w += switch_w + ImGui::CalcTextSize(turn_bed_label.c_str()).x;
+        const float info_group_w   = std::max({ axes_content_w, info_content_w, machine_w, switches_w }); // The width of the group containing position and detail info, whichever is wider
         const float fold_button_w  = 24.0f * m_scale;                                              // Width of the fold/unfold button
         const float bottom_row_w   = fold_button_w + style.ItemSpacing.x + info_group_w;           // The width of the bottom row containing the fold button and the info group
         float speed_profile_row_w  = 0.0f;
@@ -533,7 +612,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         const float cell_pad_y     = style.CellPadding.y;
         const float window_pad_h   = 2.0f * style.WindowPadding.y;
         const float show_button_h  = text_h + 2.0f * 3.0f * m_scale; // ImGuiStyleVar_FramePadding.y is set to 3.f * m_scale
-        const float main_row_h     = 2.0f * text_h + item_spacing_y; // Two lines of text (position and detail) + spacing between them
+        const float extra_rows_h   = (m_machine_pose ? text_h + item_spacing_y : 0.0f) + (show_switches ? ImGui::GetFrameHeight() + item_spacing_y : 0.0f);
+        const float main_row_h     = 2.0f * text_h + item_spacing_y + extra_rows_h; // Two lines of text (position and detail) + spacing between them, and the machine rows
         const float properties_h   = static_cast<float>(properties_rows.size()) * (text_h + 2.0f * cell_pad_y) +  2.0f * cell_pad_y + 1.0f + item_spacing_y // table rows
                                     + item_spacing_y + show_button_h                    // Spacing() + Show/Hide button row
                                     + item_spacing_y + 1.0f + style.WindowPadding.y;    // Spacing() + Separator() + Dummy()
@@ -665,7 +745,7 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
             ImGui::Dummy({0, style.WindowPadding.y});
         }
 
-        float draw_area_height = ImGui::GetTextLineHeight() * 2.f + style.ItemSpacing.y;
+        float draw_area_height = ImGui::GetTextLineHeight() * 2.f + style.ItemSpacing.y + extra_rows_h;
         ImGui::Dummy({10.f, draw_area_height}); // reserve area
 
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding  , 3.f * m_scale);
@@ -726,6 +806,14 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         ImGui::SameLine(3.0f * axes_width + 2.0f * axes_spacing_x);
         ImGui::Dummy({0,0});
 
+        if (m_machine_pose) {
+            for (size_t i = 0; i < machine_texts.size(); ++i) {
+                if (i > 0)
+                    ImGui::SameLine(0.0f, axes_spacing_x);
+                ImGuiWrapper::text(machine_texts[i]);
+            }
+        }
+
         char spdBuf[128];
         sprintf(spdBuf, "%s%.0f ", _u8L("Speed: ").c_str(), vertex.feedrate);
         ImGuiWrapper::text(spdBuf); // render Speed as differrent item to keep next item in same place
@@ -733,6 +821,24 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
         if (detail_buf[0] != '\0') { // dont render if buffer empty
             ImGui::SameLine(speed_width);
             ImGuiWrapper::text(detail_buf);
+        }
+
+        if (show_switches) {
+            bool changed = false;
+            if (m_has_toolhead)
+                changed |= imgui.bbl_checkbox(from_u8(toolhead_label), m_show_toolhead);
+            if (m_polar) {
+                if (m_has_toolhead)
+                    ImGui::SameLine(0.0f, axes_spacing_x);
+                changed |= imgui.bbl_checkbox(from_u8(turn_bed_label), m_turn_bed);
+            }
+            if (changed) {
+                if (AppConfig* config = wxGetApp().app_config) {
+                    config->set_bool("preview_nonplanar_toolhead", m_show_toolhead);
+                    config->set_bool("preview_polar_turn_bed", m_turn_bed);
+                }
+                imgui.set_requires_extra_frame();
+            }
         }
         ImGui::EndGroup();
 
@@ -1475,6 +1581,23 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult& gcode_result, const 
 
     m_sequential_view.gcode_window.load_gcode(gcode_result.filename, gcode_result.lines_ends);
 
+    // Orca: the toolhead of a non-planar print, and the poses of a polar machine.
+    const GCodeProcessorResult::NonPlanarPreview& nonplanar = gcode_result.nonplanar;
+    if (nonplanar.toolhead)
+        m_sequential_view.marker.init_toolhead(nonplanar.nozzle_tip_radius, nonplanar.nozzle_cone_angle, nonplanar.nozzle_length,
+                                               nonplanar.head_radius);
+    else
+        m_sequential_view.marker.reset_toolhead();
+    m_sequential_view.marker.set_polar(nonplanar.polar);
+    m_machine_poses.clear();
+    if (nonplanar.polar && nonplanar.poses.size() == gcode_result.moves.size())
+        for (size_t i = 0; i < nonplanar.poses.size(); ++i)
+            if (nonplanar.poses[i].valid)
+                m_machine_poses.push_back({ gcode_result.moves[i].gcode_id, nonplanar.poses[i] });
+    m_rotation_axis = nonplanar.rotation_axis;
+    m_angle_sign    = nonplanar.angle_sign;
+    m_tilt_sign     = nonplanar.tilt_sign;
+
     //BBS: add only gcode mode
     //if (wxGetApp().is_gcode_viewer())
     if (m_only_gcode_in_preview)
@@ -1689,7 +1812,33 @@ void GCodeViewer::reset()
     m_left_extruder_filament.clear();
     m_right_extruder_filament.clear();
     m_sequential_view.gcode_window.reset();
+    m_sequential_view.marker.reset_toolhead();
+    m_sequential_view.marker.set_polar(false);
+    m_sequential_view.marker.set_nozzle_axis(Vec3f::UnitZ());
+    m_sequential_view.marker.set_machine_pose(std::nullopt);
+    m_machine_poses.clear();
     m_contained_in_bed = true;
+}
+
+const GCodeProcessorResult::NonPlanarPreview::MachinePose* GCodeViewer::machine_pose_at(uint32_t gcode_id) const
+{
+    // The last move ending at or before the line.
+    auto it = std::upper_bound(m_machine_poses.begin(), m_machine_poses.end(), gcode_id,
+                               [](uint32_t id, const MachinePoseAt& p) { return id < p.gcode_id; });
+    return it == m_machine_poses.begin() ? nullptr : &std::prev(it)->pose;
+}
+
+std::optional<Transform3d> GCodeViewer::bed_turn() const
+{
+    if (!m_sequential_view.marker.turns_bed() || !m_sequential_view.m_show_marker || m_no_render_path || !has_data())
+        return std::nullopt;
+    const GCodeProcessorResult::NonPlanarPreview::MachinePose* pose = machine_pose_at(m_viewer.get_current_vertex().gcode_id);
+    if (pose == nullptr)
+        return std::nullopt;
+    // The bed turns the head's radial line in the part onto the head's rail, along +X.
+    const double turn = -Geometry::deg2rad(double(pose->angle / m_angle_sign));
+    const Vec3d  axis(m_rotation_axis.x(), m_rotation_axis.y(), 0.0);
+    return Geometry::translation_transform(axis) * Geometry::rotation_transform(turn * Vec3d::UnitZ()) * Geometry::translation_transform(-axis);
 }
 
 //BBS: GUI refactor: add canvas width and height
@@ -1709,6 +1858,16 @@ void GCodeViewer::render_scene(int canvas_width, int canvas_height)
     const libvgcode::PathVertex& curr_vertex = m_viewer.get_current_vertex();
     m_sequential_view.marker.set_world_position(libvgcode::convert(curr_vertex.position));
     m_sequential_view.marker.set_z_offset(m_z_offset + 0.5f);
+    // Orca: a polar machine's nozzle leans in the plane of its head's radial line.
+    if (const GCodeProcessorResult::NonPlanarPreview::MachinePose* pose = machine_pose_at(curr_vertex.gcode_id)) {
+        const float line = static_cast<float>(Geometry::deg2rad(pose->angle / m_angle_sign));
+        const float lean = static_cast<float>(Geometry::deg2rad(pose->tilt * m_tilt_sign));
+        m_sequential_view.marker.set_nozzle_axis({ std::sin(lean) * std::cos(line), std::sin(lean) * std::sin(line), std::cos(lean) });
+        m_sequential_view.marker.set_machine_pose(std::array<float, 4>{ pose->angle, pose->radius, pose->z, pose->tilt });
+    } else {
+        m_sequential_view.marker.set_nozzle_axis(Vec3f::UnitZ());
+        m_sequential_view.marker.set_machine_pose(std::nullopt);
+    }
     m_sequential_view.render_marker(!m_no_render_path, canvas_width, sequential_view_height(canvas_height), m_viewer.get_view_type());
 }
 

@@ -2275,6 +2275,13 @@ void GLCanvas3D::_render_scene(const Camera& camera, const Size& cnv_size)
     }
     /* preview render */
     else if (m_canvas_type == ECanvasType::CanvasPreview && m_render_preview) {
+        // Orca: a polar printer's bed turns under its head; the bed and the print turn with it.
+        // Everything reads the view from the plater's camera, which is this one when on screen.
+        Camera&                          plater_camera = wxGetApp().plater()->get_camera();
+        const std::optional<Transform3d> bed_turn      = &plater_camera == &camera ? m_gcode_viewer.bed_turn() : std::nullopt;
+        const Transform3d                view_matrix   = camera.get_view_matrix();
+        if (bed_turn)
+            plater_camera.set_view_matrix(view_matrix * *bed_turn);
         _render_objects(GLVolumeCollection::ERenderType::Opaque, !m_gizmos.is_running());
         _render_sla_slices();
         _render_selection();
@@ -2284,6 +2291,8 @@ void GLCanvas3D::_render_scene(const Camera& camera, const Size& cnv_size)
         _render_shadows(camera.get_view_matrix(), camera.get_projection_matrix());
         // BBS: GUI refactor: add canvas size as parameters
         _render_gcode(cnv_size.get_width(), cnv_size.get_height());
+        if (bed_turn)
+            plater_camera.set_view_matrix(view_matrix);
     }
     /* assemble render*/
     else if (m_canvas_type == ECanvasType::CanvasAssembleView) {

@@ -223,10 +223,27 @@ The pipeline hooks into the print steps as follows:
   - Only the mapped G-code is then streamed through the processor, so the preview, time
     estimate and filament statistics describe the curved toolpath that will be printed.
   - With `polar_kinematics`, the processed file is converted to machine coordinates last, just
-    before the export rename. The preview therefore stays Cartesian, and its G-code text view
-    does not match the polar file line for line.
+    before the export rename. The converter records what became of each line: the last machine
+    line written for it and the machine pose after it. `map_preview_to_polar()` gives the
+    processor result the pose at the end of each move and moves the moves' line ids and the
+    line ends to the machine G-code, so the preview's G-code window shows what the machine runs.
   - Clearance hits (with printed material or, for a leaning head, the bed) and radius travel
     overruns become slicing warnings.
+- **Preview** (`GCodeViewer`): the toolpath stays in the part's Cartesian frame. For a non-planar
+  print (S4 or polar) the processor result also carries the toolhead of the clearance check
+  (`GCodeProcessorResult::NonPlanarPreview`), and for a polar printer the machine poses.
+  - The tool marker leans with the nozzle, and a see-through clearance body is drawn along its
+    axis at the tip: the cone from the flat tip up to the nozzle length, and the head above it
+    as a cylinder two of its radii tall.
+  - The nozzle's axis comes from the machine pose, not from the tilt in the part: the head's
+    radial line in the part is at the machine angle over its sign, and the nozzle leans in that
+    plane by the machine tilt times its sign. This is well defined at the rotation axis too.
+  - *Turn bed* draws the bed, the plate and the toolpath turned about the rotation axis by the
+    bed's turn at the current move, so the head stays on its rail along +X as on the machine.
+    It is a transform of the camera's view for the preview's scene passes only (the camera's
+    view matrix is swapped for the while), so nothing is re-uploaded as the slider moves.
+  - The marker's window adds the machine pose (bed angle, radius, tilt, as commanded) and the
+    *Toolhead* and *Turn bed* switches, which are kept in the app config.
 
 ## Tool
 
@@ -242,7 +259,7 @@ and the non-planar building blocks:
 - **Polar kinematics:** round trip (also with a reversed tilt and pivot compensation),
   continuity and axis crossing, tilt and radius travel.
 - **Polar G-code conversion:** path, extrusion, timing, machine blocks and their feed mode,
-  arcs.
+  arcs, and the record of each line's last machine line and pose.
 - **S4 deformation:** its guarantees (pinned base, planar base height, bed clearance, no
   inverted cells, limits and rotation direction), and the bounded rotation solver against
   closed-form solutions.
@@ -259,5 +276,7 @@ and the non-planar building blocks:
 `tests/fff_print/test_nonplanar.cpp` slices through the whole pipeline:
 - S4 curves layers, holds them flat below the planar height, and needs relative extrusion;
 - polar export drives angle and radius, and tilts the nozzle over S4 layers;
+- the preview of a polar print has each move's machine pose, and its line is the machine move
+  that ends it;
 - a dome printed over a print surface dome keeps the gap all around it, after the whole core;
 - a hollow dome gets a generated core and its first layer on its inner surface.

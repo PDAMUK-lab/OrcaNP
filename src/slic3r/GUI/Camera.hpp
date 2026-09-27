@@ -104,6 +104,9 @@ public:
     void select_view(ViewAngleType type);
     const std::array<int, 4>& get_viewport() const { return m_viewport; }
     const Transform3d& get_view_matrix() const { return m_view_matrix; }
+    // Orca: to draw a scene that moves as a whole (a turning bed), set the view matrix times the
+    // scene's transform for the while, then restore it.
+    void set_view_matrix(const Transform3d& view_matrix) { m_view_matrix = view_matrix; }
     const Transform3d& get_projection_matrix() const { return m_projection_matrix; }
 
     //BBS

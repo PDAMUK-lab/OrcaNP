@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <float.h>
+#include <optional>
 #include <set>
 #include <unordered_set>
 
@@ -73,6 +74,15 @@ public:
             bool m_visible{ true };
             bool m_is_dark = false;
             float m_scale_factor{ 1.0f };
+            // Orca: non-planar printing. The nozzle's axis, from the tip up; the toolhead's
+            // clearance body along it; the machine pose of a polar printer at the marker.
+            Vec3f m_nozzle_axis{ Vec3f::UnitZ() };
+            GLModel m_toolhead;
+            bool m_has_toolhead{ false };
+            bool m_show_toolhead{ true };
+            bool m_polar{ false };
+            bool m_turn_bed{ false };
+            std::optional<std::array<float, 4>> m_machine_pose; // angle, radius, Z, tilt, as commanded
 #if ENABLE_ACTUAL_SPEED_DEBUG
             ActualSpeedImguiWidget m_actual_speed_imgui_widget;
 #endif // ENABLE_ACTUAL_SPEED_DEBUG
@@ -85,6 +95,15 @@ public:
             const BoundingBoxf3& get_bounding_box() const { return m_model.get_bounding_box(); }
 
             void set_world_position(const Vec3f& position) { m_world_position = position; }
+            void set_nozzle_axis(const Vec3f& axis) { m_nozzle_axis = axis; }
+            void set_machine_pose(const std::optional<std::array<float, 4>>& pose) { m_machine_pose = pose; }
+            // The toolhead that must clear the print, as a cone from the flat tip up to the head
+            // and the head as a cylinder above it; without a toolhead, none is drawn.
+            void init_toolhead(float tip_radius, float cone_angle_deg, float nozzle_length, float head_radius);
+            void reset_toolhead() { m_toolhead.reset(); m_has_toolhead = false; }
+            void set_polar(bool polar) { m_polar = polar; }
+            // Whether the preview turns the bed to the machine's angle at the marker.
+            bool turns_bed() const { return m_polar && m_turn_bed; }
             void set_world_offset(const Vec3f& offset) { m_world_offset = offset; }
             void set_z_offset(float z_offset) { m_z_offset = z_offset; }
 
@@ -214,6 +233,18 @@ private:
     std::vector<float> m_filament_diameters;
     std::vector<float> m_filament_densities;
     SequentialView m_sequential_view;
+    // Orca: polar machine G-code. The machine pose at the end of each move, by the move's line
+    // in the machine G-code (ascending), and how the axes relate to the bed.
+    struct MachinePoseAt
+    {
+        uint32_t gcode_id;
+        GCodeProcessorResult::NonPlanarPreview::MachinePose pose;
+    };
+    std::vector<MachinePoseAt> m_machine_poses;
+    Vec2f m_rotation_axis{ Vec2f::Zero() };
+    float m_angle_sign{ 1.0f };
+    float m_tilt_sign{ 1.0f };
+    const GCodeProcessorResult::NonPlanarPreview::MachinePose* machine_pose_at(uint32_t gcode_id) const;
     IMSlider* m_moves_slider;
     IMSlider* m_layers_slider;
 #if VGCODE_ENABLE_COG_AND_TOOL_MARKERS
@@ -292,6 +323,9 @@ public:
     // void _render_calibration_thumbnail_framebuffer(ThumbnailData& thumbnail_data, unsigned int w, unsigned int h, const ThumbnailsParams& thumbnail_params, PartPlateList& partplate_list, OpenGLManager& opengl_manager);
     // void render_calibration_thumbnail(ThumbnailData& thumbnail_data, unsigned int w, unsigned int h, const ThumbnailsParams& thumbnail_params, PartPlateList& partplate_list, OpenGLManager& opengl_manager);
     bool has_data() const { return !m_viewer.get_extrusion_roles().empty(); }
+    // Orca: for a polar printer shown with its bed turning, the bed's turn about the rotation
+    // axis at the current move, to draw the bed and the print with.
+    std::optional<Transform3d> bed_turn() const;
 
     bool can_export_toolpaths() const;
     std::vector<int> get_plater_extruder();
