@@ -97,6 +97,11 @@ jobs:
           - Non-planar printing (Print settings > Quality > Non-planar (S4)): optimized S4 layers, conical layers, and layers offset from a print surface (support-like core parts, or a generated sphere or cylinder fitted to the part's cavity, with a surface gap all around).
           - Polar printers (Printer settings > Basic information > Polar kinematics and Non-planar toolhead): machine G-code in bed angle, radius, Z and tilt with inverse time feed, tilt and radius travel limits, toolhead clearance checks.
           - Printer profile "ThetaFirm Core R-Theta" (Custom printers) for the Core R-Theta 4-axis printer with the ThetaFirm RepRapFirmware configuration.
+
+          Known limitations:
+          - The preview shows the toolpath on the part; it does not show the nozzle tilt or the bed rotation.
+          - Offset layers meeting the bed stand vertical there; a tilting nozzle reaches them only within its tilt range, and the clearance check warns where the head would hit.
+          - A non-planar object has one part printed non-planar (besides print surface parts) and one instance.
           EOF
           gh release create "$tag" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
