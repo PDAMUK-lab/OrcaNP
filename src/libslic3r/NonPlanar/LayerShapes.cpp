@@ -1,5 +1,7 @@
 #include "LayerShapes.hpp"
 
+#include <Eigen/Geometry>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -174,6 +176,107 @@ double SurfaceDistance::signed_distance(const Eigen::Vector3d &p) const
 {
     const double d = distance(p);
     return inside(p) ? -d : d;
+}
+
+double Post::top_at(const Eigen::Vector2d &xy) const
+{
+    const double r = (xy - centre).norm();
+    if (r > radius)
+        return -std::numeric_limits<double>::infinity();
+    if (dome_height <= 0.)
+        return bottom + height;
+    // A cap of a sphere through the rim, `dome_height` above it in the middle.
+    const double sphere = (radius * radius + dome_height * dome_height) / (2. * dome_height);
+    return bottom + height + dome_height - sphere + std::sqrt(sphere * sphere - r * r);
+}
+
+void Post::mesh(std::vector<Eigen::Vector3d> &vertices, std::vector<std::array<int, 3>> &triangles, int segments) const
+{
+    // A profile in (r, z) from the bottom's middle round the rim to the top's middle, revolved.
+    std::vector<Eigen::Vector2d> profile { { 0., bottom }, { radius, bottom } };
+    if (height > 0.)
+        profile.emplace_back(radius, bottom + height);
+    const int arcs = dome_height > 0. ? 24 : 0;
+    for (int k = 1; k < arcs; ++k) {
+        const double r = radius * (1. - double(k) / arcs);
+        profile.emplace_back(r, top_at(centre + Eigen::Vector2d(r, 0.)));
+    }
+    profile.emplace_back(0., bottom + height + dome_height);
+    vertices.clear();
+    triangles.clear();
+    std::vector<int> first;
+    for (const Eigen::Vector2d &p : profile) {
+        first.push_back(int(vertices.size()));
+        const int n = p.x() > 0. ? segments : 1;
+        for (int k = 0; k < n; ++k) {
+            const double a = 2. * PI * k / segments;
+            vertices.emplace_back(centre.x() + p.x() * std::cos(a), centre.y() + p.x() * std::sin(a), p.y());
+        }
+    }
+    auto at = [&](size_t i, int k) { return profile[i].x() > 0. ? first[i] + k % segments : first[i]; };
+    for (size_t i = 0; i + 1 < profile.size(); ++i)
+        for (int k = 0; k < segments; ++k) {
+            const int a = at(i, k), b = at(i, k + 1), c = at(i + 1, k), d = at(i + 1, k + 1);
+            if (a != b)
+                triangles.push_back({ a, b, c });
+            if (c != d)
+                triangles.push_back({ b, d, c });
+        }
+}
+
+std::pair<Eigen::Vector2d, double> part_base(const std::vector<Eigen::Vector3d> &vertices, double tolerance)
+{
+    double floor_z = std::numeric_limits<double>::infinity();
+    for (const Eigen::Vector3d &v : vertices)
+        floor_z = std::min(floor_z, v.z());
+    Eigen::AlignedBox2d box;
+    for (const Eigen::Vector3d &v : vertices)
+        if (v.z() <= floor_z + tolerance)
+            box.extend(v.head<2>());
+    const Eigen::Vector2d middle = box.center();
+    double                radius = 0.;
+    for (const Eigen::Vector3d &v : vertices)
+        if (v.z() <= floor_z + tolerance)
+            radius = std::max(radius, (v.head<2>() - middle).norm());
+    return { middle, radius };
+}
+
+double lift_onto_post(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, const Post &post,
+                      double gap)
+{
+    // The part's lowest point over each cell of a grid over the post, by rasterizing its faces;
+    // cell centres off the round coordinates models are drawn in.
+    const double          cell   = std::max(0.25, post.radius / 200.);
+    const int             n      = int(std::ceil(2. * post.radius / cell)) + 1;
+    const Eigen::Vector2d origin = post.centre - Eigen::Vector2d::Constant(post.radius) + cell * Eigen::Vector2d(0.0137, 0.0291);
+    std::vector<double>   lowest(size_t(n) * n, std::numeric_limits<double>::infinity());
+    for (const std::array<int, 3> &t : triangles) {
+        const Eigen::Vector3d &a = vertices[t[0]], &b = vertices[t[1]], &c = vertices[t[2]];
+        const double           area = (b.x() - a.x()) * (c.y() - a.y()) - (c.x() - a.x()) * (b.y() - a.y());
+        if (std::abs(area) < 1e-12)
+            continue; // vertical
+        auto range = [&](double lo, double hi, double o) {
+            return std::make_pair(std::max(0, int(std::ceil((lo - o) / cell - 0.5))), std::min(n - 1, int(std::floor((hi - o) / cell - 0.5))));
+        };
+        const auto [i0, i1] = range(std::min({ a.x(), b.x(), c.x() }), std::max({ a.x(), b.x(), c.x() }), origin.x());
+        const auto [j0, j1] = range(std::min({ a.y(), b.y(), c.y() }), std::max({ a.y(), b.y(), c.y() }), origin.y());
+        for (int j = j0; j <= j1; ++j)
+            for (int i = i0; i <= i1; ++i) {
+                const Eigen::Vector2d p  = origin + cell * Eigen::Vector2d(i + 0.5, j + 0.5);
+                const double          w0 = ((b.x() - p.x()) * (c.y() - p.y()) - (c.x() - p.x()) * (b.y() - p.y())) / area;
+                const double          w1 = ((c.x() - p.x()) * (a.y() - p.y()) - (a.x() - p.x()) * (c.y() - p.y())) / area;
+                if (w0 >= 0. && w1 >= 0. && w0 + w1 <= 1.) {
+                    double &z = lowest[size_t(j) * n + i];
+                    z         = std::min(z, w0 * a.z() + w1 * b.z() + (1. - w0 - w1) * c.z());
+                }
+            }
+    }
+    double lift = 0.;
+    for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i)
+            if (const double z = lowest[size_t(j) * n + i]; std::isfinite(z))
+                lift = std::max(lift, post.top_at(origin + cell * Eigen::Vector2d(i + 0.5, j + 0.5)) + gap - z);
+    return lift;
 }
 
 FittedCore fit_sphere_core(const SurfaceDistance &part)

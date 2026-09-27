@@ -843,3 +843,105 @@ TEST_CASE("A cylinder core is fitted up to the roof of the part's cavity", "[S4]
                       Catch::Matchers::ContainsSubstring("covers the rotation axis"));
 }
 
+
+namespace {
+
+// A slab over [-10, 10]^2 up to 5 mm whose underside is the dome z = 3 (1 - (x^2 + y^2) / 200),
+// reaching the bed at the corners: a lens with a concave underside.
+Surface concave_slab(int n = 40)
+{
+    Surface s;
+    auto    at = [n](int i, int j, int side) { return side * (n + 1) * (n + 1) + j * (n + 1) + i; };
+    for (int side = 0; side < 2; ++side)
+        for (int j = 0; j <= n; ++j)
+            for (int i = 0; i <= n; ++i) {
+                const double x = -10. + 20. * i / n, y = -10. + 20. * j / n;
+                s.vertices.emplace_back(x, y, side == 0 ? 3. * (1. - (x * x + y * y) / 200.) : 5.);
+            }
+    for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i) {
+            s.triangles.push_back({ at(i, j, 0), at(i + 1, j + 1, 0), at(i + 1, j, 0) });
+            s.triangles.push_back({ at(i, j, 0), at(i, j + 1, 0), at(i + 1, j + 1, 0) });
+            s.triangles.push_back({ at(i, j, 1), at(i + 1, j, 1), at(i + 1, j + 1, 1) });
+            s.triangles.push_back({ at(i, j, 1), at(i + 1, j + 1, 1), at(i, j + 1, 1) });
+        }
+    std::vector<std::pair<int, int>> border; // counter-clockwise seen from above
+    for (int k = 0; k < n; ++k)
+        border.emplace_back(k, 0);
+    for (int k = 0; k < n; ++k)
+        border.emplace_back(n, k);
+    for (int k = n; k > 0; --k)
+        border.emplace_back(k, n);
+    for (int k = n; k > 0; --k)
+        border.emplace_back(0, k);
+    for (size_t k = 0; k < border.size(); ++k) {
+        const auto [i0, j0] = border[k];
+        const auto [i1, j1] = border[(k + 1) % border.size()];
+        s.triangles.push_back({ at(i0, j0, 0), at(i1, j1, 0), at(i1, j1, 1) });
+        s.triangles.push_back({ at(i0, j0, 0), at(i1, j1, 1), at(i0, j0, 1) });
+    }
+    return s;
+}
+
+} // namespace
+
+TEST_CASE("A post is a cylinder with an optional dome on top", "[S4]")
+{
+    Post post;
+    post.centre = Eigen::Vector2d(1., 2.);
+    post.radius = 10.;
+    post.height = 5.;
+    CHECK_THAT(post.top_at({ 1., 2. }), WithinAbs(5., 1e-12));
+    CHECK_THAT(post.top_at({ 10.5, 2. }), WithinAbs(5., 1e-12));
+    CHECK(post.top_at({ 11.5, 2. }) < -1e9);
+
+    // A 2 mm dome over the 10 mm radius: a sphere of radius (100 + 4) / 4 = 26 mm.
+    post.dome_height = 2.;
+    CHECK_THAT(post.top_at({ 1., 2. }), WithinAbs(7., 1e-12));
+    CHECK_THAT(post.top_at({ 11., 2. }), WithinAbs(5., 1e-9));
+    CHECK_THAT(post.top_at({ 7., 2. }), WithinAbs(5. + 2. - 26. + std::sqrt(26. * 26. - 36.), 1e-12));
+
+    // Its surface is closed and outward: the volume of the cylinder and the cap.
+    std::vector<Eigen::Vector3d>    vertices;
+    std::vector<std::array<int, 3>> triangles;
+    post.mesh(vertices, triangles, 360);
+    double volume = 0.;
+    for (const std::array<int, 3> &t : triangles)
+        volume += vertices[t[0]].dot(vertices[t[1]].cross(vertices[t[2]])) / 6.;
+    const double cap = PI * 2. * 2. * (3. * 26. - 2.) / 3.;
+    CHECK_THAT(volume, WithinRel(PI * 100. * 5. + cap, 0.01));
+}
+
+TEST_CASE("A part is lifted onto a post the surface gap above it", "[S4]")
+{
+    // A flat base stands the gap above a flat post.
+    std::vector<std::array<int, 3>> voxels;
+    for (int x = 0; x < 5; ++x)
+        for (int y = 0; y < 5; ++y)
+            voxels.push_back({ x, y, 0 });
+    const Surface box = voxel_surface(voxels, 2.);
+    const auto [middle, radius] = part_base(box.vertices, 0.1);
+    CHECK_THAT((middle - Eigen::Vector2d(5., 5.)).norm(), WithinAbs(0., 1e-12));
+    CHECK_THAT(radius, WithinAbs(std::sqrt(50.), 1e-12));
+    Post post;
+    post.centre = middle;
+    post.radius = 4.;
+    post.height = 6.;
+    CHECK_THAT(lift_onto_post(box.vertices, box.triangles, post, 0.2), WithinAbs(6.2, 1e-9));
+
+    // A concave underside nests on a dome: its middle, 3 mm up, the gap above the dome's top; a
+    // flat post as high must lift it until its lower edge over the post clears it.
+    const Surface lens = concave_slab();
+    post        = Post();
+    post.radius = 10.;
+    post.dome_height = 3.;
+    CHECK_THAT(lift_onto_post(lens.vertices, lens.triangles, post, 0.2), WithinAbs(0.2, 0.02));
+    post.dome_height = 0.;
+    post.height      = 3.;
+    // At 10 mm out the underside is 1.5 mm up.
+    CHECK_THAT(lift_onto_post(lens.vertices, lens.triangles, post, 0.2), WithinAbs(3.2 - 1.5, 0.05));
+    // A post inside a cavity lifts nothing.
+    post.radius = 2.;
+    post.height = 1.;
+    CHECK_THAT(lift_onto_post(lens.vertices, lens.triangles, post, 0.2), WithinAbs(0., 1e-12));
+}

@@ -55,6 +55,29 @@ struct FittedCore
 // centre), out to the nearest point of the part. Throws when the centre is inside the part.
 FittedCore fit_sphere_core(const SurfaceDistance &part);
 
+// A post for a part to be printed on, standing on the bed at `bottom`: a cylinder about `centre`,
+// topped by a spherical cap `dome_height` high over its whole width.
+struct Post
+{
+    Eigen::Vector2d centre = Eigen::Vector2d::Zero();
+    double          bottom = 0., radius = 0., height = 0., dome_height = 0.;
+
+    // Height of the post's top over a point, -infinity beside the post.
+    double top_at(const Eigen::Vector2d &xy) const;
+    // Closed surface, with `segments` around.
+    void mesh(std::vector<Eigen::Vector3d> &vertices, std::vector<std::array<int, 3>> &triangles, int segments = 96) const;
+};
+
+// The part's base: the middle of its faces, edges and vertices within `tolerance` of its lowest
+// point, and the farthest of them from it.
+std::pair<Eigen::Vector2d, double> part_base(const std::vector<Eigen::Vector3d> &vertices, double tolerance);
+
+// How far the part has to be raised to stand `gap` above the post everywhere over it, found
+// column by column (a part with a cavity over the post can sit lower than its top); never below
+// the bed.
+double lift_onto_post(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, const Post &post,
+                      double gap);
+
 // A cylinder about a vertical axis, from the part's bottom up to the roof of its cavity, out to
 // the part's nearest wall below the roof. Throws when the part covers the axis within 0.5 mm of
 // its bottom (the core must stand on the bed) or has no cavity around the axis.
