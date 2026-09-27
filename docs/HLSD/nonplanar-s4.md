@@ -135,7 +135,14 @@ whose flat slices are chosen surfaces (`LayerShapes`):
     giving a strip of two turns. Only one turn from the middle of it (a window in sliced X) is
     printed: the walls at the strip's ends are never printed, and paths leaving the window
     meet their continuation at the other edge.
-- **Conical** (the radial slicer's layers): z' = z + tan(angle) r about the rotation axis.
+- **Conical** (the radial slicer's layers): z' = z + max(0, tan(angle) (r - r_flat)) about the
+  rotation axis. Pure cones meet a flat bottom only near the axis: the first layer would be a
+  speck (an empty first layer) and the rest of the footprint printed ring by ring in later
+  layers, over the skirt. So the layers are flat over the radii at which the part stands on the
+  bed (its faces within half the first layer of its lowest point) and conical outside them:
+  r_flat is the farthest of those radii for a positive angle (layers descending away from the
+  axis beyond it) and the nearest for a negative one (descending towards the axis within it). A
+  part standing on the axis at a point gets pure cones.
 
 These shapes have no optimization and no inversion repair: the offset map is injective where
 the core is star-shaped about the layout's centre (or axis), and the cone's is always.

@@ -5039,7 +5039,7 @@ void PrintConfigDef::init_fff_params()
                       "Offset from print surface: parts set as print surface are printed first with flat layers, and the "
                       "rest of the object is printed over them in layers at constant distance from their surface, starting "
                       "the surface gap away, like support.\n"
-                      "Conical: cones about the rotation axis (the radial slicer's layers).");
+                      "Conical: cones about the rotation axis (the radial slicer's layers), flat where the part stands on the bed.");
     def->enum_keys_map = &ConfigOptionEnum<S4LayerShape>::get_enum_values();
     def->enum_values.push_back("optimized");
     def->enum_values.push_back("offset");
@@ -5095,7 +5095,9 @@ void PrintConfigDef::init_fff_params()
     def = this->add("s4_cone_angle", coFloat);
     def->label    = L("Cone angle");
     def->category = L("Quality");
-    def->tooltip  = L("Slope of conical layers from horizontal. Positive: layers descend away from the rotation axis.");
+    def->tooltip  = L("Slope of conical layers from horizontal. Positive: layers descend away from the rotation axis. The "
+                      "layers are flat over the distances from the axis at which the part stands on the bed, so its first "
+                      "layer is all on the bed, and conical beyond them (positive) or within them (negative).");
     def->sidetext = u8"°";	// degrees, don't need translation
     def->min      = -60;
     def->max      = 60;

@@ -916,8 +916,13 @@ void PrintObject::deform_s4()
             m_print->throw_if_canceled();
             s4->deformed = NonPlanar::s4_deform(s4->mesh, params).deformed;
         } else if (shape == S4LayerShape::Cone) {
+            // Flat over the radii the part stands on the bed at, so its whole footprint is in the
+            // first layer; conical beyond them (within them for a negative angle).
+            const double angle        = Geometry::deg2rad(m_config.s4_cone_angle.value);
+            const auto [inner, outer] = NonPlanar::footprint_radii(shell.vertices, shell.triangles, s4->axis,
+                                                                   0.5 * m_print->config().initial_layer_print_height.value);
             s4->mesh     = NonPlanar::tetrahedralize(shell.vertices, shell.triangles, tp);
-            s4->deformed = NonPlanar::deform_cone(s4->mesh.points, s4->axis, Geometry::deg2rad(m_config.s4_cone_angle.value));
+            s4->deformed = NonPlanar::deform_cone(s4->mesh.points, s4->axis, angle, angle >= 0. ? outer : inner);
             // Start the first layer at the lowest point.
             double min_z = std::numeric_limits<double>::infinity();
             for (const Eigen::Vector3d &p : s4->deformed)

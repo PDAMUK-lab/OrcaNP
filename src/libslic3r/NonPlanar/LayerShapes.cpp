@@ -40,6 +40,14 @@ Eigen::Vector3d closest_on_triangle(const Eigen::Vector3d &p, const Eigen::Vecto
     return a + ab * (vb * denom) + ac * (vc * denom);
 }
 
+double squared_distance_to_segment(const Eigen::Vector2d &p, const Eigen::Vector2d &a, const Eigen::Vector2d &b)
+{
+    const Eigen::Vector2d ab = b - a;
+    const double          l2 = ab.squaredNorm();
+    const double          t  = l2 > 0. ? std::clamp((p - a).dot(ab) / l2, 0., 1.) : 0.;
+    return (a + ab * t - p).squaredNorm();
+}
+
 double wrap_2pi(double a)
 {
     a = std::fmod(a, 2. * PI);
@@ -198,17 +206,13 @@ FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const
         }
     // Nearest wall: horizontal distance from the axis to the part below the roof.
     double r2 = std::numeric_limits<double>::infinity();
-    auto   seg = [&axis](const Eigen::Vector2d &a, const Eigen::Vector2d &b) {
-        const Eigen::Vector2d ab = b - a;
-        const double          l2 = ab.squaredNorm();
-        const double          t  = l2 > 0. ? std::clamp((axis - a).dot(ab) / l2, 0., 1.) : 0.;
-        return (a + ab * t - axis).squaredNorm();
-    };
     for (const std::array<int, 3> &t : triangles) {
         const Eigen::Vector3d &a = vertices[t[0]], &b = vertices[t[1]], &c = vertices[t[2]];
         if (std::min({ a.z(), b.z(), c.z() }) >= roof)
             continue;
-        r2 = std::min({ r2, seg(a.head<2>(), b.head<2>()), seg(b.head<2>(), c.head<2>()), seg(c.head<2>(), a.head<2>()) });
+        r2 = std::min({ r2, squared_distance_to_segment(axis, a.head<2>(), b.head<2>()),
+                        squared_distance_to_segment(axis, b.head<2>(), c.head<2>()),
+                        squared_distance_to_segment(axis, c.head<2>(), a.head<2>()) });
     }
     if (! std::isfinite(r2) || r2 <= 0.)
         throw std::runtime_error("Print surface: the part has no cavity around the rotation axis to fit a cylinder into");
@@ -244,13 +248,44 @@ std::vector<Eigen::Vector3d> deform_offset_around_axis(const std::vector<Eigen::
     return out;
 }
 
-std::vector<Eigen::Vector3d> deform_cone(const std::vector<Eigen::Vector3d> &points, const Eigen::Vector2d &axis, double angle)
+std::pair<double, double> footprint_radii(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                                          const Eigen::Vector2d &axis, double tolerance)
+{
+    double floor_z = std::numeric_limits<double>::infinity();
+    for (const Eigen::Vector3d &v : vertices)
+        floor_z = std::min(floor_z, v.z());
+    auto   on_floor = [&](int i) { return vertices[i].z() <= floor_z + tolerance; };
+    auto   cross    = [](const Eigen::Vector2d &u, const Eigen::Vector2d &v) { return u.x() * v.y() - u.y() * v.x(); };
+    double inner2 = std::numeric_limits<double>::infinity(), outer2 = 0.;
+    for (int i = 0; i < int(vertices.size()); ++i)
+        if (on_floor(i)) {
+            const double r2 = (vertices[i].head<2>() - axis).squaredNorm();
+            inner2          = std::min(inner2, r2);
+            outer2          = std::max(outer2, r2);
+        }
+    for (const std::array<int, 3> &t : triangles) {
+        for (int j = 0; j < 3; ++j)
+            if (on_floor(t[j]) && on_floor(t[(j + 1) % 3]))
+                inner2 = std::min(inner2, squared_distance_to_segment(axis, vertices[t[j]].head<2>(), vertices[t[(j + 1) % 3]].head<2>()));
+        if (on_floor(t[0]) && on_floor(t[1]) && on_floor(t[2])) {
+            const Eigen::Vector2d a = vertices[t[0]].head<2>(), b = vertices[t[1]].head<2>(), c = vertices[t[2]].head<2>();
+            const double          area = cross(b - a, c - a);
+            if (area != 0. && cross(b - a, axis - a) * area >= 0. && cross(c - b, axis - b) * area >= 0. &&
+                cross(a - c, axis - c) * area >= 0.)
+                inner2 = 0.;
+        }
+    }
+    return { std::sqrt(inner2), std::sqrt(outer2) };
+}
+
+std::vector<Eigen::Vector3d> deform_cone(const std::vector<Eigen::Vector3d> &points, const Eigen::Vector2d &axis, double angle,
+                                         double flat_radius)
 {
     const double                 slope = std::tan(angle);
     std::vector<Eigen::Vector3d> out;
     out.reserve(points.size());
     for (const Eigen::Vector3d &p : points)
-        out.emplace_back(p.x(), p.y(), p.z() + slope * (p.head<2>() - axis).norm());
+        out.emplace_back(p.x(), p.y(), p.z() + std::max(0., slope * ((p.head<2>() - axis).norm() - flat_radius)));
     return out;
 }
 

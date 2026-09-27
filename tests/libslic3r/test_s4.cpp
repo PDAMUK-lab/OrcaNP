@@ -656,9 +656,52 @@ TEST_CASE("Unwrapping around the axis turns angle into length and height into wi
 
 TEST_CASE("Conical layers rise with the distance from the axis", "[S4]")
 {
-    const std::vector<Eigen::Vector3d> out = deform_cone({ { 3., 4., 1. } }, Eigen::Vector2d::Zero(), PI / 4.);
+    const std::vector<Eigen::Vector3d> out = deform_cone({ { 3., 4., 1. } }, Eigen::Vector2d::Zero(), PI / 4., 0.);
     CHECK_THAT(out[0].z(), WithinAbs(1. + 5., 1e-9));
     CHECK_THAT(out[0].x(), WithinAbs(3., 1e-12));
+}
+
+TEST_CASE("Conical layers are flat on the side of the flat radius the part stands on", "[S4]")
+{
+    const std::vector<Eigen::Vector3d> points { { 0., 0., 1. }, { 3., 4., 1. }, { 6., 8., 1. } };
+    // Descending away from the axis beyond 5 mm.
+    std::vector<Eigen::Vector3d> out = deform_cone(points, Eigen::Vector2d::Zero(), PI / 4., 5.);
+    CHECK_THAT(out[0].z(), WithinAbs(1., 1e-9));
+    CHECK_THAT(out[1].z(), WithinAbs(1., 1e-9));
+    CHECK_THAT(out[2].z(), WithinAbs(1. + 5., 1e-9));
+    // Descending towards the axis within 5 mm.
+    out = deform_cone(points, Eigen::Vector2d::Zero(), -PI / 4., 5.);
+    CHECK_THAT(out[0].z(), WithinAbs(1. + 5., 1e-9));
+    CHECK_THAT(out[1].z(), WithinAbs(1., 1e-9));
+    CHECK_THAT(out[2].z(), WithinAbs(1., 1e-9));
+}
+
+TEST_CASE("The footprint radii span where the part stands on the bed", "[S4]")
+{
+    // A 10 x 10 x 12 mm cup upside down, standing on a ring around a 6 x 6 mm cavity.
+    std::vector<std::array<int, 3>> ring, block;
+    for (int x = 0; x < 5; ++x)
+        for (int y = 0; y < 5; ++y)
+            for (int z = 0; z < 6; ++z) {
+                block.push_back({ x, y, z });
+                if (! (x >= 1 && x <= 3 && y >= 1 && y <= 3 && z <= 3))
+                    ring.push_back({ x, y, z });
+            }
+    const Surface cup = voxel_surface(ring, 2.);
+    auto [inner, outer] = footprint_radii(cup.vertices, cup.triangles, Eigen::Vector2d(5., 5.), 0.1);
+    CHECK_THAT(inner, WithinAbs(3., 1e-9));
+    CHECK_THAT(outer, WithinAbs(std::sqrt(50.), 1e-9));
+
+    // Standing on the axis.
+    const Surface box = voxel_surface(block, 2.);
+    std::tie(inner, outer) = footprint_radii(box.vertices, box.triangles, Eigen::Vector2d(5., 5.), 0.1);
+    CHECK_THAT(inner, WithinAbs(0., 1e-12));
+    CHECK_THAT(outer, WithinAbs(std::sqrt(50.), 1e-9));
+
+    // Off to the side of the axis.
+    std::tie(inner, outer) = footprint_radii(box.vertices, box.triangles, Eigen::Vector2d(-3., 5.), 0.1);
+    CHECK_THAT(inner, WithinAbs(3., 1e-9));
+    CHECK_THAT(outer, WithinAbs(std::sqrt(13. * 13. + 25.), 1e-9));
 }
 
 namespace {

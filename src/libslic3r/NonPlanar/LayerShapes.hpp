@@ -8,6 +8,7 @@
 
 #include <array>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace Slic3r {
@@ -80,9 +81,18 @@ std::vector<Eigen::Vector3d> deform_offset_around_axis(const std::vector<Eigen::
                                                        const Eigen::Vector2d &axis, double from_angle, double scale, double base_z,
                                                        double gap, double shift);
 
-// Conical layers about a vertical axis (the radial slicer's): z' = z + tan(angle) r. A positive
-// angle makes layers descend away from the axis.
-std::vector<Eigen::Vector3d> deform_cone(const std::vector<Eigen::Vector3d> &points, const Eigen::Vector2d &axis, double angle);
+// The distances from a vertical axis at which a surface stands on the bed: the nearest and the
+// farthest point of its faces, edges and vertices within `tolerance` of its lowest point (nearest
+// 0 when such faces surround the axis).
+std::pair<double, double> footprint_radii(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                                          const Eigen::Vector2d &axis, double tolerance);
+
+// Conical layers about a vertical axis (the radial slicer's), flat on one side of `flat_radius`:
+// z' = z + max(0, tan(angle) (r - flat_radius)). A positive angle makes layers descend away from
+// the axis beyond it, a negative angle towards the axis within it. Flat over the radii a part stands
+// on the bed at, its first layer is all of its footprint.
+std::vector<Eigen::Vector3d> deform_cone(const std::vector<Eigen::Vector3d> &points, const Eigen::Vector2d &axis, double angle,
+                                         double flat_radius);
 
 } // namespace NonPlanar
 } // namespace Slic3r
