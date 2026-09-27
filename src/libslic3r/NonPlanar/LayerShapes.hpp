@@ -78,12 +78,6 @@ std::pair<Eigen::Vector2d, double> part_base(const std::vector<Eigen::Vector3d> 
 double lift_onto_post(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, const Post &post,
                       double gap);
 
-// The dome height, from flat up to the depth of the part's underside over the post, that leaves
-// the least room on average between the post and the part lifted onto it: the dome a concave
-// underside nests on, flat under a flat one.
-double fit_dome_height(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, Post post,
-                       double gap);
-
 // A cylinder about a vertical axis, from the part's bottom up to the roof of its cavity, out to
 // the part's nearest wall below the roof. Throws when the part covers the axis within 0.5 mm of
 // its bottom (the core must stand on the bed) or has no cavity around the axis.

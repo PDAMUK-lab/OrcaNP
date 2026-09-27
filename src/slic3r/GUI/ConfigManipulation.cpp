@@ -1022,11 +1022,13 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
         toggle_line(el, has_s4 && s4_shape == S4LayerShape::Optimized);
     for (auto el : {"s4_surface_core", "s4_surface_gap", "s4_surface_projection"})
         toggle_line(el, has_s4 && s4_shape == S4LayerShape::Offset);
-    const bool has_post = has_s4 && s4_shape == S4LayerShape::Offset &&
-                          config->opt_enum<S4SurfaceCore>("s4_surface_core") == S4SurfaceCore::Post;
-    toggle_line("s4_post_size", has_post);
-    for (auto el : {"s4_post_diameter", "s4_post_height", "s4_dome_height"})
-        toggle_line(el, has_post && config->opt_enum<S4PostSize>("s4_post_size") == S4PostSize::Custom);
+    const S4SurfaceCore s4_core    = config->opt_enum<S4SurfaceCore>("s4_surface_core");
+    const bool          has_pillar = has_s4 && s4_shape == S4LayerShape::Offset &&
+                            (s4_core == S4SurfaceCore::Pillar || s4_core == S4SurfaceCore::Dome || s4_core == S4SurfaceCore::DomedPillar);
+    const bool          custom     = has_pillar && config->opt_enum<S4SurfaceSize>("s4_surface_size") == S4SurfaceSize::Custom;
+    toggle_line("s4_surface_size", has_pillar);
+    toggle_line("s4_surface_diameter", custom);
+    toggle_line("s4_surface_height", custom && s4_core != S4SurfaceCore::Dome);
     toggle_line("s4_cone_angle", has_s4 && s4_shape == S4LayerShape::Cone);
 
     bool have_sequential_printing = (config->opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject);

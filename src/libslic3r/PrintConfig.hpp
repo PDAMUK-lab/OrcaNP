@@ -218,20 +218,24 @@ enum class S4LayerShape
     Cone,      // conical about the rotation axis
 };
 
-// What layers are offset from: the object's print surface parts, or a core generated to fit the
-// part's inner surface.
-enum class S4PostSize
-{
-    Auto,   // fitted to the part and the toolhead
-    Custom, // s4_post_diameter, s4_post_height, s4_dome_height
-};
-
+// What layers are offset from: the object's print surface parts, a core generated to fit the
+// part's inner surface, or a pillar or dome generated for the part to stand on.
 enum class S4SurfaceCore
 {
     Parts,
     Sphere,
     Cylinder,
-    Post, // under the part, which stands on it
+    // Under the part, which stands on them.
+    Pillar,
+    Dome, // a hemisphere
+    DomedPillar,
+};
+
+// Size of a pillar or dome under the part.
+enum class S4SurfaceSize
+{
+    Auto,   // as wide as the part's base, a pillar as high as the toolhead needs
+    Custom, // s4_surface_diameter, s4_surface_height
 };
 
 // How layers offset from a print surface are laid out flat for slicing.
@@ -729,7 +733,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(PowerLossRecoveryMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SurfaceFillOrder)
 
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4LayerShape)
-CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4PostSize)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceSize)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceProjection)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(S4SurfaceCore)
 
@@ -1186,10 +1190,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<S4SurfaceProjection>, s4_surface_projection))
     ((ConfigOptionEnum<S4SurfaceCore>, s4_surface_core))
     ((ConfigOptionFloat,               s4_cone_angle))
-    ((ConfigOptionEnum<S4PostSize>,    s4_post_size))
-    ((ConfigOptionFloat,               s4_post_diameter))
-    ((ConfigOptionFloat,               s4_post_height))
-    ((ConfigOptionFloat,               s4_dome_height))
+    ((ConfigOptionEnum<S4SurfaceSize>, s4_surface_size))
+    ((ConfigOptionFloat,               s4_surface_diameter))
+    ((ConfigOptionFloat,               s4_surface_height))
     ((ConfigOptionEnum<SlicingMode>,   slicing_mode))
     ((ConfigOptionBool,                enable_support))
     // Automatic supports (generated based on support_threshold_angle).

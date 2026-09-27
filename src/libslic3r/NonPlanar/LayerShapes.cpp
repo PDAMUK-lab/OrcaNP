@@ -303,39 +303,6 @@ double lift_onto_post(const std::vector<Eigen::Vector3d> &vertices, const std::v
     return lift_over(underside(vertices, triangles, post), post, gap);
 }
 
-double fit_dome_height(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles, Post post,
-                       double gap)
-{
-    const Underside u = underside(vertices, triangles, post);
-    double          lo = std::numeric_limits<double>::infinity(), hi = -lo;
-    for (int j = 0; j < u.n; ++j)
-        for (int i = 0; i < u.n; ++i)
-            if (const double z = u.lowest[size_t(j) * u.n + i]; std::isfinite(z) && (u.centre(i, j) - post.centre).norm() <= post.radius) {
-                lo = std::min(lo, z);
-                hi = std::max(hi, z);
-            }
-    double best = 0., least = std::numeric_limits<double>::infinity();
-    if (! (hi > lo))
-        return best;
-    for (int k = 0; k <= 48; ++k) {
-        post.dome_height  = (hi - lo) * k / 48.;
-        const double lift = lift_over(u, post, gap);
-        double       room = 0.;
-        int          count = 0;
-        for (int j = 0; j < u.n; ++j)
-            for (int i = 0; i < u.n; ++i)
-                if (const double z = u.lowest[size_t(j) * u.n + i], top = post.top_at(u.centre(i, j)); std::isfinite(z) && std::isfinite(top)) {
-                    room += z + lift - top - gap;
-                    ++count;
-                }
-        if (count > 0 && room / count < least - 1e-9) {
-            least = room / count;
-            best  = post.dome_height;
-        }
-    }
-    return best;
-}
-
 FittedCore fit_sphere_core(const SurfaceDistance &part)
 {
     const Eigen::Vector3d lo = part.bbox_min(), hi = part.bbox_max();

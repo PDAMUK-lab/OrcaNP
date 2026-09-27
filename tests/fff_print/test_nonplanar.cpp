@@ -378,11 +378,11 @@ TEST_CASE("A print surface part must stand on the bed", "[NonPlanar]")
     CHECK_THROWS_WITH(Test::gcode(print), Catch::Matchers::ContainsSubstring("must stand on the bed"));
 }
 
-TEST_CASE("A part is printed on a generated post, lifted off the bed", "[NonPlanar]")
+TEST_CASE("A part is printed on a pillar, lifted off the bed", "[NonPlanar]")
 {
-    // A 10 x 10 x 4 mm block on a post 8 mm wide and 5 mm high: the post first, then the block
-    // standing the gap above it, from 5.4 to 9.4 mm, its corners beyond the post in layers
-    // wrapping round the post's rim.
+    // A 10 x 10 x 4 mm block on a pillar 8 mm wide and 5 mm high: the pillar first, then the
+    // block standing the gap above it, from 5.4 to 9.4 mm, its corners beyond the pillar in layers
+    // wrapping round the pillar's rim.
     const double post_diameter = 8., post_height = 5., gap = 0.4, height = 4.;
     Model        model;
     ModelObject *object = model.add_object();
@@ -390,9 +390,9 @@ TEST_CASE("A part is printed on a generated post, lifted off the bed", "[NonPlan
     object->add_volume(TriangleMesh(its_make_cube(10., 10., height)));
     object->add_instance()->set_offset(Vec3d(100., 100., 0.));
 
-    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "post" },
-                                              { "s4_post_size", "custom" }, { "s4_post_diameter", post_diameter },
-                                              { "s4_post_height", post_height },
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "pillar" },
+                                              { "s4_surface_size", "custom" }, { "s4_surface_diameter", post_diameter },
+                                              { "s4_surface_height", post_height },
                                               { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
                                               { "layer_change_gcode", "G92 E0" }, { "skirt_loops", 0 }, { "brim_type", "no_brim" },
                                               { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
@@ -442,17 +442,17 @@ TEST_CASE("A part is printed on a generated post, lifted off the bed", "[NonPlan
     CHECK(block_reach >= 4.5); // beyond the post
 }
 
-TEST_CASE("An automatic post is as high as the toolhead needs to lean under the part", "[NonPlanar]")
+TEST_CASE("An automatic pillar is as high as the toolhead needs to lean under the part", "[NonPlanar]")
 {
     // Leaning 60 degrees, the head's rim 20 mm out, 15 mm up the nozzle, drops 20 sin 60 - 15 cos 60
-    // below the tip: the part must stand that high. Its flat base gets a flat post as wide.
+    // below the tip: the part must stand that high, on a pillar as wide as its base.
     Model        model;
     ModelObject *object = model.add_object();
     object->name        = "block.stl";
     object->add_volume(TriangleMesh(its_make_cube(10., 10., 4.)));
     object->add_instance()->set_offset(Vec3d(100., 100., 0.));
-    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "post" },
-                                              { "s4_post_size", "auto" }, { "use_relative_e_distances", true },
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "pillar" },
+                                              { "s4_surface_size", "auto" }, { "use_relative_e_distances", true },
                                               { "layer_change_gcode", "G92 E0" }, { "printable_area", "0x0,200x0,200x200,0x200" },
                                               { "polar_kinematics", true }, { "polar_tilt_axis", true }, { "polar_tilt_min", -45 },
                                               { "polar_tilt_max", 60 }, { "nonplanar_head_radius", 20 }, { "nonplanar_nozzle_length", 15 },
@@ -470,6 +470,38 @@ TEST_CASE("An automatic post is as high as the toolhead needs to lean under the 
     const BoundingBoxf3 post = bounding_box(s4->core);
     CHECK_THAT(post.size().z(), WithinAbs(20. * std::sin(PI / 3.) - 15. * std::cos(PI / 3.), 1e-3));
     CHECK_THAT(post.size().x(), WithinAbs(std::sqrt(50.) * 2., 0.05)); // the base's corners
+}
+
+TEST_CASE("A dome is a hemisphere of its diameter, the part on its top", "[NonPlanar]")
+{
+    // An 8 mm dome is 4 mm high; the block's flat base stands the gap above its top.
+    const double diameter = 8., gap = 0.4;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "block.stl";
+    object->add_volume(TriangleMesh(its_make_cube(10., 10., 4.)));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "dome" },
+                                              { "s4_surface_size", "custom" }, { "s4_surface_diameter", diameter },
+                                              { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
+                                              { "layer_change_gcode", "G92 E0" }, { "skirt_loops", 0 }, { "brim_type", "no_brim" },
+                                              { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
+                                              { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+
+    const BoundingBoxf3 dome = bounding_box(print.objects().front()->s4_deformation()->core);
+    CHECK_THAT(dome.size().z(), WithinAbs(0.5 * diameter, 1e-3));
+    CHECK_THAT(dome.size().x(), WithinAbs(diameter, 1e-3));
+    double block_low = 1e9;
+    for (const Move &m : moves)
+        if (m.e > 0. && m.layer_z > surface_top(0.5 * diameter) + 1e-3)
+            block_low = std::min(block_low, axis(m, 'Z'));
+    CHECK(block_low >= 0.5 * diameter + gap);
 }
 
 namespace {

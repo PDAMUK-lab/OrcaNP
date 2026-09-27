@@ -958,28 +958,26 @@ void PrintObject::deform_s4()
                     for (const std::array<int, 3> &t : m.triangles)
                         core.triangles.push_back({ t[0] + base, t[1] + base, t[2] + base });
                 }
-            else if (m_config.s4_surface_core.value == S4SurfaceCore::Post) {
-                // A post under the part's base, and the part lifted onto it the gap above: off the
-                // bed, the toolhead can lean under the part.
+            else if (const S4SurfaceCore kind = m_config.s4_surface_core.value;
+                     kind == S4SurfaceCore::Pillar || kind == S4SurfaceCore::Dome || kind == S4SurfaceCore::DomedPillar) {
+                // A pillar or dome under the part's base, and the part lifted onto it the gap above:
+                // off the bed, the toolhead can lean under the part.
                 NonPlanar::Post post;
                 double          base_radius;
                 std::tie(post.centre, base_radius) = NonPlanar::part_base(shell.vertices, 0.5 * m_print->config().initial_layer_print_height.value);
                 post.bottom = std::numeric_limits<double>::infinity();
                 for (const Eigen::Vector3d &v : shell.vertices)
                     post.bottom = std::min(post.bottom, v.z());
-                const bool custom = m_config.s4_post_size.value == S4PostSize::Custom;
-                post.radius       = custom && m_config.s4_post_diameter.value > 0. ? 0.5 * m_config.s4_post_diameter.value : base_radius;
-                if (custom) {
-                    post.height      = m_config.s4_post_height.value;
-                    post.dome_height = m_config.s4_dome_height.value;
-                } else {
-                    post.height      = std::max(toolhead_clearance(m_print->config()), 2.);
-                    post.dome_height = NonPlanar::fit_dome_height(shell.vertices, shell.triangles, post, gap);
-                }
-                if (post.radius < 1.)
-                    throw Slic3r::SlicingError(L("The part stands on too small a base for a post as wide: set the post diameter."), this->id().id);
+                const bool custom = m_config.s4_surface_size.value == S4SurfaceSize::Custom;
+                post.radius       = custom ? 0.5 * m_config.s4_surface_diameter.value : base_radius;
+                if (kind != S4SurfaceCore::Dome)
+                    post.height = custom ? m_config.s4_surface_height.value : std::max(toolhead_clearance(m_print->config()), 2.);
+                if (kind != S4SurfaceCore::Pillar)
+                    post.dome_height = post.radius; // a hemisphere
+                if (post.radius < 0.5)
+                    throw Slic3r::SlicingError(L("The part stands on too small a base for an automatic size: choose a custom size."), this->id().id);
                 if (post.height + post.dome_height < 0.5)
-                    throw Slic3r::SlicingError(L("The post needs a height or a dome height."), this->id().id);
+                    throw Slic3r::SlicingError(L("The pillar needs a height."), this->id().id);
                 lift = NonPlanar::lift_onto_post(shell.vertices, shell.triangles, post, gap);
                 for (Eigen::Vector3d &v : shell.vertices)
                     v.z() += lift;

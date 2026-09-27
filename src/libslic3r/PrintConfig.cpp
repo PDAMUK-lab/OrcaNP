@@ -324,17 +324,19 @@ static t_config_enum_values s_keys_map_S4SurfaceProjection{
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceProjection)
 
-static t_config_enum_values s_keys_map_S4PostSize{
-    { "auto",   int(S4PostSize::Auto) },
-    { "custom", int(S4PostSize::Custom) },
+static t_config_enum_values s_keys_map_S4SurfaceSize{
+    { "auto",   int(S4SurfaceSize::Auto) },
+    { "custom", int(S4SurfaceSize::Custom) },
 };
-CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4PostSize)
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceSize)
 
 static t_config_enum_values s_keys_map_S4SurfaceCore{
     { "parts",    int(S4SurfaceCore::Parts) },
     { "sphere",   int(S4SurfaceCore::Sphere) },
     { "cylinder", int(S4SurfaceCore::Cylinder) },
-    { "post",     int(S4SurfaceCore::Post) },
+    { "pillar",       int(S4SurfaceCore::Pillar) },
+    { "dome",         int(S4SurfaceCore::Dome) },
+    { "domed_pillar", int(S4SurfaceCore::DomedPillar) },
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceCore)
 
@@ -5075,19 +5077,23 @@ void PrintConfigDef::init_fff_params()
                       "Generated sphere: a sphere fitted inside the part, centred below its top by half its width, sized to "
                       "the part's inner surface less the surface gap, so the first layer is the part's inner surface.\n"
                       "Generated cylinder: the same with a cylinder around the rotation axis, up to the part's inner roof.\n"
-                      "Generated post: a post under the part's base, of the post diameter and height, with a dome on top of "
-                      "the dome height. The part is printed on it, lifted the surface gap above it (a concave underside nests "
-                      "on the dome), so the toolhead can lean under the part without reaching the bed.\n"
-                      "A generated core is printed first with the part's settings.");
+                      "Pillar: a cylinder under the part's base. Dome: a hemisphere under it. Domed pillar: a cylinder topped "
+                      "by a hemisphere as wide. The part is printed on it, lifted the surface gap above it (a concave "
+                      "underside nests on a dome), so the toolhead can lean under the part without reaching the bed.\n"
+                      "A generated print surface is printed first with the part's settings.");
     def->enum_keys_map = &ConfigOptionEnum<S4SurfaceCore>::get_enum_values();
     def->enum_values.push_back("parts");
     def->enum_values.push_back("sphere");
     def->enum_values.push_back("cylinder");
-    def->enum_values.push_back("post");
+    def->enum_values.push_back("pillar");
+    def->enum_values.push_back("dome");
+    def->enum_values.push_back("domed_pillar");
     def->enum_labels.push_back(L("Parts"));
     def->enum_labels.push_back(L("Generated sphere"));
     def->enum_labels.push_back(L("Generated cylinder"));
-    def->enum_labels.push_back(L("Generated post"));
+    def->enum_labels.push_back(L("Pillar"));
+    def->enum_labels.push_back(L("Dome"));
+    def->enum_labels.push_back(L("Domed pillar"));
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<S4SurfaceCore>(S4SurfaceCore::Parts));
 
@@ -5116,48 +5122,39 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(20));
 
-    def = this->add("s4_post_size", coEnum);
-    def->label    = L("Post size");
+    def = this->add("s4_surface_size", coEnum);
+    def->label    = L("Size");
     def->category = L("Quality");
-    def->tooltip  = L("Automatic: as wide as the part's base, as high as the toolhead needs to lean as far as the tilt axis "
-                      "goes under the part without reaching the bed, with a dome fitted to a concave underside.\n"
-                      "Custom: the post diameter, height and dome height set below.");
-    def->enum_keys_map = &ConfigOptionEnum<S4PostSize>::get_enum_values();
+    def->tooltip  = L("Size of the pillar or dome.\n"
+                      "Automatic: as wide as the part's base, and a pillar as high as the toolhead needs to lean as far as the "
+                      "tilt axis goes under the part without reaching the bed.\n"
+                      "Custom: the diameter and height set below.");
+    def->enum_keys_map = &ConfigOptionEnum<S4SurfaceSize>::get_enum_values();
     def->enum_values.push_back("auto");
     def->enum_values.push_back("custom");
     def->enum_labels.push_back(L("Automatic"));
     def->enum_labels.push_back(L("Custom"));
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionEnum<S4PostSize>(S4PostSize::Auto));
+    def->set_default_value(new ConfigOptionEnum<S4SurfaceSize>(S4SurfaceSize::Auto));
 
-    def = this->add("s4_post_diameter", coFloat);
-    def->label    = L("Post diameter");
+    def = this->add("s4_surface_diameter", coFloat);
+    def->label    = L("Diameter");
     def->category = L("Quality");
-    def->tooltip  = L("Diameter of the generated post, centred under the part's base. 0: as wide as the part's base.");
+    def->tooltip  = L("Diameter of the pillar or dome, centred under the part's base. A dome is a hemisphere: its height is "
+                      "half its diameter.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 1;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(20));
+
+    def = this->add("s4_surface_height", coFloat);
+    def->label    = L("Height");
+    def->category = L("Quality");
+    def->tooltip  = L("Height of the pillar's straight side; a domed pillar's dome adds half its diameter.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(0));
-
-    def = this->add("s4_post_height", coFloat);
-    def->label    = L("Post height");
-    def->category = L("Quality");
-    def->tooltip  = L("Height of the generated post's straight side: how far the part is lifted off the bed, less its "
-                      "dome, for the toolhead to lean under the part.");
-    def->sidetext = L("mm");	// millimeters, CIS languages need translation
-    def->min      = 0;
-    def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(10));
-
-    def = this->add("s4_dome_height", coFloat);
-    def->label    = L("Dome height");
-    def->category = L("Quality");
-    def->tooltip  = L("Height of a dome on top of the generated post, over its whole diameter, for a concave underside to "
-                      "be printed on. 0: a flat top.");
-    def->sidetext = L("mm");	// millimeters, CIS languages need translation
-    def->min      = 0;
-    def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(0));
+    def->set_default_value(new ConfigOptionFloat(20));
 
     def = this->add("s4_print_surface", coBool);
     def->label    = L("Print surface");
