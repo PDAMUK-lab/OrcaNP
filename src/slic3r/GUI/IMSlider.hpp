@@ -70,6 +70,14 @@ public:
     int    GetActiveValue() const;
     double GetLowerValueD() { return get_double_value(ssLower); }
     double GetHigherValueD() { return get_double_value(ssHigher); }
+    double GetValueD(int i) const { return i >= 0 && size_t(i) < m_values.size() ? m_values[i] : 0.0; }
+
+    // Orca: a horizontal slider can show play/pause and speed buttons at its left end, to play
+    // the toolpath back; the owner advances the slider while it plays.
+    void   show_playback(bool show) { m_show_playback = show; }
+    bool   is_playing() const { return m_playing; }
+    void   set_playing(bool playing) { m_playing = playing; }
+    double play_speed() const;
     SelectedSlider GetSelection() { return m_selection; }
 
     // Set low and high slider position. If the span is non-empty, disable the "one layer" mode.
@@ -217,6 +225,9 @@ private:
     float               m_label_koef{1.0};
 
     std::vector<double>      m_values;
+    bool                     m_show_playback{ false };
+    bool                     m_playing{ false };
+    int                      m_play_speed_idx{ 1 };
     TickCodeInfo             m_ticks;
     std::vector<double>      m_layers_times;
     std::vector<double>      m_layers_values;

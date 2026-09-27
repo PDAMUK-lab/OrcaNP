@@ -15,6 +15,7 @@
 #include <libvgcode/include/Types.hpp>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <float.h>
 #include <optional>
@@ -247,6 +248,13 @@ private:
     const GCodeProcessorResult::NonPlanarPreview::MachinePose* machine_pose_at(uint32_t gcode_id) const;
     IMSlider* m_moves_slider;
     IMSlider* m_layers_slider;
+    // Orca: playing the toolpath back move by move and layer by layer, at a multiple of the
+    // estimated print time.
+    bool   m_was_playing{ false };
+    bool   m_play_layer_start{ false }; // a new layer was entered: start at its first move
+    double m_play_budget{ 0.0 };        // print time (s) not yet spent on moves
+    std::chrono::steady_clock::time_point m_play_last;
+    void advance_playback();
 #if VGCODE_ENABLE_COG_AND_TOOL_MARKERS
     // whether or not to render the cog model with fixed screen size
     bool m_cog_marker_fixed_screen_size{ true };

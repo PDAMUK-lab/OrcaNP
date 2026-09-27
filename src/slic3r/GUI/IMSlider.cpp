@@ -1243,6 +1243,42 @@ bool IMSlider::render(int canvas_width, int canvas_height)
         ImVec2 size  = ImVec2(canvas_width - 2 * std::max(LEFT_MARGIN * m_scale, 0.2f * canvas_width), HORIZONTAL_SLIDER_WINDOW_HEIGHT * m_scale);
         imgui.set_next_window_pos(0.5f * static_cast<float>(canvas_width), canvas_height, ImGuiCond_Always, 0.5f, 1.0f);
         imgui.begin(std::string("moves_slider"), windows_flag);
+        if (m_show_playback) {
+            // Orca: play/pause and the speed at the slider's left end, level with its groove.
+            const ImVec2 start    = ImGui::GetCursorScreenPos();
+            const float  button   = 24.0f * m_scale;
+            const float  center_y = start.y + size.y - (ONE_LAYER_MARGIN.y + ONE_LAYER_BUTTON_SIZE.y / 4.0f) * m_scale;
+            const std::string speed_label = std::to_string(int(play_speed())) + "x";
+            const float  speed_w  = ImGui::CalcTextSize("1000x").x + 8.0f * m_scale;
+            ImDrawList*  draw     = ImGui::GetWindowDrawList();
+
+            ImGui::SetCursorScreenPos(ImVec2(start.x, center_y - 0.5f * button));
+            if (ImGui::InvisibleButton("play_pause", ImVec2(button, button)))
+                m_playing = !m_playing;
+            const ImVec2 c(start.x + 0.5f * button, center_y);
+            draw->AddCircleFilled(c, 0.5f * button, ImGui::IsItemHovered() ? IM_COL32(0, 120, 110, 255) : BRAND_COLOR);
+            const float g = 0.22f * button;
+            if (m_playing) {
+                draw->AddRectFilled(ImVec2(c.x - 0.8f * g, c.y - g), ImVec2(c.x - 0.25f * g, c.y + g), IM_COL32_WHITE);
+                draw->AddRectFilled(ImVec2(c.x + 0.25f * g, c.y - g), ImVec2(c.x + 0.8f * g, c.y + g), IM_COL32_WHITE);
+            } else
+                draw->AddTriangleFilled(ImVec2(c.x - 0.6f * g, c.y - g), ImVec2(c.x - 0.6f * g, c.y + g), ImVec2(c.x + g, c.y), IM_COL32_WHITE);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", (m_playing ? _u8L("Pause") : _u8L("Play the toolpath")).c_str());
+
+            ImGui::SetCursorScreenPos(ImVec2(start.x + button + 4.0f * m_scale, center_y - 0.5f * button));
+            if (ImGui::InvisibleButton("play_speed", ImVec2(speed_w, button)))
+                m_play_speed_idx = (m_play_speed_idx + 1) % 5;
+            const ImVec2 text = ImGui::CalcTextSize(speed_label.c_str());
+            draw->AddText(ImVec2(start.x + button + 4.0f * m_scale + 0.5f * (speed_w - text.x), center_y - 0.5f * text.y),
+                          ImGui::IsItemHovered() ? IM_COL32(0, 120, 110, 255) : BRAND_COLOR, speed_label.c_str());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", _u8L("Playback speed, times the estimated print time").c_str());
+
+            const float controls_w = button + speed_w + 8.0f * m_scale;
+            ImGui::SetCursorScreenPos(ImVec2(start.x + controls_w, start.y));
+            size.x -= controls_w;
+        }
         int value = GetHigherValue();
         if (horizontal_slider("moves_slider", &value, GetMinValue(), GetMaxValue(), size, scale)) {
             result = true;
@@ -1743,6 +1779,12 @@ std::string IMSlider::get_label(int tick, LabelType label_type)
     }
 
     return "";
+}
+
+double IMSlider::play_speed() const
+{
+    static const double speeds[] = { 10., 30., 100., 300., 1000. };
+    return speeds[std::clamp(m_play_speed_idx, 0, 4)];
 }
 
 double IMSlider::get_double_value(const SelectedSlider &selection)

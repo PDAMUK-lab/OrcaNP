@@ -5046,8 +5046,75 @@ void GCodeViewer::pop_combo_style()
 }
 
 void GCodeViewer::render_slider(int canvas_width, int canvas_height) {
+    m_moves_slider->show_playback(has_data());
+    advance_playback();
     m_moves_slider->render(canvas_width, canvas_height);
     m_layers_slider->render(canvas_width, canvas_height);
+}
+
+void GCodeViewer::advance_playback()
+{
+    const bool playing = m_moves_slider->is_playing() && has_data();
+    const auto now     = std::chrono::steady_clock::now();
+    if (playing && !m_was_playing) {
+        m_play_last   = now;
+        m_play_budget = 0.0;
+        if (m_moves_slider->is_higher_at_max() && m_layers_slider->is_higher_at_max()) {
+            // Played to the end: start again from the first layer.
+            m_layers_slider->SetHigherValue(m_layers_slider->GetMinValue());
+            m_layers_slider->set_as_dirty();
+            m_play_layer_start = true;
+        }
+    }
+    m_was_playing = playing;
+    if (!playing)
+        return;
+
+    // A stall (a slice, a dialog) does not jump ahead.
+    const double dt = std::min(0.25, std::chrono::duration<double>(now - m_play_last).count());
+    m_play_last     = now;
+    if (m_play_layer_start) {
+        // The moves slider spans the new layer by now.
+        m_play_layer_start = false;
+        m_play_budget      = 0.0;
+        m_moves_slider->SetHigherValue(m_moves_slider->GetMinValue());
+        m_moves_slider->set_as_dirty();
+    } else {
+        m_play_budget += dt * m_moves_slider->play_speed();
+        // Each step of the slider ends at a vertex (arcs are one step), and takes the times of
+        // the vertices since the previous step.
+        const size_t mode  = static_cast<size_t>(m_viewer.get_time_mode());
+        const size_t count = m_viewer.get_vertices_count();
+        int          value = m_moves_slider->GetHigherValue();
+        const int    max   = m_moves_slider->GetMaxValue();
+        const int    first = value;
+        while (value < max) {
+            float time = 0.0f;
+            for (size_t v = size_t(m_moves_slider->GetValueD(value)); v + 1 <= size_t(m_moves_slider->GetValueD(value + 1)) && v < count; ++v)
+                time += m_viewer.get_vertex_at(v).times[mode];
+            if (time > m_play_budget)
+                break;
+            m_play_budget -= time;
+            ++value;
+        }
+        if (value != first) {
+            m_moves_slider->SetHigherValue(value);
+            m_moves_slider->set_as_dirty();
+        }
+        if (value >= max) {
+            if (m_layers_slider->GetHigherValue() < m_layers_slider->GetMaxValue()) {
+                m_layers_slider->SetHigherValue(m_layers_slider->GetHigherValue() + 1);
+                m_layers_slider->set_as_dirty();
+                m_play_layer_start = true;
+            } else {
+                // The end of the print.
+                m_moves_slider->set_playing(false);
+                m_was_playing = false;
+                return;
+            }
+        }
+    }
+    wxGetApp().plater()->get_current_canvas3D()->request_extra_frame();
 }
 
 } // namespace GUI
