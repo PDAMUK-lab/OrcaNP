@@ -8,6 +8,7 @@
 #include <fstream>
 #include <istream>
 #include <ostream>
+#include <sstream>
 #include <stdexcept>
 
 namespace Slic3r {
@@ -379,8 +380,27 @@ void PolarGCodeConverter::process(std::istream &in, std::ostream &out)
     if (c.has_tilt_axis)
         out << ", tilt " << c.tilt_axis;
     out << ", " << (c.inverse_time_feed ? "inverse time feed (G93)" : "feedrate (G94)") << '\n';
-    for (const std::string &l : lines)
-        process_line(l, out);
+    // Each line goes through a buffer, to count what it became.
+    uint32_t           out_lines = 1;
+    std::ostringstream buffer;
+    m_lines.clear();
+    m_lines.reserve(lines.size());
+    for (const std::string &l : lines) {
+        buffer.str(std::string());
+        process_line(l, buffer);
+        const std::string text = buffer.str();
+        out_lines += uint32_t(std::count(text.begin(), text.end(), '\n'));
+        out << text;
+        LineRecord &r = m_lines.emplace_back();
+        r.out_lines   = out_lines;
+        r.posed       = m_have_machine;
+        if (m_have_machine) {
+            r.angle  = float(m_machine.angle);
+            r.radius = float(m_machine.radius);
+            r.z      = float(m_machine.z);
+            r.tilt   = float(m_machine.tilt);
+        }
+    }
     if (m_feed_mode == 1)
         out << "G94 ; units per minute feed\n";
 }

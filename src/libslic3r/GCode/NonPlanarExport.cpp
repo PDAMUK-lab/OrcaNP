@@ -3,6 +3,9 @@
 #include "../BoundingBox.hpp"
 #include "../Geometry.hpp"
 #include "../Print.hpp"
+#include "GCodeProcessor.hpp"
+
+#include <boost/nowide/fstream.hpp>
 
 namespace Slic3r {
 namespace NonPlanarExport {
@@ -114,6 +117,55 @@ NonPlanar::PolarKinematicsConfig polar_config(const PrintConfig &config)
         cfg.tilt_axis   = config.polar_axis_names.value[2];
     }
     return cfg;
+}
+
+void set_toolhead_preview(GCodeProcessorResult &result, const PrintConfig &config)
+{
+    GCodeProcessorResult::NonPlanarPreview &np = result.nonplanar;
+    np.toolhead          = true;
+    np.nozzle_tip_radius = float(0.5 * config.nonplanar_nozzle_tip_diameter.value);
+    // The clearance angle rises from the tip's face; the cone's half-angle is from the nozzle axis.
+    np.nozzle_cone_angle = float(90. - config.nonplanar_nozzle_clearance_angle.value);
+    np.nozzle_length     = float(config.nonplanar_nozzle_length.value);
+    np.head_radius       = float(config.nonplanar_head_radius.value);
+}
+
+void map_preview_to_polar(GCodeProcessorResult &result, const NonPlanar::PolarGCodeConverter &converter, const PrintConfig &config,
+                          const std::string &polar_path)
+{
+    const NonPlanar::PolarKinematicsConfig  pc = polar_config(config);
+    GCodeProcessorResult::NonPlanarPreview &np = result.nonplanar;
+    np.polar         = true;
+    np.rotation_axis = pc.center.cast<float>();
+    np.angle_sign    = float(pc.angle_sign);
+    np.tilt_sign     = float(pc.tilt_sign);
+
+    // Line ids count from 1, over the lines the converter read.
+    const std::vector<NonPlanar::PolarGCodeConverter::LineRecord> &records = converter.line_records();
+    np.poses.assign(result.moves.size(), {});
+    for (size_t i = 0; i < result.moves.size(); ++i) {
+        unsigned int &id = result.moves[i].gcode_id;
+        if (id == 0 || id > records.size())
+            continue;
+        const NonPlanar::PolarGCodeConverter::LineRecord &r = records[id - 1];
+        if (r.posed)
+            np.poses[i] = { true, r.angle, r.radius, r.z, r.tilt };
+        id = r.out_lines;
+    }
+
+    // Each line's end is the position after its newline.
+    result.lines_ends.clear();
+    boost::nowide::ifstream in(polar_path, std::ios::binary);
+    std::vector<char>       chunk(1 << 16);
+    size_t                  offset = 0;
+    while (in) {
+        in.read(chunk.data(), std::streamsize(chunk.size()));
+        const size_t n = size_t(in.gcount());
+        for (size_t i = 0; i < n; ++i)
+            if (chunk[i] == '\n')
+                result.lines_ends.push_back(offset + i + 1);
+        offset += n;
+    }
 }
 
 } // namespace NonPlanarExport

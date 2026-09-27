@@ -316,3 +316,39 @@ TEST_CASE("The machine end block runs in units per minute and radius travel is c
     CHECK(converter.stats().radius_outside > 0);
     CHECK_THAT(converter.stats().max_radius, WithinAbs(20., 1e-9));
 }
+
+TEST_CASE("Each input line is recorded with its last output line and the machine pose after it", "[PolarKinematics]")
+{
+    PolarKinematicsConfig cfg;
+    const std::vector<std::string> input { "M83", "; MACHINE_START_GCODE_END", "G1 X10 Y0 Z1 F600", "G1 X0 Y10 E1 B20", "M106 S0" };
+    std::string joined;
+    for (const std::string &l : input)
+        joined += l + "\n";
+    std::istringstream  in(joined);
+    std::ostringstream  out;
+    PolarGCodeConverter converter(cfg);
+    converter.process(in, out);
+
+    std::vector<std::string> output;
+    std::istringstream       lines(out.str());
+    for (std::string line; std::getline(lines, line);)
+        output.push_back(line);
+    const std::vector<PolarGCodeConverter::LineRecord> &records = converter.line_records();
+    REQUIRE(records.size() == input.size());
+    // Line numbers count from 1, and the output starts with a header.
+    CHECK(output[records[0].out_lines - 1] == "M83");
+    CHECK_FALSE(records[1].posed);
+    // A quarter turn about the axis: subdivided, the last output line of the move ends on it.
+    const PolarGCodeConverter::LineRecord &turn = records[3];
+    REQUIRE(turn.posed);
+    CHECK(turn.out_lines > records[2].out_lines + 1);
+    CHECK_THAT(turn.angle, WithinAbs(90., 1e-4));
+    CHECK_THAT(turn.radius, WithinAbs(10., 1e-4));
+    CHECK_THAT(turn.tilt, WithinAbs(20., 1e-4));
+    const std::string &last = output[turn.out_lines - 1];
+    CHECK_THAT(word(last, 'C', 0.), WithinAbs(90., 1e-3));
+    CHECK_THAT(word(last, 'B', 0.), WithinAbs(20., 1e-3));
+    // A line after the move keeps the pose.
+    CHECK(output[records[4].out_lines - 1] == "M106 S0");
+    CHECK_THAT(records[4].angle, WithinAbs(90., 1e-4));
+}

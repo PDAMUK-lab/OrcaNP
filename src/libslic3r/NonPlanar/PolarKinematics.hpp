@@ -14,6 +14,7 @@
 #include <Eigen/Core>
 
 #include <cstddef>
+#include <cstdint>
 #include <iosfwd>
 #include <limits>
 #include <string>
@@ -131,18 +132,30 @@ public:
         double total_angle      = 0.; // degrees of angle-axis travel
     };
 
+    // What became of an input line: the output lines written up to and including it, and the
+    // machine pose after it (once the machine position is known).
+    struct LineRecord
+    {
+        uint32_t out_lines = 0;
+        bool     posed     = false;
+        float    angle = 0.f, radius = 0.f, z = 0.f, tilt = 0.f; // as commanded
+    };
+
     explicit PolarGCodeConverter(const PolarKinematicsConfig &config) : m_kinematics(config) {}
 
     void               process(std::istream &in, std::ostream &out);
     const Stats&       stats() const { return m_stats; }
+    // One record per input line, in order.
+    const std::vector<LineRecord>& line_records() const { return m_lines; }
 
 private:
     void process_line(const std::string &line, std::ostream &out);
     void emit_move(const ToolPose &to, double e, double feed, bool rapid, std::ostream &out, const std::string &comment);
     void set_feed_mode(bool inverse_time, std::ostream &out);
 
-    PolarKinematics m_kinematics;
-    Stats           m_stats;
+    PolarKinematics         m_kinematics;
+    Stats                   m_stats;
+    std::vector<LineRecord> m_lines;
 
     enum class Block { Body, Start, End };
     Block       m_block            = Block::Body;

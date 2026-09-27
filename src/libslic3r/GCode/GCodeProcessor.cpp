@@ -2621,6 +2621,7 @@ void GCodeProcessorResult::reset() {
     printer_extruder_id.clear();
     // SKIPPABLE per-type accumulated time.
     skippable_part_time.clear();
+    nonplanar = NonPlanarPreview();
 
     //BBS: add mutex for protection of gcode result
     unlock();

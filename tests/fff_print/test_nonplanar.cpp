@@ -2,15 +2,19 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
+#include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleMeshSlicer.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <sstream>
 
 #include "test_helpers.hpp"
+#include "test_utils.hpp"
 
 using namespace Slic3r::Test;
 using namespace Slic3r;
@@ -211,6 +215,60 @@ TEST_CASE("Polar S4 export tilts the nozzle over curved layers", "[NonPlanar]")
         max_tilt = std::max(max_tilt, std::abs(axis(m, 'B')));
     CHECK(max_tilt > 5.);
     CHECK(max_layer_z_span(moves) > 0.3);
+}
+
+TEST_CASE("The preview of a polar print knows each move's machine pose and machine G-code line", "[NonPlanar]")
+{
+    DynamicPrintConfig config = s4_config();
+    config.set_deserialize_strict({ { "polar_kinematics", true }, { "polar_tilt_axis", true }, { "nonplanar_head_radius", 15. } });
+    Print print;
+    Model model;
+    init_print({ inverted_frustum() }, print, model, config);
+    print.set_status_silent();
+    print.process();
+    ScopedTemporaryFile  file(".gcode");
+    GCodeProcessorResult result;
+    print.export_gcode(file.string(), &result, nullptr);
+    std::ifstream     in(file.string(), std::ios::binary);
+    const std::string gcode((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+    const GCodeProcessorResult::NonPlanarPreview &np = result.nonplanar;
+    CHECK(np.toolhead);
+    CHECK_THAT(np.head_radius, WithinAbs(15., 1e-6));
+    REQUIRE(np.polar);
+    REQUIRE(np.poses.size() == result.moves.size());
+    // The line ends are the written machine G-code's.
+    REQUIRE_FALSE(result.lines_ends.empty());
+    CHECK(result.lines_ends.back() <= gcode.size());
+    CHECK(gcode.size() - result.lines_ends.back() < 2);
+
+    // Each extrusion's line is the machine move that ends it, at the recorded pose.
+    auto word = [](const std::string &line, char letter) {
+        const size_t at = line.find(std::string(" ") + letter);
+        return at == std::string::npos ? std::nan("") : std::stod(line.substr(at + 2));
+    };
+    size_t checked = 0;
+    float  max_tilt = 0.f;
+    for (size_t i = 0; i < result.moves.size(); ++i) {
+        const GCodeProcessorResult::NonPlanarPreview::MachinePose &pose = np.poses[i];
+        if (result.moves[i].type != EMoveType::Extrude)
+            continue;
+        REQUIRE(pose.valid);
+        const unsigned int id = result.moves[i].gcode_id;
+        REQUIRE(id >= 1);
+        REQUIRE(id <= result.lines_ends.size());
+        const size_t      start = id == 1 ? 0 : result.lines_ends[id - 2];
+        const std::string line  = gcode.substr(start, result.lines_ends[id - 1] - start);
+        INFO(line);
+        REQUIRE(line.rfind("G1 C", 0) == 0);
+        CHECK_THAT(word(line, 'C'), WithinAbs(pose.angle, 1e-3));
+        CHECK_THAT(word(line, 'X'), WithinAbs(pose.radius, 1e-3));
+        CHECK_THAT(word(line, 'B'), WithinAbs(pose.tilt, 1e-3));
+        max_tilt = std::max(max_tilt, std::abs(pose.tilt));
+        ++checked;
+    }
+    CHECK(checked > 100);
+    CHECK(max_tilt > 5.f);
 }
 
 namespace {

@@ -2719,6 +2719,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         *result = std::move(m_processor.extract_result());
         // set the filename to the correct value
         result->filename = path;
+        if (s4 || polar)
+            NonPlanarExport::set_toolhead_preview(*result, print->config());
     }
 
     //BBS: add some log for error output
@@ -2735,6 +2737,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
             if (! out)
                 throw Slic3r::RuntimeError(std::string("G-code export to ") + path + " failed.\nCannot write the polar G-code.\n");
         }
+        if (result != nullptr)
+            NonPlanarExport::map_preview_to_polar(*result, converter, print->config(), path_polar);
         const NonPlanar::PolarGCodeConverter::Stats &stats = converter.stats();
         BOOST_LOG_TRIVIAL(info) << "Polar: " << stats.cartesian_moves << " moves -> " << stats.machine_moves << " machine moves, bed turns "
                                 << stats.total_angle << " degrees, " << stats.tilt_limited << " poses at the tilt limit, radius "

@@ -319,6 +319,30 @@ class Print;
         std::unordered_map<SkipType, float> skippable_part_time;
 
         BedType bed_type = BedType::btCount;
+
+        // Orca: a non-planar print, for the preview: the toolhead that has to clear the printed
+        // part, and for polar machine G-code (whose moves here are the Cartesian toolpath it was
+        // made from) the machine pose at the end of each move.
+        struct NonPlanarPreview
+        {
+            bool  toolhead          = false;
+            float nozzle_tip_radius = 0.f; // mm, the flat tip
+            float nozzle_cone_angle = 0.f; // degrees, from the nozzle axis
+            float nozzle_length     = 0.f; // mm, from the tip to the head
+            float head_radius       = 0.f; // mm
+            bool  polar             = false;
+            Vec2f rotation_axis     = Vec2f::Zero(); // in G-code XY
+            float angle_sign        = 1.f; // angle axis = angle_sign * polar angle of the head's +radius line
+            float tilt_sign         = 1.f; // tilt axis = tilt_sign * lean toward +radius
+            struct MachinePose
+            {
+                bool  valid = false;
+                float angle = 0.f, radius = 0.f, z = 0.f, tilt = 0.f; // as commanded
+            };
+            std::vector<MachinePose> poses; // per move, for polar machine G-code
+        };
+        NonPlanarPreview nonplanar;
+
         void reset();
 
         //BBS: add mutex for protection of gcode result
@@ -367,6 +391,7 @@ class Print;
             // Keep the SKIPPABLE per-type time on a copied result.
             skippable_part_time = other.skippable_part_time;
             initial_layer_time = other.initial_layer_time;
+            nonplanar = other.nonplanar;
 #if ENABLE_GCODE_VIEWER_STATISTICS
             time = other.time;
 #endif
