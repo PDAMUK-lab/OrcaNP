@@ -12802,8 +12802,14 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
     notification_manager->set_slicing_progress_export_possible();
 
     // Reset the "export G-code path" name, so that the automatic background processing will be enabled again.
-    const std::string lifecycle_job_name = this->background_process.fff_print() ?
-        this->background_process.fff_print()->output_filename() : std::string();
+    // Orca: after a failed export the print statistics are still placeholders, which the default
+    // filename format ({filament_type[initial_tool]}) cannot index, so the job name stays empty.
+    std::string lifecycle_job_name;
+    if (this->background_process.fff_print())
+        try {
+            lifecycle_job_name = this->background_process.fff_print()->output_filename();
+        } catch (const std::exception &) {
+        }
     this->background_process.reset_export();
     // This bool stops showing export finished notification even when process_completed_with_error is false
     bool has_error = false;

@@ -952,7 +952,10 @@ void PrintObject::generate_support_material()
     if (this->set_started(posSupportMaterial)) {
         this->clear_support_layers();
 
-        if(!has_support() && !m_print->get_no_check_flag()) {
+        // Orca: layers offset from a print surface lie on the surface, not on the layers sliced
+        // below them, so their overhangs in the sliced space say nothing about the part's.
+        const bool offset_layers = this->s4_deformation() != nullptr && m_config.s4_layer_shape.value == S4LayerShape::Offset;
+        if(!has_support() && !m_print->get_no_check_flag() && !offset_layers) {
             // BBS: pop a warning if objects have significant amount of overhangs but support material is not enabled
             // Note: we also need to pop warning if support is disabled and only raft is enabled
             m_print->set_status(50, L("Checking support necessity"));

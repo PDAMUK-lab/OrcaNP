@@ -175,9 +175,11 @@ Two groups of settings switch the pipeline on:
   shape (`s4_layer_shape`), the S4 deformation parameters, the surface gap and layout, and the
   cone angle. Any change re-slices the object.
 - **Print surface** (`s4_surface_core`): what offset layers are offset from. Either the parts set
-  as print surface (`s4_print_surface`, a per-part setting added in the object list), or a
-  generated sphere or cylinder. OrcaSlicer places every object on the bed, so a modelled core
-  and what is printed over it are two parts of one object.
+  as print surface (`s4_print_surface`, a per-part setting, set from a part's context menu with
+  *Print surface (non-planar)* or among its settings), or a generated sphere or cylinder.
+  OrcaSlicer places every object on the bed, so a modelled core and what is printed over it are
+  two parts of one object. Orca's check for overhangs needing support is skipped for offset
+  layers: they lie on the print surface, not on the layers sliced below them.
 - **Printer settings > Basic information > Polar kinematics** (`polar_*`): `polar_kinematics`, the
   axis letters and directions, axis crossing, the radius and tilt travel, the tilt threshold,
   and the conversion and speed limits.
@@ -244,6 +246,10 @@ The pipeline hooks into the print steps as follows:
     view matrix is swapped for the while), so nothing is re-uploaded as the slider moves.
   - The marker's window adds the machine pose (bed angle, radius, tilt, as commanded) and the
     *Toolhead* and *Turn bed* switches, which are kept in the app config.
+  - Play and pause buttons at the moves slider's left end play the toolpath back: each frame
+    spends the elapsed time times the speed (10x to 1000x) of the moves' estimated print time,
+    stepping the moves slider through the top layer, then the layers slider up one layer, and
+    stopping at the end of the print. Played to the end, it starts again from the first layer.
 
 ## Tool
 
