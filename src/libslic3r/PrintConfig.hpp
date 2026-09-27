@@ -225,6 +225,7 @@ enum class S4SurfaceCore
     Parts,
     Sphere,
     Cylinder,
+    Post, // under the part, which stands on it
 };
 
 // How layers offset from a print surface are laid out flat for slicing.
@@ -1178,6 +1179,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<S4SurfaceProjection>, s4_surface_projection))
     ((ConfigOptionEnum<S4SurfaceCore>, s4_surface_core))
     ((ConfigOptionFloat,               s4_cone_angle))
+    ((ConfigOptionFloat,               s4_post_diameter))
+    ((ConfigOptionFloat,               s4_post_height))
+    ((ConfigOptionFloat,               s4_dome_height))
     ((ConfigOptionEnum<SlicingMode>,   slicing_mode))
     ((ConfigOptionBool,                enable_support))
     // Automatic supports (generated based on support_threshold_angle).

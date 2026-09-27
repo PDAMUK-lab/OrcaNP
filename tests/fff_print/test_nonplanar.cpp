@@ -378,6 +378,67 @@ TEST_CASE("A print surface part must stand on the bed", "[NonPlanar]")
     CHECK_THROWS_WITH(Test::gcode(print), Catch::Matchers::ContainsSubstring("must stand on the bed"));
 }
 
+TEST_CASE("A part is printed on a generated post, lifted off the bed", "[NonPlanar]")
+{
+    // A 10 x 10 x 4 mm block on a post 8 mm wide and 5 mm high: the post first, then the block
+    // standing the gap above it, from 5.4 to 9.4 mm, its corners beyond the post in layers
+    // wrapping round the post's rim.
+    const double post_diameter = 8., post_height = 5., gap = 0.4, height = 4.;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "block.stl";
+    object->add_volume(TriangleMesh(its_make_cube(10., 10., height)));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "post" },
+                                              { "s4_post_diameter", post_diameter }, { "s4_post_height", post_height },
+                                              { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
+                                              { "layer_change_gcode", "G92 E0" }, { "skirt_loops", 0 }, { "brim_type", "no_brim" },
+                                              { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
+                                              { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+
+    // The post's first layer, on the bed, is as wide as the post.
+    BoundingBoxf first;
+    for (const Move &m : moves)
+        if (m.e > 0. && m.layer == 1)
+            first.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
+    CHECK(first.size().x() <= post_diameter);
+    CHECK(first.size().x() >= post_diameter - 1.);
+    const Vec2d centre = first.center();
+
+    const double post_top = surface_top(post_height);
+    size_t       post_points = 0, block_points = 0;
+    double       post_reach = 0., block_low = 1e9, block_high = 0., block_reach = 0.;
+    for (const Move &m : moves) {
+        if (m.e <= 0.)
+            continue;
+        const Vec2d xy(axis(m, 'X'), axis(m, 'Y'));
+        if (m.layer_z <= post_top + 1e-3) {
+            ++post_points;
+            post_reach = std::max(post_reach, (xy - centre).norm());
+        } else {
+            ++block_points;
+            block_low   = std::min(block_low, axis(m, 'Z'));
+            block_high  = std::max(block_high, axis(m, 'Z'));
+            block_reach = std::max({ block_reach, std::abs(xy.x() - centre.x()), std::abs(xy.y() - centre.y()) });
+        }
+    }
+    REQUIRE(post_points > 0);
+    REQUIRE(block_points > 0);
+    CHECK(post_reach <= 0.5 * post_diameter);
+    CHECK(block_low >= post_height + gap);
+    CHECK(block_high <= post_height + gap + height + 0.05);
+    CHECK(block_high >= post_height + gap + height - 0.35);
+    CHECK(block_reach <= 5.05);
+    CHECK(block_reach >= 4.5); // beyond the post
+}
+
 namespace {
 
 // Closed surface of revolution about Z of a profile in (r, z) that starts and ends on the axis.

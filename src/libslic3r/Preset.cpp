@@ -1363,7 +1363,8 @@ static std::vector<std::string> s_Preset_print_options{
     // S4 non-planar deformation
     "s4_enabled", "s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far",
     "s4_passes", "s4_cell_size", "s4_planar_height", "s4_hold_non_overhangs", "s4_layer_shape", "s4_surface_gap",
-    "s4_surface_projection", "s4_surface_core", "s4_cone_angle", "s4_print_surface",
+    "s4_surface_projection", "s4_surface_core", "s4_cone_angle", "s4_post_diameter", "s4_post_height", "s4_dome_height",
+    "s4_print_surface",
     "ironing_expansion",
 };
 

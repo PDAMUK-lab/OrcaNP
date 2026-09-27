@@ -2775,6 +2775,9 @@ void TabPrint::build()
         optgroup->append_single_option_line("s4_enabled");
         optgroup->append_single_option_line("s4_layer_shape");
         optgroup->append_single_option_line("s4_surface_core");
+        optgroup->append_single_option_line("s4_post_diameter");
+        optgroup->append_single_option_line("s4_post_height");
+        optgroup->append_single_option_line("s4_dome_height");
         optgroup->append_single_option_line("s4_surface_gap");
         optgroup->append_single_option_line("s4_surface_projection");
         optgroup->append_single_option_line("s4_cone_angle");

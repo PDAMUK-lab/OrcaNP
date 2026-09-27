@@ -328,6 +328,7 @@ static t_config_enum_values s_keys_map_S4SurfaceCore{
     { "parts",    int(S4SurfaceCore::Parts) },
     { "sphere",   int(S4SurfaceCore::Sphere) },
     { "cylinder", int(S4SurfaceCore::Cylinder) },
+    { "post",     int(S4SurfaceCore::Post) },
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceCore)
 
@@ -5068,14 +5069,19 @@ void PrintConfigDef::init_fff_params()
                       "Generated sphere: a sphere fitted inside the part, centred below its top by half its width, sized to "
                       "the part's inner surface less the surface gap, so the first layer is the part's inner surface.\n"
                       "Generated cylinder: the same with a cylinder around the rotation axis, up to the part's inner roof.\n"
+                      "Generated post: a post under the part's base, of the post diameter and height, with a dome on top of "
+                      "the dome height. The part is printed on it, lifted the surface gap above it (a concave underside nests "
+                      "on the dome), so the toolhead can lean under the part without reaching the bed.\n"
                       "A generated core is printed first with the part's settings.");
     def->enum_keys_map = &ConfigOptionEnum<S4SurfaceCore>::get_enum_values();
     def->enum_values.push_back("parts");
     def->enum_values.push_back("sphere");
     def->enum_values.push_back("cylinder");
+    def->enum_values.push_back("post");
     def->enum_labels.push_back(L("Parts"));
     def->enum_labels.push_back(L("Generated sphere"));
     def->enum_labels.push_back(L("Generated cylinder"));
+    def->enum_labels.push_back(L("Generated post"));
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<S4SurfaceCore>(S4SurfaceCore::Parts));
 
@@ -5103,6 +5109,35 @@ void PrintConfigDef::init_fff_params()
     def->max      = 60;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(20));
+
+    def = this->add("s4_post_diameter", coFloat);
+    def->label    = L("Post diameter");
+    def->category = L("Quality");
+    def->tooltip  = L("Diameter of the generated post, centred under the part's base. 0: as wide as the part's base.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("s4_post_height", coFloat);
+    def->label    = L("Post height");
+    def->category = L("Quality");
+    def->tooltip  = L("Height of the generated post's straight side: how far the part is lifted off the bed, less its "
+                      "dome, for the toolhead to lean under the part.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(10));
+
+    def = this->add("s4_dome_height", coFloat);
+    def->label    = L("Dome height");
+    def->category = L("Quality");
+    def->tooltip  = L("Height of a dome on top of the generated post, over its whole diameter, for a concave underside to "
+                      "be printed on. 0: a flat top.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
 
     def = this->add("s4_print_surface", coBool);
     def->label    = L("Print surface");

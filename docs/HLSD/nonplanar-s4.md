@@ -125,10 +125,18 @@ whose flat slices are chosen surfaces (`LayerShapes`):
     - A **cylinder** about the rotation axis, from the bed to the roof of the part's cavity, out to
       its nearest wall below the roof.
 
-    Either is shrunk by the gap, so the part's first layer is its modelled inner surface. A
-    generated core is sliced with the part (and printed with its settings). A cavity that does
-    not reach the bed, is too small, or (for a cylinder) does not surround the axis is refused:
-    the core must stand on the bed to be printed first.
+    - A **post** under the part's base (the middle of its faces on the bed): a cylinder of the
+      post diameter (by default as wide as the base) and height, topped by a spherical cap of
+      the dome height. The part is lifted onto it, the gap above it: column by column over the
+      post, the part's lowest point must clear the post's top by the gap, so a concave underside
+      nests on a matching dome and a part with a cavity over the post sits no higher than it
+      has to. Off the bed, the toolhead can lean under the part, where the layers wrap round the
+      post's rim; the post is what a raised build platform is on the reference machine.
+
+    The sphere and the cylinder are shrunk by the gap, so the part's first layer is its
+    modelled inner surface. A generated core is sliced with the part (and printed with its
+    settings). A cavity that does not reach the bed, is too small, or (for a cylinder) does not
+    surround the axis is refused: the core must stand on the bed to be printed first.
   - The distance is exact (a uniform grid of the core's triangles, and a vertical ray for
     inside/outside). The core's faces on the bed close it but are not measured from: nothing is
     printed over them, and counting them would pull the layers meeting the bed into the core.
@@ -192,7 +200,9 @@ Two groups of settings switch the pipeline on:
   cone angle. Any change re-slices the object.
 - **Print surface** (`s4_surface_core`): what offset layers are offset from. Either the parts set
   as print surface (`s4_print_surface`, a per-part setting, set from a part's context menu with
-  *Print surface (non-planar)* or among its settings), or a generated sphere or cylinder.
+  *Print surface (non-planar)* or among its settings), or a generated sphere, cylinder or post
+  (`s4_post_diameter`, `s4_post_height`, `s4_dome_height`). A part on a post is lifted only in
+  slicing: the plater shows it on the bed, the preview where it prints.
   OrcaSlicer places every object on the bed, so a modelled core and what is printed over it are
   two parts of one object. Orca's check for overhangs needing support is skipped for offset
   layers: they lie on the print surface, not on the layers sliced below them.
@@ -302,4 +312,6 @@ and the non-planar building blocks:
   that ends it;
 - a dome printed over a print surface dome keeps the gap all around it, after the whole core,
   whichever of the two parts was added first; a print surface above the bed is refused;
-- a hollow dome gets a generated core and its first layer on its inner surface.
+- a hollow dome gets a generated core and its first layer on its inner surface;
+- a block printed on a generated post stands the gap above it, lifted off the bed, its corners
+  beyond the post.

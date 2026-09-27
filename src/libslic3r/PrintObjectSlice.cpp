@@ -881,7 +881,7 @@ void PrintObject::deform_s4()
                                      "and print surface parts exactly when the layers are offset from them."));
 
     m_print->set_status(5, L("Deforming the model for non-planar printing"));
-    const S4Mesh shell = to_s4_mesh(volume_in_slicing_frame(*this, *part));
+    S4Mesh shell = to_s4_mesh(volume_in_slicing_frame(*this, *part));
 
     // The printer's rotation axis is the centre of the printable area. G-code coordinates are the
     // slicing frame shifted by the instance and back by the plate origin.
@@ -933,7 +933,8 @@ void PrintObject::deform_s4()
             // The print surface parts print as sliced, up to the top of the layer holding their top;
             // the part goes above that, in layers at constant distance from their surface.
             S4Mesh       core;
-            const double gap = m_config.s4_surface_gap.value;
+            const double gap  = m_config.s4_surface_gap.value;
+            double       lift = 0.; // of the part, standing on a generated post
             if (from_parts)
                 for (const ModelVolume *v : surfaces) {
                     const S4Mesh m    = to_s4_mesh(volume_in_slicing_frame(*this, *v));
@@ -942,7 +943,31 @@ void PrintObject::deform_s4()
                     for (const std::array<int, 3> &t : m.triangles)
                         core.triangles.push_back({ t[0] + base, t[1] + base, t[2] + base });
                 }
-            else {
+            else if (m_config.s4_surface_core.value == S4SurfaceCore::Post) {
+                // A post under the part's base, and the part lifted onto it the gap above: off the
+                // bed, the toolhead can lean under the part.
+                NonPlanar::Post post;
+                double          base_radius;
+                std::tie(post.centre, base_radius) = NonPlanar::part_base(shell.vertices, 0.5 * m_print->config().initial_layer_print_height.value);
+                post.bottom = std::numeric_limits<double>::infinity();
+                for (const Eigen::Vector3d &v : shell.vertices)
+                    post.bottom = std::min(post.bottom, v.z());
+                post.radius      = m_config.s4_post_diameter.value > 0. ? 0.5 * m_config.s4_post_diameter.value : base_radius;
+                post.height      = m_config.s4_post_height.value;
+                post.dome_height = m_config.s4_dome_height.value;
+                if (post.radius < 1.)
+                    throw Slic3r::SlicingError(L("The part stands on too small a base for a post as wide: set the post diameter."), this->id().id);
+                if (post.height + post.dome_height < 0.5)
+                    throw Slic3r::SlicingError(L("The post needs a height or a dome height."), this->id().id);
+                lift = NonPlanar::lift_onto_post(shell.vertices, shell.triangles, post, gap);
+                for (Eigen::Vector3d &v : shell.vertices)
+                    v.z() += lift;
+                post.mesh(core.vertices, core.triangles);
+                for (const Eigen::Vector3d &v : core.vertices)
+                    s4->core.vertices.emplace_back(v.cast<float>());
+                for (const std::array<int, 3> &t : core.triangles)
+                    s4->core.indices.emplace_back(t[0], t[1], t[2]);
+            } else {
                 // A core fitted into the part's cavity, the gap short of its inner surface, so the
                 // part's first layer is its inner surface.
                 const NonPlanar::SurfaceDistance part_distance(shell.vertices, shell.triangles);
@@ -1014,6 +1039,7 @@ void PrintObject::deform_s4()
                 to_cut.rotate(Eigen::AngleAxisd(0.5 * PI, Vec3d::UnitX()));
                 to_cut.translate(Vec3d(-s4->axis.x(), -s4->axis.y(), 0.));
                 indexed_triangle_set its = volume_in_slicing_frame(*this, *part), upper, lower;
+                its_translate(its, Vec3f(0.f, 0.f, float(lift)));
                 its_transform(its, to_cut);
                 cut_mesh(its, 0.f, &upper, &lower, true);
                 const Transform3d back = to_cut.inverse();
