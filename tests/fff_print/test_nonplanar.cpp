@@ -433,7 +433,9 @@ TEST_CASE("A part is printed on a generated post, lifted off the bed", "[NonPlan
     REQUIRE(block_points > 0);
     CHECK(post_reach <= 0.5 * post_diameter);
     CHECK(block_low >= post_height + gap);
-    CHECK(block_high <= post_height + gap + height + 0.05);
+    // Where the layers curve, a layer's last extrusion lies on its top, up to half a layer above
+    // the block's flat top.
+    CHECK(block_high <= post_height + gap + height + 0.5 * 0.3 + 0.01);
     CHECK(block_high >= post_height + gap + height - 0.35);
     CHECK(block_reach <= 5.05);
     CHECK(block_reach >= 4.5); // beyond the post
