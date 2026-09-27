@@ -67,8 +67,11 @@ TetMesh tetrahedralize(const std::vector<Eigen::Vector3d> &vertices, const std::
     Domain domain(surface);
     domain.detect_features(params.feature_angle);
     namespace p = CGAL::parameters;
-    const Criteria criteria(p::edge_size = size, p::facet_angle = 25., p::facet_size = size, p::facet_distance = size / 10.,
-                            p::cell_radius_edge_ratio = 3., p::cell_size = size);
+    // The sharp edges are protected by balls, which shrink where edges come close. Without a
+    // lower bound a model with fine detail (lettering, small holes) keeps them shrinking
+    // practically forever, so they stop at a quarter of the cell size.
+    const Criteria criteria(p::edge_size = size, p::edge_min_size = size / 4., p::facet_angle = 25., p::facet_size = size,
+                            p::facet_distance = size / 10., p::cell_radius_edge_ratio = 3., p::cell_size = size);
     const Complex complex = params.optimize ? CGAL::make_mesh_3<Complex>(domain, criteria, p::perturb(), p::exude()) :
                                               CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::no_exude());
 

@@ -21,7 +21,9 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
 1. **Tetrahedralize** (`Tetrahedralize`): CGAL Mesh_3 fills the closed model. The triangle
    soup is re-oriented first, sharp edges are protected, and slivers are removed; slivers are
    nearly flat and the deformation turns them inside out easily. Cell size defaults to 1/20 of
-   the largest bounding box side.
+   the largest bounding box side. The balls protecting sharp edges shrink where edges come close
+   and stop at a quarter of the cell size: fine detail (a Benchy's lettering) would otherwise
+   shrink them practically forever.
 2. **Deform** (`S4Deformation`), per pass:
    - Cell attributes: the most downward boundary face normal gives the overhang angle; cells
      whose lowest face is within `bottom_threshold` of the lowest face sit on the bed; a
