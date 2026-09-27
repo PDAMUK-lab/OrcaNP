@@ -12,6 +12,7 @@
 #include <CGAL/make_mesh_3.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -70,8 +71,13 @@ TetMesh tetrahedralize(const std::vector<Eigen::Vector3d> &vertices, const std::
     // The sharp edges are protected by balls, which shrink where edges come close. Without a
     // lower bound a model with fine detail (lettering, small holes) keeps them shrinking
     // practically forever, so they stop at a quarter of the cell size.
-    const Criteria criteria(p::edge_size = size, p::edge_min_size = size / 4., p::facet_angle = 25., p::facet_size = size,
-                            p::facet_distance = size / 10., p::cell_radius_edge_ratio = 3., p::cell_size = size);
+    // EXPERIMENT, for evaluation only: S4_PROTO_FACET_SIZE / S4_PROTO_FACET_DISTANCE (mm) refine the
+    // surface below the cell size. Unset, nothing changes.
+    auto         env = [](const char *name, double fallback) { const char *v = std::getenv(name); return v ? std::atof(v) : fallback; };
+    const double fs  = env("S4_PROTO_FACET_SIZE", size);
+    const double fd  = env("S4_PROTO_FACET_DISTANCE", size / 10.);
+    const Criteria criteria(p::edge_size = fs, p::edge_min_size = fs / 4., p::facet_angle = 25., p::facet_size = fs,
+                            p::facet_distance = fd, p::cell_radius_edge_ratio = 3., p::cell_size = size);
     const Complex complex = params.optimize ? CGAL::make_mesh_3<Complex>(domain, criteria, p::perturb(), p::exude()) :
                                               CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::no_exude());
 

@@ -4,7 +4,14 @@
 #include <Eigen/Eigenvalues>
 #include <Eigen/SparseCholesky>
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
+
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -18,6 +25,94 @@ namespace NonPlanar {
 namespace {
 
 constexpr double PI  = 3.14159265358979323846;
+
+// EXPERIMENT, for evaluation only: S4_PROTO_MT=1 solves the rotation field's systems by
+// Jacobi-preconditioned conjugate gradients, warm-started from the previous active set's
+// solution, with the work split over threads in fixed chunks (the same result on any number of
+// threads), and the deformation's three axes at once. Unset, nothing changes.
+bool proto_mt() { return std::getenv("S4_PROTO_MT") != nullptr; }
+
+struct ProtoStats
+{
+    int    solves = 0;
+    long   cg_iterations = 0;
+    int    cg_unconverged = 0;
+    double rotation_s = 0., deformation_s = 0.;
+};
+
+using RowMatrix              = Eigen::SparseMatrix<double, Eigen::RowMajor>;
+constexpr size_t proto_grain = 4096;
+
+template<class F> void par_for(size_t n, F &&f)
+{
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, n, proto_grain), [&f](const tbb::blocked_range<size_t> &r) {
+        for (size_t i = r.begin(); i < r.end(); ++i)
+            f(i);
+    });
+}
+
+template<class F> double par_sum(size_t n, F &&f)
+{
+    return tbb::parallel_deterministic_reduce(
+        tbb::blocked_range<size_t>(0, n, proto_grain), 0.,
+        [&f](const tbb::blocked_range<size_t> &r, double s) {
+            for (size_t i = r.begin(); i < r.end(); ++i)
+                s += f(i);
+            return s;
+        },
+        std::plus<double>());
+}
+
+// y = H p on the free rows (state 0), 0 on the others.
+void free_rows_product(const RowMatrix &H, const std::vector<int> &state, const Eigen::VectorXd &p, Eigen::VectorXd &y)
+{
+    par_for(size_t(H.rows()), [&](size_t i) {
+        double s = 0.;
+        if (state[i] == 0)
+            for (RowMatrix::InnerIterator it(H, int(i)); it; ++it)
+                s += it.value() * p[it.col()];
+        y[i] = s;
+    });
+}
+
+// The free cells' rows of H x = g with the other cells held at their x, from the current x.
+void solve_free_cg(const RowMatrix &H, const Eigen::VectorXd &diag, const Eigen::VectorXd &g, const std::vector<int> &state,
+                   Eigen::VectorXd &x, ProtoStats *stats)
+{
+    const size_t    n = size_t(x.size());
+    Eigen::VectorXd held(n), r(n), z(n), p(n), q(n);
+    par_for(n, [&](size_t i) { held[i] = state[i] == 0 ? 0. : x[i]; });
+    free_rows_product(H, state, held, q);
+    const double b_norm = std::sqrt(par_sum(n, [&](size_t i) { return state[i] == 0 ? (g[i] - q[i]) * (g[i] - q[i]) : 0.; }));
+    free_rows_product(H, state, x, q);
+    par_for(n, [&](size_t i) {
+        r[i] = state[i] == 0 ? g[i] - q[i] : 0.;
+        z[i] = r[i] / diag[i];
+        p[i] = z[i];
+    });
+    double       rz  = par_sum(n, [&](size_t i) { return r[i] * z[i]; });
+    const double tol = 1e-10 * std::max(b_norm, 1e-30);
+    int          k   = 0;
+    for (; k < 20000; ++k) {
+        if (std::sqrt(par_sum(n, [&](size_t i) { return r[i] * r[i]; })) <= tol)
+            break;
+        free_rows_product(H, state, p, q);
+        const double alpha = rz / par_sum(n, [&](size_t i) { return p[i] * q[i]; });
+        par_for(n, [&](size_t i) {
+            x[i] += alpha * p[i];
+            r[i] -= alpha * q[i];
+            z[i] = r[i] / diag[i];
+        });
+        const double rz_next = par_sum(n, [&](size_t i) { return r[i] * z[i]; });
+        const double beta    = rz_next / rz;
+        rz                   = rz_next;
+        par_for(n, [&](size_t i) { p[i] = z[i] + beta * p[i]; });
+    }
+    if (stats) {
+        stats->cg_iterations += k;
+        stats->cg_unconverged += k == 20000;
+    }
+}
 const double     NaN = std::numeric_limits<double>::quiet_NaN();
 
 double deg2rad(double a) { return a * PI / 180.; }
@@ -327,7 +422,7 @@ std::vector<Eigen::Matrix3d> rotation_matrices(const std::vector<Eigen::Vector3d
 // One coordinate of the vertex positions whose cells best match their rotated shapes (least
 // squares on the centred cell vertices). Vertices with `fixed` set hold `value`.
 Eigen::VectorXd solve_axis(const std::vector<Eigen::Vector3d> &pts, const TetMesh &mesh, const std::vector<Eigen::Matrix3d> &rot, int axis,
-                           const std::vector<char> &fixed, const std::vector<double> &value)
+                           const std::vector<char> &fixed, const std::vector<double> &value, const std::vector<double> *cell_w = nullptr)
 {
     const size_t     n = pts.size();
     std::vector<int> index(n, -1);
@@ -344,13 +439,14 @@ Eigen::VectorXd solve_axis(const std::vector<Eigen::Vector3d> &pts, const TetMes
     for (size_t c = 0; c < mesh.tets.size(); ++c) {
         const std::array<int, 4> &t    = mesh.tets[c];
         const Eigen::Vector3d     mean = 0.25 * (pts[t[0]] + pts[t[1]] + pts[t[2]] + pts[t[3]]);
+        const double              wc   = cell_w ? (*cell_w)[c] : 1.;
         for (int i = 0; i < 4; ++i) {
             const int row = index[t[i]];
             if (row < 0)
                 continue;
-            rhs[row] += rot[c].row(axis).dot(pts[t[i]] - mean);
+            rhs[row] += wc * rot[c].row(axis).dot(pts[t[i]] - mean);
             for (int j = 0; j < 4; ++j) {
-                const double w   = (i == j ? 1. : 0.) - 0.25;
+                const double w   = wc * ((i == j ? 1. : 0.) - 0.25);
                 const int    col = index[t[j]];
                 if (col >= 0)
                     triplets.emplace_back(row, col, w);
@@ -384,18 +480,18 @@ Eigen::VectorXd solve_axis(const std::vector<Eigen::Vector3d> &pts, const TetMes
 // `z_floor`. The axes are independent, so the floor is an active set on the Z solve alone.
 std::vector<Eigen::Vector3d> solve_deformation(const std::vector<Eigen::Vector3d> &pts, const TetMesh &mesh,
                                                const std::vector<Eigen::Matrix3d> &rot, const std::vector<char> &pinned,
-                                               const std::vector<double> &z_floor)
+                                               const std::vector<double> &z_floor, const std::vector<double> *cell_w = nullptr)
 {
-    const size_t        n = pts.size();
-    std::vector<double> value(n);
+    const size_t n = pts.size();
     std::vector<Eigen::Vector3d> out(n);
-    for (int axis = 0; axis < 3; ++axis) {
+    auto solve_one = [&](int axis) {
+        std::vector<double> value(n);
         std::vector<char> fixed = pinned;
         for (size_t v = 0; v < n; ++v)
             value[v] = pts[v][axis];
         Eigen::VectorXd x;
         for (int round = 0; round < 100; ++round) {
-            x = solve_axis(pts, mesh, rot, axis, fixed, value);
+            x = solve_axis(pts, mesh, rot, axis, fixed, value, cell_w);
             if (axis != 2)
                 break;
             bool violated = false;
@@ -410,7 +506,12 @@ std::vector<Eigen::Vector3d> solve_deformation(const std::vector<Eigen::Vector3d
         }
         for (size_t v = 0; v < n; ++v)
             out[v][axis] = x[v];
-    }
+    };
+    if (proto_mt())
+        tbb::parallel_for(0, 3, solve_one);
+    else
+        for (int axis = 0; axis < 3; ++axis)
+            solve_one(axis);
     return out;
 }
 
@@ -419,10 +520,25 @@ double signed_volume(const std::vector<Eigen::Vector3d> &pts, const std::array<i
     return (pts[t[1]] - pts[t[0]]).cross(pts[t[2]] - pts[t[0]]).dot(pts[t[3]] - pts[t[0]]);
 }
 
+std::vector<double> solve_rotation_field(size_t n, const std::vector<std::array<int, 2>> &pairs, double weight,
+                                         const std::vector<double> &target, const std::vector<double> &limit,
+                                         const std::vector<double> *pair_w, const std::vector<double> *target_w,
+                                         ProtoStats *stats = nullptr, const std::vector<double> *initial = nullptr);
+
 } // namespace
 
 std::vector<double> s4_solve_rotation_field(size_t n, const std::vector<std::array<int, 2>> &pairs, double weight,
                                             const std::vector<double> &target, const std::vector<double> &limit)
+{
+    return solve_rotation_field(n, pairs, weight, target, limit, nullptr, nullptr);
+}
+
+namespace {
+
+std::vector<double> solve_rotation_field(size_t n, const std::vector<std::array<int, 2>> &pairs, double weight,
+                                         const std::vector<double> &target, const std::vector<double> &limit,
+                                         const std::vector<double> *pair_w, const std::vector<double> *target_w,
+                                         ProtoStats *stats, const std::vector<double> *initial)
 {
     // Minimize 1/2 x^T H x - g^T x in the box, H = w * graph Laplacian + target indicator
     // (+ a vanishing ridge for cells no target reaches). H is an M-matrix, so the primal-dual
@@ -430,23 +546,36 @@ std::vector<double> s4_solve_rotation_field(size_t n, const std::vector<std::arr
     std::vector<Eigen::Triplet<double>> h;
     h.reserve(pairs.size() * 4 + n);
     Eigen::VectorXd g = Eigen::VectorXd::Zero(n);
-    for (const auto &[i, j] : pairs) {
-        h.emplace_back(i, i, weight);
-        h.emplace_back(j, j, weight);
-        h.emplace_back(i, j, -weight);
-        h.emplace_back(j, i, -weight);
+    for (size_t k = 0; k < pairs.size(); ++k) {
+        const auto [i, j] = pairs[k];
+        const double wk   = weight * (pair_w ? (*pair_w)[k] : 1.);
+        h.emplace_back(i, i, wk);
+        h.emplace_back(j, j, wk);
+        h.emplace_back(i, j, -wk);
+        h.emplace_back(j, i, -wk);
     }
     for (size_t c = 0; c < n; ++c) {
         h.emplace_back(c, c, 1e-12);
         if (! std::isnan(target[c])) {
-            h.emplace_back(c, c, 1.);
-            g[c] = target[c];
+            const double tw = target_w ? (*target_w)[c] : 1.;
+            h.emplace_back(c, c, tw);
+            g[c] = tw * target[c];
         }
     }
     Eigen::SparseMatrix<double> H(n, n);
     H.setFromTriplets(h.begin(), h.end());
+    const bool      mt = proto_mt();
+    RowMatrix       Hr;
+    Eigen::VectorXd diag;
+    if (mt) {
+        Hr   = H;
+        diag = H.diagonal();
+    }
 
     Eigen::VectorXd  x      = Eigen::VectorXd::Zero(n);
+    if (initial) // EXPERIMENT: warm start from the previous round's field
+        for (size_t c = 0; c < n; ++c)
+            x[c] = std::clamp((*initial)[c], -limit[c], limit[c]);
     Eigen::VectorXd  lambda = Eigen::VectorXd::Zero(n); // g - H x on active cells
     std::vector<int> state(n, 0), prev_state;           // -1 at lower bound, +1 at upper, 0 free
     const double     c_scale = weight + 1.;
@@ -470,7 +599,11 @@ std::vector<double> s4_solve_rotation_field(size_t n, const std::vector<std::arr
                 index[c] = num_free++;
             else
                 x[c] = state[c] * limit[c];
-        if (num_free > 0) {
+        if (num_free > 0 && stats)
+            ++stats->solves;
+        if (num_free > 0 && mt)
+            solve_free_cg(Hr, diag, g, state, x, stats);
+        else if (num_free > 0) {
             std::vector<Eigen::Triplet<double>> t;
             Eigen::VectorXd                     rhs(num_free);
             for (size_t c = 0; c < n; ++c)
@@ -503,6 +636,8 @@ std::vector<double> s4_solve_rotation_field(size_t n, const std::vector<std::arr
     }
     return std::vector<double>(x.data(), x.data() + n);
 }
+
+} // namespace
 
 std::vector<std::array<int, 3>> s4_boundary_triangles(const TetMesh &mesh, const std::vector<Eigen::Vector3d> &pts)
 {
@@ -550,7 +685,37 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
     constexpr int    max_rounds = 10;
     constexpr double shrink     = 0.7;
 
-    S4Result result;
+    // EXPERIMENT, for evaluation only: S4_PROTO_WEIGHTED=1 weights each cell's terms by its size (1 on
+    // a uniform mesh), so a mesh refined at the surface solves the same problem. Unset, nothing changes.
+    std::vector<double> cell_w, pair_w, target_w;
+    const bool          weighted = std::getenv("S4_PROTO_WEIGHTED") != nullptr;
+    if (weighted) {
+        std::vector<double> vol(n), side(n);
+        double              mv = 0., ms = 0., ma = 0.;
+        for (size_t c = 0; c < n; ++c) {
+            const std::array<int, 4> &t = mesh.tets[c];
+            vol[c]  = std::abs((mesh.points[t[1]] - mesh.points[t[0]]).dot((mesh.points[t[2]] - mesh.points[t[0]]).cross(mesh.points[t[3]] - mesh.points[t[0]]))) / 6.;
+            side[c] = std::cbrt(vol[c]);
+            mv += vol[c];
+            ms += side[c];
+            ma += side[c] * side[c];
+        }
+        mv /= double(n);
+        ms /= double(n);
+        ma /= double(n);
+        cell_w.resize(n);
+        target_w.resize(n);
+        for (size_t c = 0; c < n; ++c) {
+            cell_w[c]   = vol[c] / mv;
+            target_w[c] = side[c] * side[c] / ma;
+        }
+        pair_w.resize(topo.face_pairs.size());
+        for (size_t k = 0; k < topo.face_pairs.size(); ++k)
+            pair_w[k] = 0.5 * (side[topo.face_pairs[k][0]] + side[topo.face_pairs[k][1]]) / ms;
+    }
+
+    ProtoStats stats;
+    S4Result   result;
     result.deformed = mesh.points;
     const double threshold = deg2rad(90. + params.max_overhang);
     for (int pass = 0; pass < std::max(1, params.passes); ++pass) {
@@ -580,8 +745,16 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
                 if (! std::isnan(raw_target[c]))
                     data.target[c] = std::clamp(raw_target[c], -data.limit[c], data.limit[c]);
             }
-            data.rotation = s4_solve_rotation_field(n, topo.face_pairs, params.neighbour_weight, data.target, data.limit);
-            deformed = solve_deformation(result.deformed, mesh, rotation_matrices(a.center, data.rotation, params.axis), pinned, z_floor);
+            const auto                t0       = std::chrono::steady_clock::now();
+            const std::vector<double> previous = data.rotation;
+            data.rotation = solve_rotation_field(n, topo.face_pairs, params.neighbour_weight, data.target, data.limit,
+                                                 weighted ? &pair_w : nullptr, weighted ? &target_w : nullptr, &stats,
+                                                 proto_mt() && round > 0 ? &previous : nullptr);
+            const auto t1 = std::chrono::steady_clock::now();
+            deformed = solve_deformation(result.deformed, mesh, rotation_matrices(a.center, data.rotation, params.axis), pinned, z_floor,
+                                         weighted ? &cell_w : nullptr);
+            stats.rotation_s += std::chrono::duration<double>(t1 - t0).count();
+            stats.deformation_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - t1).count();
 
             std::vector<int> inverted;
             for (size_t c = 0; c < n; ++c)
@@ -607,6 +780,9 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
         result.deformed = std::move(deformed);
         result.passes.emplace_back(std::move(data));
     }
+    if (std::getenv("S4_PROTO_STATS"))
+        std::fprintf(stderr, "S4 proto: %zu cells, %d rounds, %d rotation solves, %ld CG iterations (%d unconverged), rotation field %.1f s, deformation %.1f s\n",
+                     n, result.passes.back().rounds, stats.solves, stats.cg_iterations, stats.cg_unconverged, stats.rotation_s, stats.deformation_s);
     return result;
 }
 

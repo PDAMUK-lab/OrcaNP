@@ -29,6 +29,7 @@ add_executable(${_TEST_NAME}_tests
     test_placeholder_parser.cpp
     test_polar_kinematics.cpp
     test_s4.cpp
+    test_s4_quality.cpp
     test_polygon.cpp
     test_mutable_polygon.cpp
     test_mutable_priority_queue.cpp
