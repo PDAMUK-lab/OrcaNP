@@ -1061,6 +1061,12 @@ wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxString too
             }
         }
 
+        if (param == "s4_warm_start" || param == "s4_multithreading") {
+            MessageDialog dlg(this, _L("Restart OrcaSlicer for this change to take effect."), _L("Restart required"),
+                              wxOK | wxICON_INFORMATION);
+            dlg.ShowModal();
+        }
+
 #ifdef __WXMSW__
         if (param == "associate_3mf") {
              bool pbool = app_config->get("associate_3mf") == "true" ? true : false;
@@ -1773,6 +1779,20 @@ void PreferencesDialog::create_items()
         "auto_close_sketch_loops");
     g_sizer->Add(item_auto_close_sketch_loops);
 #endif
+
+    //// GENERAL > Non-planar slicing
+    g_sizer->Add(create_item_title(_L("Non-planar slicing")), 1, wxEXPAND);
+    g_sizer->Add(create_item_checkbox(_L("Warm start"),
+        _L("S4 non-planar slicing relaxes its deformation where tetrahedra turn inside out, in up to ten rounds. With this "
+           "option each round starts from the previous round's solution instead of from nothing, which finds the same "
+           "result in far fewer steps on large or finely meshed parts."),
+        "s4_warm_start", _L("(Requires restart)")));
+    g_sizer->Add(create_item_checkbox(_L("Multi-threading"),
+        _L("Let the S4 deformation use several processor cores. Its three axes are always solved at the same time. A part "
+           "whose rotation field would need a large factorization (a large part, or fine tetrahedra) has it solved "
+           "iteratively over all cores instead; the slicer decides that from the size of the problem, so a model always "
+           "takes the same route. The result is the same either way."),
+        "s4_multithreading", _L("(Requires restart)")));
 
 #if 0
     g_sizer->Add(create_item_title(_L("Filament Grouping")), 1, wxEXPAND);

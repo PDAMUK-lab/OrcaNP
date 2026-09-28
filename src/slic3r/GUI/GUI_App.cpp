@@ -89,6 +89,7 @@
 #include "libslic3r/miniz_extension.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Color.hpp"
+#include "libslic3r/NonPlanar/S4Deformation.hpp"
 #include "slic3r/plugin/PluginManager.hpp"
 #include "slic3r/plugin/host/PluginHostUi.hpp"
 #include "slic3r/plugin/PythonInterpreter.hpp"
@@ -2644,6 +2645,10 @@ void GUI_App::init_app_config()
     if (app_config->get("enable_speed_dial").empty())
         app_config->set_bool("enable_speed_dial", true);
     set_logging_level(Slic3r::level_string_to_boost(app_config->get("log_severity_level")));
+    // Read here only, so changing them in Preferences takes a restart.
+    NonPlanar::S4SolverOptions &s4 = NonPlanar::s4_solver_options();
+    s4.warm_start                  = app_config->get_bool("s4_warm_start");
+    s4.multithreading              = app_config->get_bool("s4_multithreading");
 
 }
 

@@ -356,6 +356,11 @@ void AppConfig::set_defaults()
 //#endif
     if (get("enable_multi_machine").empty())
         set_bool("enable_multi_machine", false);
+    // Non-planar (S4) solver speed-ups; the slice is the same either way.
+    if (get("s4_warm_start").empty())
+        set_bool("s4_warm_start", true);
+    if (get("s4_multithreading").empty())
+        set_bool("s4_multithreading", true);
 
     if (get("drc_bits").empty())
         set("drc_bits", DRC_BITS_DEFAULT_STR);

@@ -297,6 +297,40 @@ TEST_CASE("Aggressive rotations are cut back until no tetrahedron is inverted", 
         CHECK(signed_volume(mesh.points, t) * signed_volume(result.deformed, t) > 0.);
 }
 
+TEST_CASE("Warm start and multi-threading leave the deformation as it is", "[S4]")
+{
+    // Rotations aggressive enough to need several repair rounds, so the warm start has rounds to
+    // start from; a zero factor size sends the multi-threaded solve down the iterative route.
+    const TetMesh mesh = voxel_mesh(cantilever_voxels(), 2.);
+    S4Params      params;
+    params.rotation_multiplier = 4.;
+    params.max_rotation_near   = 80.;
+    params.max_rotation_far    = 80.;
+    params.neighbour_weight    = 0.5;
+    params.warm_start          = false;
+    params.multithreading      = false;
+    const S4Result plain = s4_deform(mesh, params);
+    REQUIRE(plain.passes.front().rounds > 1);
+    CHECK_FALSE(plain.passes.front().iterative);
+
+    params.warm_start          = true;
+    const S4Result warm        = s4_deform(mesh, params);
+    params.multithreading      = true;
+    params.iterative_factor_size = 0;
+    const S4Result threaded    = s4_deform(mesh, params);
+    CHECK(threaded.passes.front().iterative);
+
+    CHECK(warm.passes.front().solves < plain.passes.front().solves);
+    CHECK(warm.passes.front().rounds == plain.passes.front().rounds);
+    double warm_dev = 0., threaded_dev = 0.;
+    for (size_t v = 0; v < mesh.points.size(); ++v) {
+        warm_dev     = std::max(warm_dev, (warm.deformed[v] - plain.deformed[v]).norm());
+        threaded_dev = std::max(threaded_dev, (threaded.deformed[v] - plain.deformed[v]).norm());
+    }
+    CHECK(warm_dev < 1e-6);
+    CHECK(threaded_dev < 1e-6);
+}
+
 TEST_CASE("Only the base stays at bed level", "[S4]")
 {
     const TetMesh  mesh   = voxel_mesh(cantilever_voxels(), 2.);

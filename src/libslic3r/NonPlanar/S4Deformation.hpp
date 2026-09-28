@@ -58,6 +58,16 @@ struct S4Params
     Eigen::Vector2d axis { 0., 0. };
     // Deformation passes; each pass deforms the result of the previous one.
     int passes = 1;
+
+    // Speed-ups that leave the result as it is (the application's preferences, s4_solver_options()).
+    // Each round that cuts back rotation limits where cells inverted starts from the last round's
+    // solution and the rotation limits it found binding, instead of from nothing.
+    bool warm_start = true;
+    // The deformation's three axes are solved at once, and the rotation field, once its direct
+    // factorization is larger than `iterative_factor_size` nonzeros, by conjugate gradients split
+    // over threads. That size, not a timing, decides, so a model always takes the same route.
+    bool   multithreading        = true;
+    size_t iterative_factor_size = 3000000;
 };
 
 // Per-cell values of one pass, for inspection and tests. Angles in radians; NaN where a value
@@ -74,6 +84,9 @@ struct S4PassData
     std::vector<double> rotation; // optimized rotation
     size_t              inverted = 0; // cells still inside out after the last round
     int                 rounds   = 0; // solves needed to remove inversions
+    int                 solves   = 0; // rotation field systems solved, over all rounds
+    size_t              factor_size = 0;  // nonzeros of the first direct factorization
+    bool                iterative   = false; // switched to conjugate gradients
 };
 
 struct S4Result
@@ -95,6 +108,15 @@ std::vector<std::array<int, 3>> s4_boundary_triangles(const TetMesh &mesh, const
 // Cells without a target (NaN) follow their neighbours. Exposed for testing.
 std::vector<double> s4_solve_rotation_field(size_t num_cells, const std::vector<std::array<int, 2>> &pairs, double weight,
                                             const std::vector<double> &target, const std::vector<double> &limit);
+
+// The application's speed-up preferences, copied into the S4Params of each slice. Set once at
+// startup (a change takes a restart).
+struct S4SolverOptions
+{
+    bool warm_start     = true;
+    bool multithreading = true;
+};
+S4SolverOptions &s4_solver_options();
 
 } // namespace NonPlanar
 } // namespace Slic3r

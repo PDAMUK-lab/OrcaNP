@@ -920,6 +920,8 @@ void PrintObject::deform_s4()
             params.passes                = m_config.s4_passes.value;
             params.planar_height         = m_config.s4_planar_height.value;
             params.zero_initial_rotation = m_config.s4_hold_non_overhangs.value;
+            params.warm_start            = NonPlanar::s4_solver_options().warm_start;
+            params.multithreading        = NonPlanar::s4_solver_options().multithreading;
             // A tilting nozzle follows the layers, so they may lean no further than it can on either side.
             const PrintConfig &pc = m_print->config();
             if (pc.polar_kinematics.value && pc.polar_tilt_axis.value) {

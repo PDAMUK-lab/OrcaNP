@@ -144,9 +144,6 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
         set_env("S4_PROTO_FACET_SIZE", var.facet == "-" ? nullptr : var.facet.c_str());
         set_env("S4_PROTO_FACET_DISTANCE", var.distance == "-" ? nullptr : var.distance.c_str());
         set_env("S4_PROTO_WEIGHTED", var.weighted ? "1" : nullptr);
-        set_env("S4_PROTO_MT", var.mt ? "1" : nullptr);
-        set_env("S4_PROTO_WARM", var.warm ? "1" : nullptr);
-        set_env("S4_PROTO_STATS", "1");
         tbb::global_control  threads(tbb::global_control::max_allowed_parallelism, size_t(var.threads));
         // Variants with the same mesh settings share the mesh, so solvers are compared on one mesh.
         const std::string key = std::to_string(var.cell) + " " + var.facet + " " + var.distance;
@@ -158,7 +155,10 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
             mit = meshes.emplace(key, tetrahedralize(V, F, tp)).first;
         const TetMesh &mesh = mit->second;
         const auto     t1   = std::chrono::steady_clock::now();
-        const S4Result res  = s4_deform(mesh, sp);
+        S4Params p         = sp;
+        p.warm_start       = var.warm;
+        p.multithreading   = var.mt;
+        const S4Result res = s4_deform(mesh, p);
         const auto     t2   = std::chrono::steady_clock::now();
 
         // Fidelity: the original surface's distance to the tetrahedra's skin.
@@ -214,16 +214,14 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
         } else
             by_mesh[key + " " + std::to_string(var.weighted)] = res.deformed;
         std::printf("%-26s tets %7zu  mesh %6.1f s  deform %6.1f s  skin p50 %.3f p99 %.3f max %.3f  unprintable %5.2f %%  "
-                    "interior tilt %5.2f  vs ref %5.2f deg  inverted %zu  vs same mesh %.2g mm\n",
+                    "interior tilt %5.2f  vs ref %5.2f deg  inverted %zu  vs same mesh %.2g mm  solves %d  factor %zu%s\n",
                     var.name.c_str(), mesh.tets.size(), std::chrono::duration<double>(t1 - t0).count(),
                     std::chrono::duration<double>(t2 - t1).count(), dev[dev.size() / 2], dev[dev.size() * 99 / 100], dev.back(), bad,
-                    mean_tilt, diff, res.passes.back().inverted, same_mesh);
+                    mean_tilt, diff, res.passes.back().inverted, same_mesh, res.passes.back().solves, res.passes.back().factor_size,
+                    res.passes.back().iterative ? " (iterative)" : "");
         std::fflush(stdout);
     }
     set_env("S4_PROTO_FACET_SIZE", nullptr);
     set_env("S4_PROTO_FACET_DISTANCE", nullptr);
     set_env("S4_PROTO_WEIGHTED", nullptr);
-    set_env("S4_PROTO_MT", nullptr);
-    set_env("S4_PROTO_WARM", nullptr);
-    set_env("S4_PROTO_STATS", nullptr);
 }
