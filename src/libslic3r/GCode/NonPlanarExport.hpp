@@ -31,8 +31,9 @@ int marker_id(const Print &print, const PrintObject &object);
 // by the object ids of its NONPLANAR_OBJECT markers. Everything else is printed as sliced.
 struct S4Mappers
 {
-    std::vector<std::unique_ptr<NonPlanar::S4Mapper>> storage;
-    NonPlanar::S4MapperSet                            set;
+    std::vector<std::unique_ptr<NonPlanar::S4Mapper>>         storage;
+    std::vector<std::unique_ptr<NonPlanar::S4SupportSurface>> surfaces;
+    NonPlanar::S4MapperSet                                    set;
 };
 std::unique_ptr<S4Mappers> s4_mappers(const Print &print);
 

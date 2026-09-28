@@ -10,6 +10,8 @@
 #include <array>
 #include <vector>
 
+struct indexed_triangle_set;
+
 namespace Slic3r {
 namespace NonPlanar {
 
@@ -67,6 +69,13 @@ private:
     std::array<int, 3>            m_grid_size { 1, 1, 1 };
     std::vector<std::vector<int>> m_buckets;
 };
+
+// Moves the vertices of a mesh in the real part's frame (shifted up by `lift`, as the part was
+// before it was meshed) to where the deformation takes them, the space the part is sliced in:
+// painted areas and support volumes are sliced there with it. Vertices outside the part follow
+// the nearest tetrahedron within `margin` of it and stay where they are further out.
+void s4_to_sliced_space(const TetMesh &undeformed, const std::vector<Eigen::Vector3d> &deformed, indexed_triangle_set &its,
+                        double lift = 0., double margin = 10.);
 
 } // namespace NonPlanar
 } // namespace Slic3r

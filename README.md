@@ -104,6 +104,11 @@ These happen on their own and have no settings:
 - **Travels:** a travel that would pass through printed material is lifted over it and retracted.
 - **Seams and joins:** moves that cross between parts mapped differently are joined by a straight
   move through the part.
+- **Support:** support is generated on the bent part, then printed in columns from the bed, or
+  the part below, up to the real underside of the overhang it holds, keeping the support's top
+  and bottom Z distances. Painted support and support blocker or enforcer parts are bent with
+  the part, so they mark the faces they were placed on. Support of offset layers is not mapped
+  this way.
 
 ## Layer shapes
 

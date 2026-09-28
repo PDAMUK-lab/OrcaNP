@@ -62,6 +62,16 @@ std::unique_ptr<S4Mappers> s4_mappers(const Print &print)
         m.blend_top_z      = m.flat_top_z + s4->blend;
         m.keep_min_x       = s4->keep_min_x + offset.x();
         m.keep_max_x       = s4->keep_max_x + offset.x();
+        // Support is mapped in columns between the part's surfaces. Layers offset from a print
+        // surface have overhangs that say nothing about the part's, so theirs is left as it was.
+        if (! object->support_layers().empty() && object->config().s4_layer_shape.value != S4LayerShape::Offset) {
+            indexed_triangle_set surface = s4->surface;
+            its_translate(surface, offset.cast<float>());
+            out->surfaces.push_back(std::make_unique<NonPlanar::S4SupportSurface>(surface));
+            m.support_surface    = out->surfaces.back().get();
+            m.support_top_gap    = object->config().support_top_z_distance.value;
+            m.support_bottom_gap = object->config().support_bottom_z_distance.value;
+        }
     }
     if (out->storage.empty())
         return nullptr;

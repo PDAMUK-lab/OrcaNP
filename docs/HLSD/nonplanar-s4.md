@@ -106,6 +106,18 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    tilt and flow follow; so each column stays in order, and the layers meet the mapped ones at
    the blend's top. Only the optimized shape needs this: offset layers start at the print
    surface, and conical ones are flat over the footprint.
+   Support is mapped in columns instead. The support generator works in the sliced space, where
+   the overhangs are where the deformation put them, and the cell a support point sits in or
+   next to moves it with the part: into the part, or under layers printed long before it. So a
+   support point looks for the part above it on the deformed surface, straight up and then
+   around it up to 2 mm away (support reaches a little past the overhang it holds), and below it
+   for the part's surface, else the bed or the top of what prints flat. Both ends are mapped as
+   the part is, the support's top and bottom Z distances kept between them and the support, and
+   the point is placed between them by its sliced height: its height, XY shift and tilt in
+   proportion, its flow by how far the column was stretched. So a column stands on what is
+   really below it, stops the top Z distance under the real overhang, and keeps its layers in
+   order. Support with no part above it is mapped like the part, and so is all support of
+   offset layers, whose overhangs in the sliced space say nothing about the part's.
    The tilt is then shaped for the machine: below `tilt_threshold` the nozzle stays vertical,
    between it and twice it the tilt ramps up to the layer's, and it never exceeds `max_tilt`.
    Repair passes follow: extrusion scaled by the flow factor (clipped to 0.25–3 with the clipped
@@ -282,10 +294,13 @@ The pipeline hooks into the print steps as follows:
   before the layers are laid out. The layer heights are then computed for the deformed height,
   and `slice_volumes()` slices the deformed surface in place of the part (and the print surface
   parts as they are). Perimeters, infill, supports, seams and the rest of the pipeline run
-  unchanged on those flat slices, per region, so the core can have its own settings. The
-  rotation axis in that frame is the centre of the printable area moved into the object's
-  frame through the instance shift and plate origin. So moving the object, or changing the bed
-  shape, re-slices it.
+  unchanged on those flat slices, per region, so the core can have its own settings. Painted
+  support enforcers, blockers and seams, and support enforcer and blocker parts, are carried
+  into the sliced space first (`s4_to_sliced_space()`: the mapper built the other way, from the
+  real tetrahedra to the deformed ones, after the part's lift onto a pillar), so they are sliced
+  where the deformation moved the faces they mark. The rotation axis in that frame is the
+  centre of the printable area moved into the object's frame through the instance shift and
+  plate origin. So moving the object, or changing the bed shape, re-slices it.
 - **Validation** (`Print::validate()`): an S4 object has one part printed non-planar, besides
   print surface parts (only, and at least one, with offset layers), no modifiers or negative
   volumes, and one instance. The mapping only handles relative extrusion, and spiral vase is
@@ -299,7 +314,10 @@ The pipeline hooks into the print steps as follows:
     height up to which the object is its print surface, and the window of an unwrapped layout.
   - `s4_transform_gcode()` maps each object through its own mapper. Its print surface layers
     and everything outside objects (skirt, brim, other objects) are printed as sliced.
-  - A travel between toolpaths mapped differently was planned in unrelated spaces. It becomes a
+  - For an object with support, the deformed surface is kept in a ray-cast tree for the support
+    columns, with the support's top and bottom Z distances.
+  - A travel between toolpaths mapped differently (support and part among them) was planned in
+    unrelated spaces. It becomes a
     straight line in the part from where one print ends to where the next starts, and the
     travel pass lifts it over whatever is in the way.
   - Only the mapped G-code is then streamed through the processor, so the preview, time
@@ -358,6 +376,7 @@ and the non-planar building blocks:
 - **G-code transform:**
   - identity, flow, travel lifts, absolute extrusion refused;
   - flat layers near the bed easing into the mapped ones;
+  - support in columns from the bed up to the part's underside;
   - tilt threshold and limits;
   - toolhead clearance against printed material and the bed;
   - per-object mapping with flat print surfaces, and kept windows.
@@ -381,3 +400,6 @@ surface still overhanging, the layer tilt inside against a reference, and time.
   the pillar; an automatic pillar is as high as the toolhead needs, and is sliced again when the
   toolhead changes; a plate much wider than its pillar is high takes as much filament as its
   volume; a dome is a hemisphere.
+- support under a T stands on the bed and stops the top Z distance below the real wings, its
+  columns in order and none of it inside the part; support painted under one wing is printed
+  under that wing, as it is without S4.

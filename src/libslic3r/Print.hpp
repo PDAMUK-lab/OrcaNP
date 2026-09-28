@@ -397,6 +397,8 @@ public:
         // surface, cannot hold a thinner layer flat.
         double flat_top = -std::numeric_limits<double>::infinity();
         double blend    = 0.;
+        // How far the part was raised onto a generated post before it was meshed.
+        double lift = 0.;
         // Unwrapped layers are sliced over more than a turn: only extrusion in [keep_min_x,
         // keep_max_x) of the slicing frame is printed.
         double keep_min_x = -std::numeric_limits<double>::infinity();

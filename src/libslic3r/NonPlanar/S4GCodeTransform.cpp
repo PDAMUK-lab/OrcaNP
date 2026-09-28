@@ -1,6 +1,8 @@
 #include "S4GCodeTransform.hpp"
 #include "GCodeWords.hpp"
 
+#include "../AABBMesh.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -37,6 +39,7 @@ struct Move
     bool                  dropped   = false;
     std::string           axes;              // axis words the source line commanded
     int                   object    = -1;    // object marker the line is in, -1 outside
+    bool                  support   = false; // after a ";TYPE:Support..." marker
     const S4Mapper       *mapped_by = nullptr; // mapper that placed it, null when printed as sliced
 };
 
@@ -91,6 +94,11 @@ private:
     // Where a sliced point (G-code coordinates) prints through an object's mapper, flat near the
     // bed and easing into the mapped layers above (see S4ObjectMapping). The tilt is unshaped.
     S4Mapper::Result map_point(const S4ObjectMapping &om, const Eigen::Vector3d &source);
+    // Where a sliced support point prints: in its column between the part (or the bed) below and
+    // the part above (see S4ObjectMapping::support_surface). Empty with no part above it nearby.
+    std::optional<S4Mapper::Result> map_support(const S4ObjectMapping &om, const Eigen::Vector3d &source);
+    // map_support() for support where it applies, map_point() for the rest.
+    S4Mapper::Result place(const S4ObjectMapping &om, bool support, const Eigen::Vector3d &source);
     void pass_junctions();
     const S4ObjectMapping &mapping(int object) const
     {
@@ -218,7 +226,8 @@ void Transform::build_records()
                 break;
             }
 
-    int object = -1;
+    int  object  = -1;
+    bool support = false;
     for (size_t i = 0; i < m_body.size(); ++i) {
         const std::string     &raw = m_body[i];
         const GCodeWords::Line l   = GCodeWords::split(raw);
@@ -229,6 +238,8 @@ void Transform::build_records()
             object = -1;
         else if (const size_t at = raw.find("NONPLANAR_OBJECT "); at != std::string::npos)
             object = std::atoi(raw.c_str() + at + 17);
+        if (raw.rfind(";TYPE:", 0) == 0)
+            support = raw.compare(6, 7, "Support") == 0;
         const S4ObjectMapping &om = mapping(object);
         if (cmd == "G90")
             absolute = true;
@@ -267,8 +278,9 @@ void Transform::build_records()
             Move m   = make_move(pos);
             m.e      = e;
             m.feed   = feed;
-            m.pure_e = true;
-            m.object = object;
+            m.pure_e  = true;
+            m.object  = object;
+            m.support = support;
             rec.moves.push_back(m);
             m_records.push_back(std::move(rec));
             continue;
@@ -349,6 +361,7 @@ void Transform::build_records()
             m.printing = printing;
             m.axes     = axes;
             m.object   = object;
+            m.support  = support;
             if (e)
                 m.e = *e * (total > 0. ? lengths[k] / total : 1. / path.size());
             if (windowed) {
@@ -400,7 +413,7 @@ void Transform::map_moves()
                 last = &m;
                 continue;
             }
-            const S4Mapper::Result res = map_point(om, m.source);
+            const S4Mapper::Result res = place(om, m.support, m.source);
             m.mapped_by                = om.mapper;
             m.pos                      = res.point;
             m.tilt                     = shape_tilt(res.tilt);
@@ -449,6 +462,77 @@ S4Mapper::Result Transform::map_point(const S4ObjectMapping &om, const Eigen::Ve
     return res;
 }
 
+std::optional<S4Mapper::Result> Transform::map_support(const S4ObjectMapping &om, const Eigen::Vector3d &source)
+{
+    // In the mapper's frame. Support reaches a little past the overhang it holds up, so the part
+    // above it is looked for straight up, then around it up to 2 mm away.
+    const S4SupportSurface &surface = *om.support_surface;
+    const Eigen::Vector3d   p       = source - m_cfg.offset;
+    std::optional<double>   above;
+    Eigen::Vector2d         at = p.head<2>();
+    for (double r : { 0., 0.5, 1., 2. }) {
+        for (int k = 0; k < (r > 0. ? 8 : 1) && ! above; ++k) {
+            at    = p.head<2>() + r * Eigen::Vector2d(std::cos(k * PI / 4.), std::sin(k * PI / 4.));
+            above = surface.next(Eigen::Vector3d(at.x(), at.y(), p.z()), true);
+        }
+        if (above)
+            break;
+    }
+    if (! above)
+        return std::nullopt;
+
+    // The column's ends: the part's underside above, and the part's surface below or the bed.
+    // Each is placed where the part itself prints (the underside and a surface below exactly;
+    // the bed under the flat first layer), with the support gap kept between it and the support.
+    const Eigen::Vector3d  top_source = Eigen::Vector3d(at.x(), at.y(), *above) + m_cfg.offset;
+    const S4Mapper::Result top        = map_point(om, top_source);
+    const Eigen::Vector3d  top_shift  = top.point - top_source;
+    const double           top_sliced = top_source.z() - om.support_top_gap;
+    Eigen::Vector3d        bottom_shift = Eigen::Vector3d::Zero();
+    double                 bottom_sliced, bottom_real;
+    if (const std::optional<double> below = surface.next(p, false)) {
+        const Eigen::Vector3d  bottom_source = Eigen::Vector3d(p.x(), p.y(), *below) + m_cfg.offset;
+        const S4Mapper::Result bottom        = map_point(om, bottom_source);
+        bottom_shift  = bottom.point - bottom_source;
+        bottom_sliced = bottom_source.z() + om.support_bottom_gap;
+        bottom_real   = bottom.point.z() + om.support_bottom_gap;
+    } else
+        // The bed, or the top of what prints as sliced: the flat first layers or a print surface.
+        bottom_sliced = bottom_real = std::max({ m_cfg.z_floor, om.flat_top_z, om.identity_below_z });
+    // A column the real part leaves less room for than the sliced one still rises, so its layers
+    // never fold over each other.
+    const double span_sliced = top_sliced - bottom_sliced;
+    const double top_real    = std::max(top.point.z() - om.support_top_gap, bottom_real + 0.05 * std::max(span_sliced, 0.));
+
+    S4Mapper::Result res;
+    res.tier     = S4Mapper::Tier::Inside;
+    const double z = source.z();
+    if (z <= bottom_sliced) {
+        res.point = source + bottom_shift;
+    } else if (z >= top_sliced || span_sliced <= 1e-9) {
+        res.point     = source + top_shift;
+        res.point.z() = top_real + (z - top_sliced);
+        res.tilt      = top.tilt;
+    } else {
+        const double t = (z - bottom_sliced) / span_sliced;
+        res.point.head<2>() = source.head<2>() + (1. - t) * bottom_shift.head<2>() + t * top_shift.head<2>();
+        res.point.z()       = bottom_real + t * (top_real - bottom_real);
+        res.flow            = (top_real - bottom_real) / span_sliced;
+        res.tilt            = t * top.tilt;
+    }
+    return res;
+}
+
+S4Mapper::Result Transform::place(const S4ObjectMapping &om, bool support, const Eigen::Vector3d &source)
+{
+    if (support && om.support_surface) {
+        if (std::optional<S4Mapper::Result> res = map_support(om, source))
+            return *res;
+        ++m_report.support_unanchored;
+    }
+    return map_point(om, source);
+}
+
 void Transform::pass_junctions()
 {
     // A run of non-printing moves between prints that were mapped differently (another object,
@@ -472,9 +556,9 @@ void Transform::pass_junctions()
             }
             if (last_print && ! run.empty()) {
                 const S4Mapper *to    = m.mapped_by;
-                bool            mixed = at(*last_print).mapped_by != to;
+                bool            mixed = at(*last_print).mapped_by != to || at(*last_print).support != m.support;
                 for (const Ref &r : run)
-                    mixed |= at(r).mapped_by != to || at(r).object != m.object;
+                    mixed |= at(r).mapped_by != to || at(r).object != m.object || at(r).support != m.support;
                 if (mixed)
                     jobs.push_back({ *last_print, run, { ri, mi } });
             }
@@ -491,7 +575,7 @@ void Transform::pass_junctions()
         Eigen::Vector3d       target = end.source;
         double                tilt   = 0.;
         if (to.mapped_by) {
-            const S4Mapper::Result res = map_point(mapping(to.object), end.source);
+            const S4Mapper::Result res = place(mapping(to.object), to.support, end.source);
             target                     = res.point;
             tilt                       = shape_tilt(res.tilt);
         }
@@ -1156,6 +1240,26 @@ S4GCodeReport Transform::run(std::istream &in, std::ostream &out)
 }
 
 } // namespace
+
+// The tree keeps a pointer to the mesh it was built on.
+struct S4SupportSurface::Tree
+{
+    indexed_triangle_set mesh;
+    AABBMesh             aabb;
+    explicit Tree(const indexed_triangle_set &surface) : mesh(surface), aabb(mesh) {}
+};
+
+S4SupportSurface::S4SupportSurface(const indexed_triangle_set &surface) : m_tree(std::make_unique<Tree>(surface)) {}
+
+S4SupportSurface::~S4SupportSurface() = default;
+
+std::optional<double> S4SupportSurface::next(const Eigen::Vector3d &p, bool up) const
+{
+    const AABBMesh::hit_result hit = m_tree->aabb.query_ray_hit(p, Vec3d(0., 0., up ? 1. : -1.));
+    if (! hit.is_hit() || hit.is_inside())
+        return std::nullopt;
+    return p.z() + (up ? hit.distance() : -hit.distance());
+}
 
 S4GCodeReport s4_transform_gcode(std::istream &in, std::ostream &out, const S4MapperSet &mappers, const S4GCodeConfig &config)
 {

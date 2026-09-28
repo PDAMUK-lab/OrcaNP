@@ -13,6 +13,7 @@
 #include "MultiMaterialSegmentation.hpp"
 #include "Print.hpp"
 #include "NonPlanar/LayerShapes.hpp"
+#include "NonPlanar/S4Mapping.hpp"
 #include "NonPlanar/Tetrahedralize.hpp"
 #include "TriangleMeshSlicer.hpp"
 //BBS
@@ -997,7 +998,8 @@ void PrintObject::deform_s4()
                     throw Slic3r::SlicingError(L("The part stands on too small a base for an automatic size: choose a custom size."), this->id().id);
                 if (post.height + post.dome_height < 0.5)
                     throw Slic3r::SlicingError(L("The pillar needs a height."), this->id().id);
-                lift = NonPlanar::lift_onto_post(shell.vertices, shell.triangles, post, gap);
+                lift     = NonPlanar::lift_onto_post(shell.vertices, shell.triangles, post, gap);
+                s4->lift = lift;
                 for (Eigen::Vector3d &v : shell.vertices)
                     v.z() += lift;
                 post.mesh(core.vertices, core.triangles);
@@ -1921,7 +1923,16 @@ std::vector<Polygons> PrintObject::slice_support_volumes(const ModelVolumeType m
         params.trafo = this->trafo_centered();
         for (; it_volume != it_volume_end; ++ it_volume)
             if ((*it_volume)->type() == model_volume_type) {
-                std::vector<ExPolygons> slices2 = slice_volume(*(*it_volume), zs, params, throw_on_cancel_callback);
+                std::vector<ExPolygons> slices2;
+                if (const S4Deformation *s4 = this->s4_deformation()) {
+                    // Placed on the real part, the volume holds the part where the deformation
+                    // takes it: it is sliced there with it.
+                    indexed_triangle_set its = (*it_volume)->mesh().its;
+                    its_transform(its, this->trafo_centered() * (*it_volume)->get_matrix(), true);
+                    NonPlanar::s4_to_sliced_space(s4->mesh, s4->deformed, its, s4->lift);
+                    slices2 = slice_mesh_ex(its, zs, MeshSlicingParamsEx(), throw_on_cancel_callback);
+                } else
+                    slices2 = slice_volume(*(*it_volume), zs, params, throw_on_cancel_callback);
                 if (slices.empty()) {
                     slices.reserve(slices2.size());
                     for (ExPolygons &src : slices2)

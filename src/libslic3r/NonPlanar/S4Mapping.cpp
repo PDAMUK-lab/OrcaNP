@@ -1,5 +1,7 @@
 #include "S4Mapping.hpp"
 
+#include "admesh/stl.h"
+
 #include <Eigen/Geometry>
 #include <Eigen/LU>
 
@@ -244,6 +246,16 @@ S4Mapper::Result S4Mapper::map(const Eigen::Vector3d &p) const
     if (normal.squaredNorm() > 0. && radial.norm() > 1e-9)
         r.tilt = std::atan2(normal.head<2>().dot(radial.normalized()), normal.z());
     return r;
+}
+
+void s4_to_sliced_space(const TetMesh &undeformed, const std::vector<Eigen::Vector3d> &deformed, indexed_triangle_set &its, double lift,
+                        double margin)
+{
+    // The mapper run the other way: from the real tetrahedra to the deformed ones.
+    const TetMesh  real_to_sliced { deformed, undeformed.tets };
+    const S4Mapper forward(real_to_sliced, undeformed.points, Eigen::Vector2d::Zero(), margin);
+    for (stl_vertex &v : its.vertices)
+        v = forward.map(v.cast<double>() + Eigen::Vector3d(0., 0., lift)).point.cast<float>();
 }
 
 } // namespace NonPlanar

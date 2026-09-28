@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <sstream>
@@ -31,6 +32,7 @@ struct Move
     double                 e       = 0.;
     int                    layer   = 0;
     double                 layer_z = 0.; // the layer's height in the sliced space (its ;Z: comment)
+    std::string            type;         // the feature, from the last ;TYPE: comment
 };
 
 std::vector<Move> body_moves(const std::string &gcode)
@@ -39,6 +41,7 @@ std::vector<Move> body_moves(const std::string &gcode)
     std::map<char, double> pos;
     int                    layer   = 0;
     double                 layer_z = 0.;
+    std::string            type;
     std::istringstream     in(gcode);
     std::string            line;
     while (std::getline(in, line)) {
@@ -46,6 +49,8 @@ std::vector<Move> body_moves(const std::string &gcode)
             ++layer;
         else if (line.rfind(";Z:", 0) == 0)
             layer_z = std::stod(line.substr(3));
+        else if (line.rfind(";TYPE:", 0) == 0)
+            type = line.substr(6);
         const std::string code = line.substr(0, line.find(';'));
         std::istringstream words(code);
         std::string        cmd;
@@ -66,6 +71,7 @@ std::vector<Move> body_moves(const std::string &gcode)
         m.axes    = pos;
         m.layer   = layer;
         m.layer_z = layer_z;
+        m.type    = type;
         out.push_back(m);
     }
     return out;
@@ -213,6 +219,154 @@ TEST_CASE("S4 layers lean no further than a nozzle that cannot tilt clears", "[N
     CHECK(steepest(body_moves(slice({ inverted_frustum() }, config))) > 12.);
     config.set_deserialize_strict({ { "nonplanar_nozzle_clearance_angle", 8. } });
     CHECK(steepest(body_moves(slice({ inverted_frustum() }, config))) < 8.);
+}
+
+namespace {
+
+// A T standing on the bed, 10 mm deep: a post 10 mm wide and 10 mm high under a slab 30 mm wide and
+// 2 mm thick, whose wings overhang 10 mm on either side, their undersides 10 mm up.
+TriangleMesh t_shape()
+{
+    const std::vector<Vec2f> profile { { -5.f, 0.f }, { 5.f, 0.f }, { 5.f, 10.f }, { 15.f, 10.f },
+                                       { 15.f, 12.f }, { -15.f, 12.f }, { -15.f, 10.f }, { -5.f, 10.f } }; // x, z
+    indexed_triangle_set its;
+    for (float y : { -5.f, 5.f })
+        for (const Vec2f &p : profile)
+            its.vertices.emplace_back(p.x(), y, p.y());
+    const int n = int(profile.size());
+    for (int i = 0; i < n; ++i) {
+        const int j = (i + 1) % n;
+        its.indices.emplace_back(j, i, i + n);
+        its.indices.emplace_back(j, i + n, j + n);
+    }
+    // The ends: the post, and the slab as a fan from a top corner over the four corners of its
+    // underside (two of them where the post meets it).
+    for (int off : { 0, n })
+        for (Vec3i32 t : { Vec3i32(0, 1, 2), Vec3i32(0, 2, 7), Vec3i32(5, 6, 7), Vec3i32(5, 7, 2), Vec3i32(5, 2, 3), Vec3i32(5, 3, 4) }) {
+            if (off > 0)
+                std::swap(t[1], t[2]);
+            its.indices.emplace_back(t[0] + off, t[1] + off, t[2] + off);
+        }
+    if (its_volume(its) < 0.f)
+        its_flip_triangles(its);
+    return TriangleMesh(its);
+}
+
+// Slices a T at (100, 100) and returns the G-code body; `paint` marks facets of it.
+std::vector<Move> slice_t(DynamicPrintConfig config, const std::function<void(ModelVolume &)> &paint = {})
+{
+    config.set_deserialize_strict({ { "layer_change_gcode", "G92 E0" } });
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "t.stl";
+    ModelVolume *volume = object->add_volume(t_shape());
+    if (paint)
+        paint(*volume);
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    return body_moves(Test::gcode(print));
+}
+
+// The centre of the T's post, from its first layer (the T is symmetric about it).
+Vec2d t_centre(const std::vector<Move> &moves)
+{
+    BoundingBoxf box;
+    for (const Move &m : moves)
+        if (m.e > 0. && m.layer == 1 && m.type.find("Support") == std::string::npos && m.type.find("Brim") == std::string::npos &&
+            m.type.find("Skirt") == std::string::npos)
+            box.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
+    return box.center();
+}
+
+} // namespace
+
+TEST_CASE("S4 support stands on the bed and stops the top gap below the real overhang", "[NonPlanar]")
+{
+    // Support sliced under the deformed wings of a T is printed in columns up to the real wings:
+    // its first layer flat on the bed at 0.3 mm, its top 0.3 mm (the top gap) below their undersides
+    // at 10 mm, the layers of each column in their order, and none of it inside the T.
+    DynamicPrintConfig config = s4_config();
+    config.set_deserialize_strict({ { "enable_support", true }, { "support_type", "normal(auto)" },
+                                    { "support_on_build_plate_only", true }, { "support_top_z_distance", 0.3 },
+                                    { "support_bottom_z_distance", 0.3 } });
+    const std::vector<Move> moves  = slice_t(config);
+    const Vec2d             centre = t_centre(moves);
+    std::map<std::pair<int, int>, std::vector<std::pair<int, double>>> columns; // 1 mm cells: (layer, z)
+    double under_wings_top = 0.;
+    size_t support = 0;
+    for (const Move &m : moves) {
+        if (m.e <= 0. || m.type.find("Support") == std::string::npos)
+            continue;
+        ++support;
+        const double dx = axis(m, 'X') - centre.x(), dy = axis(m, 'Y') - centre.y(), z = axis(m, 'Z');
+        CHECK(z >= 0.3 - 1e-3);
+        const bool in_post = std::abs(dx) < 4.9 && std::abs(dy) < 4.9 && z < 9.9;
+        const bool in_slab = std::abs(dx) < 14.9 && std::abs(dy) < 4.9 && z > 10.1 && z < 11.9;
+        CHECK_FALSE(in_post);
+        CHECK_FALSE(in_slab);
+        if (std::abs(dx) > 6. && std::abs(dx) < 14. && std::abs(dy) < 4.)
+            under_wings_top = std::max(under_wings_top, z);
+        columns[{ int(std::floor(dx)), int(std::floor(dy)) }].emplace_back(m.layer, z);
+    }
+    REQUIRE(support > 0);
+    CHECK(under_wings_top <= 10. - 0.3 + 0.02);
+    CHECK(under_wings_top >= 10. - 0.3 - 0.3 - 0.02);
+    size_t out_of_order = 0;
+    for (auto &[cell, points] : columns) {
+        std::map<int, std::pair<double, double>> by_layer; // lowest and highest z in each layer
+        for (const auto &[layer, z] : points) {
+            auto it = by_layer.emplace(layer, std::make_pair(z, z)).first;
+            it->second.first  = std::min(it->second.first, z);
+            it->second.second = std::max(it->second.second, z);
+        }
+        double below = -1.;
+        for (const auto &[layer, span] : by_layer) {
+            if (span.first < below - 1e-3)
+                ++out_of_order;
+            below = std::max(below, span.second);
+        }
+    }
+    CHECK(out_of_order == 0);
+}
+
+TEST_CASE("S4 prints support where it is painted on the part", "[NonPlanar]")
+{
+    // Manual support painted on the underside of the T's +X wing only: printed under that wing,
+    // as it is without S4, though the deformation moves the wing in the sliced space.
+    auto paint = [](ModelVolume &volume) {
+        // The volume's mesh is centred on its origin: the wings' undersides are 10 mm above its bottom.
+        TriangleSelector           selector(volume.mesh());
+        const indexed_triangle_set &its = volume.mesh().its;
+        const BoundingBoxf3         box = volume.mesh().bounding_box();
+        for (int i = 0; i < int(its.indices.size()); ++i) {
+            const stl_vertex a = its.vertices[its.indices[i][0]], b = its.vertices[its.indices[i][1]], c = its.vertices[its.indices[i][2]];
+            const Vec3f      normal = (b - a).cross(c - a);
+            if (normal.z() < 0.f && std::abs(a.z() - (box.min.z() + 10.)) < 1e-3 && (a.x() + b.x() + c.x()) / 3. > box.center().x() + 5.)
+                selector.set_facet(i, EnforcerBlockerType::ENFORCER);
+        }
+        volume.supported_facets.set(selector);
+    };
+    for (bool s4 : { false, true }) {
+        DynamicPrintConfig config = s4_config();
+        config.set_deserialize_strict({ { "s4_enabled", s4 }, { "enable_support", true }, { "support_type", "normal(manual)" },
+                                        { "support_on_build_plate_only", true } });
+        const std::vector<Move> moves  = slice_t(config, paint);
+        const Vec2d             centre = t_centre(moves);
+        size_t                  support = 0, under_other_wing = 0;
+        for (const Move &m : moves)
+            if (m.e > 0. && m.type.find("Support") != std::string::npos) {
+                ++support;
+                if (axis(m, 'X') - centre.x() < 0.)
+                    ++under_other_wing;
+            }
+        INFO("S4 " << s4);
+        CHECK(support > 0);
+        CHECK(under_other_wing == 0);
+    }
 }
 
 TEST_CASE("S4 meshes a large part finely only at its surface, and a small part never coarser than uniformly", "[NonPlanar]")

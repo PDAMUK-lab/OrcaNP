@@ -21,8 +21,12 @@
 #include <iosfwd>
 #include <limits>
 #include <map>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
+
+struct indexed_triangle_set;
 
 namespace Slic3r {
 namespace NonPlanar {
@@ -103,12 +107,29 @@ struct S4GCodeReport
     size_t tilt_limited = 0; // points whose tilt was cut back to max_tilt
     size_t trimmed      = 0; // extruding segments outside their object's kept window
     size_t junctions    = 0; // travels between differently mapped toolpaths
+    // Support moves with no part above them within reach, mapped as the part is instead.
+    size_t support_unanchored = 0;
     // Checked positions where the nozzle or the head would hit printed material, with the first
     // few described.
     size_t                   head_collisions = 0;
     std::vector<std::string> head_collision_samples;
     // Names and details of failed structural checks; empty when the output is sound.
     std::vector<std::string> failed;
+};
+
+// A deformed part's surface (a copy), searched along vertical lines to map support as columns.
+class S4SupportSurface
+{
+public:
+    explicit S4SupportSurface(const indexed_triangle_set &surface);
+    ~S4SupportSurface();
+    // Height of the part's surface first met going up (`up`) or down from `p` outside the part;
+    // none if there is none, or if `p` is inside the part.
+    std::optional<double> next(const Eigen::Vector3d &p, bool up) const;
+
+private:
+    struct Tree;
+    std::unique_ptr<Tree> m_tree;
 };
 
 // How the toolpath of one object is mapped back.
@@ -123,6 +144,14 @@ struct S4ObjectMapping
     // cannot hold a layer thinner than themselves flat.
     double flat_top_z  = -std::numeric_limits<double>::infinity();
     double blend_top_z = -std::numeric_limits<double>::infinity();
+    // The deformed part's surface, in the mapper's frame. With it, support (moves after a ";TYPE:Support"
+    // marker) is mapped as columns: sliced under the deformed part, a support point lies between
+    // the part's surface or the bed below it and the part's underside above it, and goes to the
+    // same place between the real surfaces, the support gaps kept at both ends. Without it,
+    // support is mapped as the part is, which only suits points just outside its walls.
+    const S4SupportSurface *support_surface    = nullptr;
+    double                  support_top_gap    = 0.;
+    double                  support_bottom_gap = 0.;
     // Only extrusion whose sliced X lies in [keep_min_x, keep_max_x) is printed: an unwrapped
     // layer is sliced over more than a turn, and the rest repeats what is printed here.
     double keep_min_x = -std::numeric_limits<double>::infinity();

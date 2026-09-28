@@ -10,6 +10,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "MutablePolygon.hpp"
+#include "NonPlanar/S4Mapping.hpp"
 #include "PrintConfig.hpp"
 #include "SLA/IndexedMesh.hpp"
 #include "Support/SupportMaterial.hpp"
@@ -4919,18 +4920,24 @@ void PrintObject::project_and_append_custom_facets(
 {
     for (const ModelVolume* mv : this->model_object()->volumes)
         if (mv->is_model_part()) {
-            const indexed_triangle_set custom_facets = seam
+            indexed_triangle_set custom_facets = seam
                     ? mv->seam_facets.get_facets_strict(*mv, type)
                     : mv->supported_facets.get_facets_strict(*mv, type);
             if (! custom_facets.indices.empty()) {
+                Transform3d trafo = this->trafo_centered() * mv->get_matrix();
+                // Orca: an S4 part is sliced deformed, so what is painted on it is projected where
+                // the deformation takes it, not where it was painted.
+                if (const S4Deformation *s4 = this->s4_deformation(); s4 && mv->id() == s4->part_id) {
+                    its_transform(custom_facets, trafo, true);
+                    NonPlanar::s4_to_sliced_space(s4->mesh, s4->deformed, custom_facets, s4->lift);
+                    trafo = Transform3d::Identity();
+                }
                 if (seam)
-                    project_triangles_to_slabs(this->layers(), custom_facets,
-                        (this->trafo_centered() * mv->get_matrix()).cast<float>(),
-                        seam, out);
+                    project_triangles_to_slabs(this->layers(), custom_facets, trafo.cast<float>(), seam, out);
                 else {
                     std::vector<Polygons> projected;
                     // Support blockers or enforcers. Project downward facing painted areas upwards to their respective slicing plane.
-                    slice_mesh_slabs(custom_facets, zs_from_layers(this->layers()), this->trafo_centered() * mv->get_matrix(), nullptr, &projected, vertical_points, [](){});
+                    slice_mesh_slabs(custom_facets, zs_from_layers(this->layers()), trafo, nullptr, &projected, vertical_points, [](){});
                     // Merge these projections with the output, layer by layer.
                     assert(! projected.empty());
                     assert(out.empty() || out.size() == projected.size());
