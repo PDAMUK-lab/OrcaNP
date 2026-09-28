@@ -1034,7 +1034,9 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
     toggle_line("s4_surface_size", has_pillar);
     toggle_line("s4_surface_diameter", custom);
     toggle_line("s4_surface_height", custom && s4_core != S4SurfaceCore::Dome);
-    toggle_line("s4_cone_angle", has_s4 && s4_shape == S4LayerShape::Cone);
+    // Orca: also the slope of the layers beyond a pillar's top.
+    toggle_line("s4_cone_angle", has_s4 && (s4_shape == S4LayerShape::Cone ||
+                                            (s4_shape == S4LayerShape::Offset && s4_core == S4SurfaceCore::Pillar)));
 
     bool have_sequential_printing = (config->opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject);
     // for (auto el : { "extruder_clearance_radius", "extruder_clearance_height_to_rod", "extruder_clearance_height_to_lid" })

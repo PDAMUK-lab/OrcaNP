@@ -5157,7 +5157,9 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Slope of conical layers from horizontal. Positive: layers descend away from the rotation axis. The "
                       "layers are flat over the distances from the axis at which the part stands on the bed, so its first "
-                      "layer is all on the bed, and conical beyond them (positive) or within them (negative).");
+                      "layer is all on the bed, and conical beyond them (positive) or within them (negative). On a pillar "
+                      "print surface, the layers are flat over the pillar's top and descend at this angle beyond its rim "
+                      "(0: flat everywhere; a negative angle counts as 0).");
     def->sidetext = u8"°";	// degrees, don't need translation
     def->min      = -60;
     def->max      = 60;

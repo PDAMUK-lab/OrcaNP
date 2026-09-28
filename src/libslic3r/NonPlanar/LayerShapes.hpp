@@ -96,12 +96,14 @@ FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const
 std::vector<Eigen::Vector3d> deform_offset_from_above(const std::vector<Eigen::Vector3d> &points, const SurfaceDistance &surface,
                                                       const Eigen::Vector3d &centre, double scale, double base_z, double gap);
 
-// Projected straight down onto a flat top at `top_z` (a pillar about `axis`): the horizontal
-// position is kept, so the layers over the top, which are flat, are not distorted. Below the top,
-// beside the surface, a point moves away from the axis by its depth below the top, so what hangs
-// beside the surface at different heights stays apart.
-std::vector<Eigen::Vector3d> deform_offset_flat_top(const std::vector<Eigen::Vector3d> &points, const SurfaceDistance &surface,
-                                                    const Eigen::Vector2d &axis, double top_z, double base_z, double gap);
+// Over a pillar of `radius` about `axis` with its flat top at `top_z`: flat layers over the top and,
+// beyond its rim, layers descending at `angle` from horizontal, as conical layers do. A point goes to
+// height base_z + (z - top_z) + tan(angle) max(0, r - radius) - gap, its horizontal position kept.
+// Layers at constant distance from the pillar would round its rim instead: a part much wider than
+// the pillar would be printed on layers leaning towards vertical beyond it, and bent out of shape.
+// What lies below the first of these layers ends up below base_z, where it is not printed.
+std::vector<Eigen::Vector3d> deform_offset_pillar(const std::vector<Eigen::Vector3d> &points, const Eigen::Vector2d &axis, double radius,
+                                                  double top_z, double angle, double base_z, double gap);
 
 // Projected around a vertical axis: the angle about the axis, measured from `from_angle` over
 // [0, 2 pi), becomes arc length at `scale` along X, and the height becomes Y. Suits sleeves

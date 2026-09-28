@@ -200,23 +200,30 @@ TEST_CASE("S4 printing lays its first layer flat on the bed, and eases into the 
     CHECK(max_layer_z_span(moves) > 0.3);
 }
 
+namespace {
+
+// The steepest slope, in degrees, between consecutive extrusions of a layer.
+double steepest(const std::vector<Move> &moves)
+{
+    double      out  = 0.;
+    const Move *prev = nullptr;
+    for (const Move &m : moves) {
+        if (m.e > 0. && prev != nullptr && prev->layer == m.layer) {
+            const double run = std::hypot(axis(m, 'X') - axis(*prev, 'X'), axis(m, 'Y') - axis(*prev, 'Y'));
+            if (run > 0.2)
+                out = std::max(out, std::atan2(std::abs(axis(m, 'Z') - axis(*prev, 'Z')), run) * 180. / PI);
+        }
+        prev = &m;
+    }
+    return out;
+}
+
+} // namespace
+
 TEST_CASE("S4 layers lean no further than a nozzle that cannot tilt clears", "[NonPlanar]")
 {
     // The frustum's 45 degree overhang turns its layers steeper than 12 degrees; a vertical nozzle
     // clearing only 8 degrees keeps them within that.
-    auto steepest = [](const std::vector<Move> &moves) {
-        double      out  = 0.;
-        const Move *prev = nullptr;
-        for (const Move &m : moves) {
-            if (m.e > 0. && prev != nullptr && prev->layer == m.layer) {
-                const double run = std::hypot(axis(m, 'X') - axis(*prev, 'X'), axis(m, 'Y') - axis(*prev, 'Y'));
-                if (run > 0.2)
-                    out = std::max(out, std::atan2(std::abs(axis(m, 'Z') - axis(*prev, 'Z')), run) * 180. / PI);
-            }
-            prev = &m;
-        }
-        return out;
-    };
     DynamicPrintConfig config = s4_config();
     CHECK(steepest(body_moves(slice({ inverted_frustum() }, config))) > 12.);
     config.set_deserialize_strict({ { "nonplanar_nozzle_clearance_angle", 8. } });
@@ -734,6 +741,47 @@ TEST_CASE("A part much wider than its pillar is high is printed at its full size
             plate_e += m.e;
     const double filament_area = 0.25 * PI * std::pow(config.opt_float("filament_diameter", 0), 2);
     CHECK_THAT(plate_e * filament_area, WithinRel(width * width * thickness, 0.1));
+}
+
+TEST_CASE("A part much wider than its pillar is printed flat over it and on cones beyond it", "[NonPlanar]")
+{
+    // A plate 30 mm wide and 1.5 mm thick on a pillar 6 mm wide and 10 mm high, like a 3DBenchy on a
+    // stick: its layers are flat over the pillar and descend at the 30 degree cone angle beyond the
+    // rim, and the plate is printed where it is, its bottom the gap over the pillar. Layers at a
+    // constant distance from the pillar leaned towards vertical out there, and bent the plate.
+    const double width = 30., thickness = 1.5, post_height = 10., gap = 0.3;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "plate.stl";
+    object->add_volume(TriangleMesh(its_make_cube(width, width, thickness)));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "pillar" },
+                                              { "s4_surface_size", "custom" }, { "s4_surface_diameter", 6. },
+                                              { "s4_surface_height", post_height }, { "s4_surface_gap", gap }, { "s4_cone_angle", 30. },
+                                              { "use_relative_e_distances", true }, { "layer_change_gcode", "G92 E0" },
+                                              { "skirt_loops", 0 }, { "brim_type", "no_brim" }, { "layer_height", 0.3 },
+                                              { "initial_layer_print_height", 0.3 }, { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+
+    std::vector<Move> plate;
+    for (const Move &m : moves)
+        if (m.layer_z > surface_top(post_height) + 1e-3)
+            plate.push_back(m);
+    REQUIRE(! plate.empty());
+    BoundingBoxf3 box;
+    for (const Move &m : plate)
+        if (m.e > 0. && m.xy)
+            box.merge(Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')));
+    CHECK(steepest(plate) <= 30. + 2.);
+    CHECK(box.min.z() >= post_height + gap - 0.05);
+    CHECK(box.max.z() <= post_height + gap + thickness + 0.2);
+    CHECK(box.size().x() >= width - 1.);
+    CHECK(box.size().x() <= width + 0.1);
 }
 
 TEST_CASE("An automatic pillar is as high as the toolhead needs to lean under the part", "[NonPlanar]")

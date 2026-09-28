@@ -8,6 +8,8 @@
 #include "ElephantFootCompensation.hpp"
 #include "Exception.hpp"
 #include "I18N.hpp"
+#include "LocalesUtils.hpp"
+#include "format.hpp"
 #include "Geometry.hpp"
 #include "Layer.hpp"
 #include "MultiMaterialSegmentation.hpp"
@@ -967,7 +969,7 @@ void PrintObject::deform_s4()
             S4Mesh       core;
             const double gap  = m_config.s4_surface_gap.value;
             double       lift = 0.; // of the part, standing on a generated post
-            std::optional<Eigen::Vector2d> pillar_axis; // of a generated pillar, whose top is flat
+            std::optional<NonPlanar::Post> pillar; // a generated pillar, whose top is flat
             if (from_parts)
                 for (const ModelVolume *v : surfaces) {
                     const S4Mesh m    = to_s4_mesh(volume_in_slicing_frame(*this, *v));
@@ -993,7 +995,7 @@ void PrintObject::deform_s4()
                 if (kind != S4SurfaceCore::Pillar)
                     post.dome_height = post.radius; // a hemisphere
                 else
-                    pillar_axis = post.centre;
+                    pillar = post;
                 if (post.radius < 0.5)
                     throw Slic3r::SlicingError(L("The part stands on too small a base for an automatic size: choose a custom size."), this->id().id);
                 if (post.height + post.dome_height < 0.5)
@@ -1064,11 +1066,26 @@ void PrintObject::deform_s4()
                 const Eigen::Vector3d centre(0.5 * (lo.x() + hi.x()), 0.5 * (lo.y() + hi.y()),
                                              std::max(lo.z(), hi.z() - 0.5 * std::max(hi.x() - lo.x(), hi.y() - lo.y())));
                 s4->mesh = NonPlanar::tetrahedralize(shell.vertices, shell.triangles, tp);
-                // A pillar is seen straight from above: from a centre only as far below as the pillar is
-                // high, a pillar wider than it is high would shrink what stands on it several times over.
-                s4->deformed = pillar_axis ?
-                                   NonPlanar::deform_offset_flat_top(s4->mesh.points, distance, *pillar_axis, hi.z(), s4->surface_top, gap) :
-                                   NonPlanar::deform_offset_from_above(s4->mesh.points, distance, centre, hi.z() - centre.z() + gap,
+                // Over a pillar the layers are flat, and conical at the cone angle beyond its rim: seen
+                // from a centre only as far below as the pillar is high, a pillar wider than it is high
+                // would shrink what stands on it several times over, and layers at constant distance
+                // from a pillar much narrower than the part would lean towards vertical around its rim.
+                if (pillar) {
+                    const double angle = Geometry::deg2rad(std::max(m_config.s4_cone_angle.value, 0.));
+                    s4->deformed = NonPlanar::deform_offset_pillar(s4->mesh.points, pillar->centre, pillar->radius, hi.z(), angle,
+                                                                   s4->surface_top, gap);
+                    double below = 0.;
+                    for (const Eigen::Vector3d &p : s4->deformed)
+                        below = std::max(below, s4->surface_top - p.z());
+                    if (below > 0.5 * first)
+                        this->active_step_add_warning(
+                            PrintStateBase::WarningLevel::CRITICAL,
+                            format(_u8L("Part of %1% hangs as much as %2% mm below the layers that start on its pillar and is "
+                                        "not printed. Raise the cone angle, which the layers beyond the pillar's top slope down "
+                                        "at, or use a wider pillar."),
+                                   this->model_object()->name, float_to_string_decimal_point(below, 1)));
+                } else
+                    s4->deformed = NonPlanar::deform_offset_from_above(s4->mesh.points, distance, centre, hi.z() - centre.z() + gap,
                                                                        s4->surface_top, gap);
             } else {
                 // Unwrapped around the axis. The part is split through the axis so no tetrahedron
