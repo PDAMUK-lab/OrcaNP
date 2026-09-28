@@ -95,13 +95,13 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
             unsetenv(name);
 #endif
     };
-    // S4_QUALITY_VARIANTS: "name|cell|facet|distance|weighted|mt|threads;..." (facet, distance: "-" for
-    // the default; weighted, mt: 0 or 1).
+    // S4_QUALITY_VARIANTS: "name|cell|facet|distance|weighted|mt|threads[|warm];..." (facet, distance: "-"
+    // for the default; weighted, mt, warm: 0 or 1).
     struct Variant
     {
         std::string name, facet, distance;
         double      cell = 0.;
-        bool        weighted = false, mt = false;
+        bool        weighted = false, mt = false, warm = false;
         int         threads = 1;
     };
     std::vector<Variant> variants;
@@ -113,7 +113,7 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
             std::vector<std::string> f;
             for (std::string field; std::getline(one, field, '|');)
                 f.push_back(field);
-            REQUIRE(f.size() == 7);
+            REQUIRE(f.size() >= 7);
             Variant v;
             v.name     = f[0];
             v.cell     = std::stod(f[1]);
@@ -122,6 +122,7 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
             v.weighted = f[4] == "1";
             v.mt       = f[5] == "1";
             v.threads  = std::stoi(f[6]);
+            v.warm     = f.size() > 7 && f[7] == "1";
             variants.push_back(v);
         }
     }
@@ -144,6 +145,7 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
         set_env("S4_PROTO_FACET_DISTANCE", var.distance == "-" ? nullptr : var.distance.c_str());
         set_env("S4_PROTO_WEIGHTED", var.weighted ? "1" : nullptr);
         set_env("S4_PROTO_MT", var.mt ? "1" : nullptr);
+        set_env("S4_PROTO_WARM", var.warm ? "1" : nullptr);
         set_env("S4_PROTO_STATS", "1");
         tbb::global_control  threads(tbb::global_control::max_allowed_parallelism, size_t(var.threads));
         // Variants with the same mesh settings share the mesh, so solvers are compared on one mesh.
@@ -222,5 +224,6 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
     set_env("S4_PROTO_FACET_DISTANCE", nullptr);
     set_env("S4_PROTO_WEIGHTED", nullptr);
     set_env("S4_PROTO_MT", nullptr);
+    set_env("S4_PROTO_WARM", nullptr);
     set_env("S4_PROTO_STATS", nullptr);
 }

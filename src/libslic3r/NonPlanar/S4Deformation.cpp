@@ -37,6 +37,7 @@ struct ProtoStats
     int    solves = 0;
     long   cg_iterations = 0;
     int    cg_unconverged = 0;
+    int    pdas_capped = 0; // active set searches stopped at their iteration cap
     double rotation_s = 0., deformation_s = 0.;
 };
 
@@ -573,10 +574,19 @@ std::vector<double> solve_rotation_field(size_t n, const std::vector<std::array<
     }
 
     Eigen::VectorXd  x      = Eigen::VectorXd::Zero(n);
-    if (initial) // EXPERIMENT: warm start from the previous round's field
+    Eigen::VectorXd  lambda = Eigen::VectorXd::Zero(n); // g - H x on active cells
+    if (initial) {
+        // EXPERIMENT: warm start from the previous round's field. Its cells at a bound keep their
+        // multipliers, so the active set starts where the last round ended, not from nothing.
         for (size_t c = 0; c < n; ++c)
             x[c] = std::clamp((*initial)[c], -limit[c], limit[c]);
-    Eigen::VectorXd  lambda = Eigen::VectorXd::Zero(n); // g - H x on active cells
+        if (std::getenv("S4_PROTO_WARM")) {
+            lambda = g - H * x;
+            for (size_t c = 0; c < n; ++c)
+                if (std::abs(x[c]) < limit[c] - 1e-12)
+                    lambda[c] = 0.;
+        }
+    }
     std::vector<int> state(n, 0), prev_state;           // -1 at lower bound, +1 at upper, 0 free
     const double     c_scale = weight + 1.;
     for (int it = 0; it < 200; ++it) {
@@ -590,6 +600,8 @@ std::vector<double> solve_rotation_field(size_t n, const std::vector<std::array<
         }
         if (it > 0 && state == prev_state)
             break;
+        if (it == 199 && stats)
+            ++stats->pdas_capped;
         prev_state = state;
 
         std::vector<int> index(n, -1);
@@ -749,7 +761,7 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
             const std::vector<double> previous = data.rotation;
             data.rotation = solve_rotation_field(n, topo.face_pairs, params.neighbour_weight, data.target, data.limit,
                                                  weighted ? &pair_w : nullptr, weighted ? &target_w : nullptr, &stats,
-                                                 proto_mt() && round > 0 ? &previous : nullptr);
+                                                 (proto_mt() || std::getenv("S4_PROTO_WARM")) && round > 0 ? &previous : nullptr);
             const auto t1 = std::chrono::steady_clock::now();
             deformed = solve_deformation(result.deformed, mesh, rotation_matrices(a.center, data.rotation, params.axis), pinned, z_floor,
                                          weighted ? &cell_w : nullptr);
@@ -781,8 +793,8 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
         result.passes.emplace_back(std::move(data));
     }
     if (std::getenv("S4_PROTO_STATS"))
-        std::fprintf(stderr, "S4 proto: %zu cells, %d rounds, %d rotation solves, %ld CG iterations (%d unconverged), rotation field %.1f s, deformation %.1f s\n",
-                     n, result.passes.back().rounds, stats.solves, stats.cg_iterations, stats.cg_unconverged, stats.rotation_s, stats.deformation_s);
+        std::fprintf(stderr, "S4 proto: %zu cells, %d rounds, %d rotation solves (%d capped), %ld CG iterations (%d unconverged), rotation field %.1f s, deformation %.1f s\n",
+                     n, result.passes.back().rounds, stats.solves, stats.pdas_capped, stats.cg_iterations, stats.cg_unconverged, stats.rotation_s, stats.deformation_s);
     return result;
 }
 
