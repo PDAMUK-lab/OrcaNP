@@ -191,8 +191,8 @@ whose flat slices are chosen surfaces (`LayerShapes`):
       and a pillar's height, in mm. The part is lifted onto it, the gap above it: column by column
       over it, the part's lowest point must clear its top by the gap, so a concave underside
       nests on a dome and a part with a cavity over it sits no higher than it has to. Off the bed,
-      the toolhead can lean under the part, where the layers wrap round the rim; the pillar is
-      what a raised build platform is on the reference machine.
+      the toolhead can lean under the part; the pillar is what a raised build platform is on the
+      reference machine.
 
     The sphere and the cylinder are shrunk by the gap, so the part's first layer is its
     modelled inner surface. A generated core is sliced with the part (and printed with its
@@ -204,12 +204,15 @@ whose flat slices are chosen surfaces (`LayerShapes`):
   - Laid out *from above*: the horizontal position is the direction from a centre below the
     core's top, as an azimuthal equidistant projection scaled to be undistorted at the top, for
     domes, spheres and capped cylinders. Circumferential lengths shrink towards the equator
-    (to 64 % there); the flow correction keeps the material right. A pillar's flat top is laid
-    out straight from above instead, since from a centre only as deep as a low, wide pillar the
-    part over it would shrink several times over and its thin features vanish from the slices:
-    over the top the horizontal position is kept (the layers there are flat), and beside the
-    pillar, below its top, a point moves out from the axis by its depth, so what hangs there at
-    different heights stays apart.
+    (to 64 % there); the flow correction keeps the material right.
+  - Over a *pillar* the layers are not at a constant distance from it: they are flat over its
+    top and descend at the cone angle beyond its rim, as conical layers do, the horizontal
+    position kept (`deform_offset_pillar()`, a vertical shear). Seen from a centre only as deep
+    as a low, wide pillar, the part over it would shrink several times over; and layers at a
+    constant distance from a pillar much narrower than the part (a 3DBenchy on an 8 mm stick)
+    wrap round its rim as shells leaning up to 71 degrees there, which bent the part's bottom.
+    What hangs below the first of these layers, beside the pillar, is not printed, and slicing
+    says how far it hangs.
   - Laid out *around the rotation axis*: the angle becomes length and the height width, for
     sleeves. A closed ring has no seam-free unwrap: sliced as a strip, its ends would become
     walls. So the part is cut in half through the axis, each half unwrapped and placed twice,
@@ -384,7 +387,7 @@ and the non-planar building blocks:
   the same deformation in fewer solves, and size weights of 1 on a uniform mesh.
 - **Meshing:** volume; the same mesh every time; a graded mesh fine at the surface and coarse
   inside.
-- **Layer shapes:** signed distance, the gap all around, the layout over a flat top, the
+- **Layer shapes:** signed distance, the gap all around, the layout over a pillar, the
   unwrap, cones, fitting sphere and cylinder cores.
 - **Mapper:** identity, rigid tilt, squash, outside points.
 - **G-code transform:**
@@ -413,7 +416,9 @@ surface still overhanging, the layer tilt inside against a reference, and time.
 - a hollow dome gets a generated core and its first layer on its inner surface;
 - a block printed on a pillar stands the gap above it, lifted off the bed, its corners beyond
   the pillar; an automatic pillar is as high as the toolhead needs, and is sliced again when the
-  toolhead changes; a plate much wider than its pillar is high takes as much filament as its
+  toolhead changes; a plate much wider than its pillar is printed flat over it and on layers
+  no steeper than the cone angle beyond it; a plate much wider than its pillar is high takes as
+  much filament as its
   volume; a dome is a hemisphere.
 - support under a T stands on the bed and stops the top Z distance below the real wings, its
   columns in order and none of it inside the part; support painted under one wing is printed

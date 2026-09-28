@@ -146,7 +146,7 @@ flat layers and the part's own settings, and the part is printed over it **Surfa
 | Parts | A surface you modelled yourself. | Add it as a part of the same object, then right-click it in the object list and choose **Print surface (non-planar)**. It must stand on the bed. |
 | Generated sphere | Printing the inside of a dome or a hollow sphere on a core that fills it. | The sphere is fitted inside the part's cavity, so the first layer is the part's inner surface. |
 | Generated cylinder | The same for a sleeve or a cup around the rotation axis. | The cylinder is fitted up to the roof of the cavity. |
-| Pillar | Lifting the part off the bed on a column, so a tilting nozzle can lean under it without hitting the bed. | The part stands on top of the pillar, **Surface gap** above it. Over the pillar's flat top its layers are flat; beyond the rim they curve down around it. |
+| Pillar | Lifting the part off the bed on a column, so a tilting nozzle can lean under it without hitting the bed. | The part stands on top of the pillar, **Surface gap** above it. Over the pillar's flat top its layers are flat; beyond the rim they slope down at the **Cone angle** (20° by default), so a part much wider than the pillar prints on layers the nozzle can follow. What hangs below those layers beside the pillar is not printed, and slicing warns: raise the cone angle or widen the pillar. |
 | Dome | Printing a concave underside, such as a lens, on a hemisphere. | The part's underside nests on the dome. A dome needs only a diameter; its height is half of it. |
 | Domed pillar | A pillar with a hemisphere on top, for both at once. | |
 
