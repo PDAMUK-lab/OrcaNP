@@ -85,8 +85,9 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
                 hi.z() - lo.z(), (hi - lo).maxCoeff() / 20., interior.size());
     std::printf("planar: unprintable %.2f %%\n", unprintable([](const Eigen::Vector3d &p) { return p; }));
 
-    // S4_QUALITY_VARIANTS: "name|cell|surface cell|unused|weighted|mt|threads[|warm];..." (cell: 0 for
-    // automatic; surface cell: "-" for a uniform mesh; weighted, mt, warm: 0 or 1).
+    // S4_QUALITY_VARIANTS: "name|cell|surface cell|noopt|weighted|mt|threads[|warm];..." (cell: 0 for
+    // automatic; surface cell: "-" for a uniform mesh; "noopt" leaves slivers in; weighted, mt, warm: 0
+    // or 1).
     struct Variant
     {
         std::string name, facet, distance;
@@ -137,6 +138,7 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
         TetrahedralizeParams tp;
         tp.cell_size         = var.cell;
         tp.surface_cell_size = var.facet == "-" ? 0. : std::stod(var.facet);
+        tp.optimize          = var.distance != "noopt";
         const auto t0   = std::chrono::steady_clock::now();
         auto       mit  = meshes.find(key);
         if (mit == meshes.end())

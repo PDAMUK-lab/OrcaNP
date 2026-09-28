@@ -78,8 +78,13 @@ TetMesh tetrahedralize(const std::vector<Eigen::Vector3d> &vertices, const std::
     const double   distance  = graded ? skin_size / 20. : size / 10.;
     const Criteria criteria(p::edge_size = skin_size, p::edge_min_size = skin_size / 4., p::facet_angle = 25., p::facet_size = skin_size,
                             p::facet_distance = distance, p::cell_radius_edge_ratio = 3., p::cell_size = size);
-    const Complex complex = params.optimize ? CGAL::make_mesh_3<Complex>(domain, criteria, p::perturb(), p::exude()) :
-                                              CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::no_exude());
+    // Slivers are removed by exudation alone: it leaves as few inverted cells as perturbation and
+    // exudation together, and fewer overhangs after the deformation. Without a time limit CGAL stops
+    // exudation after as long as the refinement took, which depends on the machine's load, so the same
+    // model meshed twice came out differently (and the slice with it); a limit of 0 lets it finish.
+    const Complex complex = params.optimize ?
+                                CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::exude(p::time_limit(0.))) :
+                                CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::no_exude());
 
     TetMesh                                                        mesh;
     std::unordered_map<Tr::Vertex_handle, int, CGAL::Handle_hash_function> index;

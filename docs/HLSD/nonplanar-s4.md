@@ -19,8 +19,12 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
 ## Pipeline
 
 1. **Tetrahedralize** (`Tetrahedralize`): CGAL Mesh_3 fills the closed model. The triangle
-   soup is re-oriented first, sharp edges are protected, and slivers are removed; slivers are
-   nearly flat and the deformation turns them inside out easily. The mesh is graded by default:
+   soup is re-oriented first, sharp edges are protected, and slivers are removed by exudation;
+   slivers are nearly flat and the deformation turns them inside out easily. CGAL's sliver
+   perturbation is left out, since exudation alone leaves as few inverted cells and fewer
+   overhangs. Exudation runs without a time limit: by default CGAL stops it after as long as the
+   refinement took, so the mesh, and the slice, depended on how busy the machine was.
+   The mesh is graded by default:
    tetrahedra of the surface cell size at the surface, which they follow to within a twentieth
    of it, growing to the interior cell size inside. Walls are printed where the mesh's skin is,
    so a coarse skin moves them (on a 100 mm part with the uniform default of 1/20 of its largest

@@ -409,6 +409,23 @@ TEST_CASE("Tetrahedralizing a closed surface fills exactly its volume", "[S4]")
     }
 }
 
+TEST_CASE("Tetrahedralizing the same surface twice gives the same mesh", "[S4]")
+{
+    // Re-slicing a model must give the same result, so meshing may not depend on timing.
+    const Surface        surface = voxel_surface({ { 0, 0, 0 }, { 1, 0, 0 }, { 0, 0, 1 } }, 10.);
+    TetrahedralizeParams params;
+    params.cell_size         = GENERATE(2., 4.);
+    params.surface_cell_size = GENERATE(0., 1.);
+    params.optimize          = GENERATE(true, false);
+    INFO("cell size " << params.cell_size << ", surface cell size " << params.surface_cell_size << ", optimize " << params.optimize);
+    const TetMesh first  = tetrahedralize(surface.vertices, surface.triangles, params);
+    const TetMesh second = tetrahedralize(surface.vertices, surface.triangles, params);
+    REQUIRE(first.tets.size() == second.tets.size());
+    REQUIRE(first.points.size() == second.points.size());
+    CHECK(first.tets == second.tets);
+    CHECK(first.points == second.points);
+}
+
 TEST_CASE("A graded mesh is fine at the surface and coarse inside", "[S4]")
 {
     // A 40 mm cube with 2 mm tetrahedra at its surface and 10 mm inside: the surface triangles are
