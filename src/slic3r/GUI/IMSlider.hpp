@@ -227,7 +227,9 @@ private:
     std::vector<double>      m_values;
     bool                     m_show_playback{ false };
     bool                     m_playing{ false };
-    int                      m_play_speed_idx{ 1 };
+    // Playback speeds, times the estimated print time: real time up to 1000x. 30x to start.
+    static constexpr double  PLAY_SPEEDS[] = { 1., 10., 30., 100., 300., 1000. };
+    int                      m_play_speed_idx{ 2 };
     TickCodeInfo             m_ticks;
     std::vector<double>      m_layers_times;
     std::vector<double>      m_layers_values;

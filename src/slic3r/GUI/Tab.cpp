@@ -5200,8 +5200,8 @@ void TabPrinter::build_fff()
         // optgroup->append_single_option_line("spaghetti_detector");
         optgroup->append_single_option_line("time_cost", "printer_basic_information_advanced#time-cost");
 
+        // Orca: shown for the printer structure Polar, which also sets polar_kinematics.
         optgroup = page->new_optgroup(L("Polar kinematics"), L"param_advanced");
-        optgroup->append_single_option_line("polar_kinematics");
         optgroup->append_single_option_line("polar_tilt_axis");
         optgroup->append_single_option_line("polar_axis_names");
         optgroup->append_single_option_line("polar_reverse_rotation");
@@ -6456,6 +6456,15 @@ void TabPrinter::on_value_change(const std::string& opt_key, const boost::any& v
                 reload_config();
                 update_tab_ui();
             }
+        }
+    }
+
+    // Orca: a polar printer is chosen by its structure; the conversion to polar G-code follows it.
+    if (opt_key == "printer_structure") {
+        const bool polar = m_config->option<ConfigOptionEnum<PrinterStructure>>("printer_structure")->value == psPolar;
+        if (m_config->opt_bool("polar_kinematics") != polar) {
+            change_opt_value(*m_config, "polar_kinematics", polar);
+            update_dirty();
         }
     }
 

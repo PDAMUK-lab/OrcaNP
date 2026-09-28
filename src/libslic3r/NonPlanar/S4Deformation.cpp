@@ -646,6 +646,26 @@ std::vector<double> solve_rotation_field(size_t n, const std::vector<std::array<
 
 } // namespace
 
+double s4_overhang_area(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                        double max_overhang, double base)
+{
+    // As the deformation's cells: a face whose normal is further than 90 degrees plus the
+    // maximum overhang from +Z.
+    double lowest = std::numeric_limits<double>::infinity();
+    for (const Eigen::Vector3d &v : vertices)
+        lowest = std::min(lowest, v.z());
+    const double cos_limit = std::cos(deg2rad(90. + max_overhang));
+    double       area      = 0.;
+    for (const std::array<int, 3> &t : triangles) {
+        const Eigen::Vector3d &a = vertices[t[0]], &b = vertices[t[1]], &c = vertices[t[2]];
+        const Eigen::Vector3d  n = (b - a).cross(c - a);
+        const double           twice_area = n.norm();
+        if (twice_area > 0. && n.z() / twice_area < cos_limit && (a.z() + b.z() + c.z()) / 3. > lowest + base)
+            area += 0.5 * twice_area;
+    }
+    return area;
+}
+
 std::vector<std::array<int, 3>> s4_boundary_triangles(const TetMesh &mesh, const std::vector<Eigen::Vector3d> &pts)
 {
     const Topology                  topo = build_topology(mesh);

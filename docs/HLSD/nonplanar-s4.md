@@ -276,9 +276,14 @@ Two groups of settings switch the pipeline on:
   OrcaSlicer places every object on the bed, so a modelled core and what is printed over it are
   two parts of one object. Orca's check for overhangs needing support is skipped for offset
   layers: they lie on the print surface, not on the layers sliced below them.
-- **Printer settings > Basic information > Polar kinematics** (`polar_*`): `polar_kinematics`, the
-  axis letters and directions, axis crossing, the radius and tilt travel, the tilt threshold,
-  and the conversion and speed limits.
+- **Printer settings > Basic information > Advanced > Printer structure**: *Polar* is what makes
+  a printer polar. `polar_kinematics`, which the pipeline reads, follows it and is not shown:
+  the tab sets it when the structure changes, and loading a configuration makes the two agree
+  (`handle_legacy_composite()`: Polar sets it; set without Polar, as presets from before the
+  structure had a polar value have it, it selects Polar).
+- **Printer settings > Basic information > Polar kinematics** (`polar_*`), shown for a polar
+  printer: the axis letters and directions, axis crossing, the radius and tilt travel, the tilt
+  threshold, and the conversion and speed limits.
 - **Printer settings > Basic information > Non-planar toolhead** (`nonplanar_*`): the clearance
   check and what it models. The nozzle tip's flat diameter and the angle of absolute clearance
   (rising from the tip's face, 0 degrees flat) define the nozzle cone. The nozzle length, where
@@ -351,9 +356,10 @@ The pipeline hooks into the print steps as follows:
   - The marker's window adds the machine pose (bed angle, radius, tilt, as commanded) and the
     *Toolhead* and *Turn bed* switches, which are kept in the app config.
   - Play and pause buttons at the moves slider's left end play the toolpath back: each frame
-    spends the elapsed time times the speed (10x to 1000x) of the moves' estimated print time,
-    stepping the moves slider through the top layer, then the layers slider up one layer, and
-    stopping at the end of the print. Played to the end, it starts again from the first layer.
+    spends the elapsed time times the speed (1x, real time, to 1000x) of the moves' estimated
+    print time, stepping the moves slider through the top layer, then the layers slider up one
+    layer, and stopping at the end of the print. Played to the end, it starts again from the
+    first layer.
 
 ## Tool
 

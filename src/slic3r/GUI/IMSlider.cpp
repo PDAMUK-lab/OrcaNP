@@ -1271,7 +1271,7 @@ bool IMSlider::render(int canvas_width, int canvas_height)
 
             ImGui::SetCursorScreenPos(ImVec2(start.x + button + 4.0f * m_scale, center_y - 0.5f * button));
             if (ImGui::InvisibleButton("play_speed", ImVec2(speed_w, button)))
-                m_play_speed_idx = (m_play_speed_idx + 1) % 5;
+                m_play_speed_idx = (m_play_speed_idx + 1) % int(std::size(PLAY_SPEEDS));
             const ImVec2 text = ImGui::CalcTextSize(speed_label.c_str());
             draw->AddText(ImVec2(start.x + button + 4.0f * m_scale + 0.5f * (speed_w - text.x), center_y - 0.5f * text.y),
                           ImGui::IsItemHovered() ? IM_COL32(0, 120, 110, 255) : BRAND_COLOR, speed_label.c_str());
@@ -1786,8 +1786,7 @@ std::string IMSlider::get_label(int tick, LabelType label_type)
 
 double IMSlider::play_speed() const
 {
-    static const double speeds[] = { 10., 30., 100., 300., 1000. };
-    return speeds[std::clamp(m_play_speed_idx, 0, 4)];
+    return PLAY_SPEEDS[std::clamp(m_play_speed_idx, 0, int(std::size(PLAY_SPEEDS)) - 1)];
 }
 
 double IMSlider::get_double_value(const SelectedSlider &selection)

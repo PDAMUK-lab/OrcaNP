@@ -373,6 +373,28 @@ TEST_CASE("S4 prints support where it is painted on the part", "[NonPlanar]")
     }
 }
 
+TEST_CASE("S4 warns before slicing a part with nothing overhanging", "[NonPlanar]")
+{
+    // A cube's layers would be bent and bent back for nothing; a T's wings overhang.
+    for (const bool t : { false, true }) {
+        Model        model;
+        ModelObject *object = model.add_object();
+        object->name        = t ? "t.stl" : "cube.stl";
+        object->add_volume(t ? t_shape() : TriangleMesh(its_make_cube(20., 20., 20.)));
+        object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+        Print print;
+        for (ModelObject *mo : model.objects)
+            print.auto_assign_extruders(mo);
+        print.apply(model, s4_config());
+        std::vector<StringObjectException> warnings;
+        REQUIRE(print.validate(&warnings).string.empty());
+        const bool warned = std::any_of(warnings.begin(), warnings.end(),
+                                        [](const StringObjectException &w) { return w.opt_key == "s4_max_overhang"; });
+        INFO(object->name);
+        CHECK(warned == ! t);
+    }
+}
+
 TEST_CASE("S4 meshes a large part finely only at its surface, and a small part never coarser than uniformly", "[NonPlanar]")
 {
     // A 120 mm bar: 2 mm tetrahedra at the surface instead of the automatic 6 mm (1/20 of 120). A 20

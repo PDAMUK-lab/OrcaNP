@@ -1813,6 +1813,27 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
             return { L("Non-planar (S4) printing needs relative extrusion (use_relative_e_distances)."), object, "use_relative_e_distances" };
         if (m_config.spiral_mode)
             return { L("Non-planar (S4) printing does not support spiral vase mode."), object, "spiral_mode" };
+        // The optimized shape only turns overhangs: a part without them is bent and bent back for nothing.
+        if (object->config().s4_layer_shape.value == S4LayerShape::Optimized)
+            for (const ModelVolume *v : object->model_object()->volumes)
+                if (v->is_model_part() && ! PrintObject::is_s4_print_surface(*v)) {
+                    indexed_triangle_set its = v->mesh().its;
+                    its_transform(its, object->trafo_centered() * v->get_matrix(), true);
+                    std::vector<Eigen::Vector3d>    vertices;
+                    std::vector<std::array<int, 3>> triangles;
+                    for (const stl_vertex &p : its.vertices)
+                        vertices.emplace_back(p.cast<double>());
+                    for (const stl_triangle_vertex_indices &t : its.indices)
+                        triangles.push_back({ t[0], t[1], t[2] });
+                    const double max_overhang = object->config().s4_max_overhang.value;
+                    const double base = std::max(NonPlanar::S4Params().bottom_threshold, object->config().s4_planar_height.value);
+                    if (NonPlanar::s4_overhang_area(vertices, triangles, max_overhang, base) < 1.)
+                        warn((boost::format(L("%1% has no overhang steeper than the maximum overhang of non-planar (S4) printing "
+                                              "(%2%°): its layers would be bent and bent back for nothing. Turn Non-planar (S4) "
+                                              "off for it, or lower the maximum overhang.")) %
+                              object->model_object()->name % max_overhang).str(),
+                             "s4_max_overhang", object);
+                }
     }
 
     // Orca: a gradient mixed filament only renders its gradient with "Mixed color sublayer" on;

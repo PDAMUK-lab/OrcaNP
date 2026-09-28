@@ -222,11 +222,14 @@ With S4 off, such a printer slices exactly as in OrcaSlicer.
 A polar printer turns the bed under a head that moves along one radius. OrcaNP slices in ordinary
 X and Y and converts the result to bed angle, radius, Z and nozzle tilt.
 
-All in **Printer > Basic information > Polar kinematics**:
+Choose **Polar** as the **Printer structure** (**Printer > Basic information > Advanced**). That
+converts the G-code to the printer's axes, with the rotation axis at the centre of the printable
+area; the start and end G-code are copied as written. Printer presets from before this setting
+had a Polar kinematics checkbox; they load as Polar. The rest is in **Printer > Basic
+information > Polar kinematics**, shown for polar printers:
 
 | Setting | What it is for | How to use it |
 | --- | --- | --- |
-| Polar kinematics | Converts the G-code to the printer's axes. The rotation axis is the centre of the printable area. | On for polar printers only. The start and end G-code are copied as written. |
 | Tilting nozzle | The nozzle tilts in the radial plane and follows non-planar layers. | On if your printer has a tilt axis. |
 | Axis letters | G-code letters of the bed rotation, radius and tilt axes, in that order. | CXB for the Core R-Theta. |
 | Reverse bed rotation, Reverse tilt direction | Flip an axis that turns the other way. | Check the first moves of a test print. The Core R-Theta needs Reverse tilt direction. |
@@ -267,7 +270,8 @@ The preview shows the part where and how it prints.
   **Turn bed** switch turns the bed and the print to the machine's angle at the current move, as
   the machine does.
 - The play button left of the moves slider runs through the print move by move and layer by
-  layer, at 10 to 1000 times the estimated print speed (click the speed to change it).
+  layer, from real time (1x) up to 1000 times the estimated print speed (click the speed to
+  change it).
 - A part on a generated pillar is shown on the pillar.
 
 ## Quality and speed

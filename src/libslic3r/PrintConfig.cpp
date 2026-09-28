@@ -573,7 +573,8 @@ static t_config_enum_values s_keys_map_PrinterStructure {
     {"corexy",          int(PrinterStructure::psCoreXY)},
     {"i3",              int(PrinterStructure::psI3)},
     {"hbot",            int(PrinterStructure::psHbot)},
-    {"delta",           int(PrinterStructure::psDelta)}
+    {"delta",           int(PrinterStructure::psDelta)},
+    {"polar",           int(PrinterStructure::psPolar)}
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(PrinterStructure)
 
@@ -4199,19 +4200,24 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("printer_structure", coEnum);
     def->label = L("Printer structure");
-    def->tooltip = L("The physical arrangement and components of a printing device.");
+    def->tooltip = L("The physical arrangement and components of a printing device. Polar: a bed turning under a head "
+                     "that moves along a radius (R-theta); the G-code is converted to the machine's axes, set up under "
+                     "Polar kinematics.");
     def->enum_keys_map = &ConfigOptionEnum<PrinterStructure>::get_enum_values();
     def->enum_values.push_back("undefine");
     def->enum_values.push_back("corexy");
     def->enum_values.push_back("i3");
     def->enum_values.push_back("hbot");
     def->enum_values.push_back("delta");
+    def->enum_values.push_back("polar");
     def->enum_labels.push_back(L("Undefined"));
     def->enum_labels.push_back(L("CoreXY"));
     def->enum_labels.push_back(L("I3"));
     def->enum_labels.push_back(L("Hbot"));
     def->enum_labels.push_back(L("Delta"));
-    def->mode = comDevelop;
+    def->enum_labels.push_back(L("Polar"));
+    // Orca: shown, as it is where a polar printer is chosen.
+    def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<PrinterStructure>(psUndefine));
 
     def = this->add("best_object_pos", coPoint);
@@ -8212,7 +8218,7 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("The printer has a rotating bed under a head that moves along one radial line through the bed's rotation "
                      "axis (an R-theta printer). The G-code is converted to machine coordinates: bed angle, radius, Z and, "
                      "with a tilt axis, nozzle tilt. The rotation axis is the center of the printable area. The machine start "
-                     "and end G-code are copied as written.");
+                     "and end G-code are copied as written. Set by choosing the printer structure Polar.");
     def->mode    = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -9800,6 +9806,13 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config)
             config.set_key_value("thumbnails", new ConfigOptionString(thumbnails_str));
         }
     }
+
+    // Orca: a polar printer is chosen by its structure, and polar_kinematics follows it. Before the
+    // structure had a polar value, polar_kinematics alone chose it.
+    if (auto *structure = config.option<ConfigOptionEnum<PrinterStructure>>("printer_structure"); structure && structure->value == psPolar)
+        config.set_key_value("polar_kinematics", new ConfigOptionBool(true));
+    else if (config.has("polar_kinematics") && config.opt_bool("polar_kinematics"))
+        config.set_key_value("printer_structure", new ConfigOptionEnum<PrinterStructure>(psPolar));
 
     if (config.has("wiping_volumes_matrix") && !config.has("wiping_volumes_use_custom_matrix")) {
         // This is apparently some pre-2.7.3 config, where the wiping_volumes_matrix was always used.

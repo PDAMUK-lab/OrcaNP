@@ -103,6 +103,12 @@ struct S4Result
 
 S4Result s4_deform(const TetMesh &mesh, const S4Params &params);
 
+// Area of a closed surface that overhangs by more than `max_overhang` (degrees from vertical, as
+// S4Params::max_overhang), leaving out what lies within `base` of its lowest point: the part the
+// bed or a planar base holds. Where it is none, the deformation has nothing to turn.
+double s4_overhang_area(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
+                        double max_overhang, double base);
+
 // Boundary triangles of the tetrahedral mesh, oriented outward for the vertex positions `pts`
 // (numbered like mesh.points): the surface to slice once the mesh has been deformed.
 std::vector<std::array<int, 3>> s4_boundary_triangles(const TetMesh &mesh, const std::vector<Eigen::Vector3d> &pts);

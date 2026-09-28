@@ -491,7 +491,9 @@ enum PrinterStructure {
     psCoreXY,
     psI3,
     psHbot,
-    psDelta
+    psDelta,
+    // Orca: a turning bed under a head on a radial line (R-theta); see polar_kinematics.
+    psPolar
 };
 
 enum class InputShaperType : unsigned char {
