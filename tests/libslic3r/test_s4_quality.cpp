@@ -1,5 +1,5 @@
-// EXPERIMENT, for evaluation only (hidden): compares tetrahedral meshes and solvers for the S4
-// deformation on one model. Remove with the experiment.
+// A benchmark, hidden from normal runs: compares tetrahedral meshes and solver options for the S4
+// deformation on one model (fidelity of the surface, printability, interior layer tilt, time).
 #include <catch2/catch_all.hpp>
 
 #include "libslic3r/AABBMesh.hpp"
@@ -85,18 +85,8 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
                 hi.z() - lo.z(), (hi - lo).maxCoeff() / 20., interior.size());
     std::printf("planar: unprintable %.2f %%\n", unprintable([](const Eigen::Vector3d &p) { return p; }));
 
-    auto set_env = [](const char *name, const char *value) {
-#ifdef _WIN32
-        _putenv_s(name, value ? value : "");
-#else
-        if (value)
-            setenv(name, value, 1);
-        else
-            unsetenv(name);
-#endif
-    };
-    // S4_QUALITY_VARIANTS: "name|cell|facet|distance|weighted|mt|threads[|warm];..." (facet, distance: "-"
-    // for the default; weighted, mt, warm: 0 or 1).
+    // S4_QUALITY_VARIANTS: "name|cell|surface cell|unused|weighted|mt|threads[|warm];..." (cell: 0 for
+    // automatic; surface cell: "-" for a uniform mesh; weighted, mt, warm: 0 or 1).
     struct Variant
     {
         std::string name, facet, distance;
@@ -141,14 +131,12 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
     std::map<std::string, std::vector<Eigen::Vector3d>> by_mesh;
     std::map<std::string, TetMesh>                      meshes;
     for (const Variant &var : variants) {
-        set_env("S4_PROTO_FACET_SIZE", var.facet == "-" ? nullptr : var.facet.c_str());
-        set_env("S4_PROTO_FACET_DISTANCE", var.distance == "-" ? nullptr : var.distance.c_str());
-        set_env("S4_PROTO_WEIGHTED", var.weighted ? "1" : nullptr);
         tbb::global_control  threads(tbb::global_control::max_allowed_parallelism, size_t(var.threads));
         // Variants with the same mesh settings share the mesh, so solvers are compared on one mesh.
         const std::string key = std::to_string(var.cell) + " " + var.facet + " " + var.distance;
         TetrahedralizeParams tp;
-        tp.cell_size    = var.cell;
+        tp.cell_size         = var.cell;
+        tp.surface_cell_size = var.facet == "-" ? 0. : std::stod(var.facet);
         const auto t0   = std::chrono::steady_clock::now();
         auto       mit  = meshes.find(key);
         if (mit == meshes.end())
@@ -158,6 +146,7 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
         S4Params p         = sp;
         p.warm_start       = var.warm;
         p.multithreading   = var.mt;
+        p.size_weighted    = var.weighted;
         const S4Result res = s4_deform(mesh, p);
         const auto     t2   = std::chrono::steady_clock::now();
 
@@ -221,7 +210,4 @@ TEST_CASE("S4 quality of tetrahedral meshes is measured", "[S4Quality][.]")
                     res.passes.back().iterative ? " (iterative)" : "");
         std::fflush(stdout);
     }
-    set_env("S4_PROTO_FACET_SIZE", nullptr);
-    set_env("S4_PROTO_FACET_DISTANCE", nullptr);
-    set_env("S4_PROTO_WEIGHTED", nullptr);
 }

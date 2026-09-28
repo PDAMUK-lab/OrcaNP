@@ -409,6 +409,53 @@ TEST_CASE("Tetrahedralizing a closed surface fills exactly its volume", "[S4]")
     }
 }
 
+TEST_CASE("A graded mesh is fine at the surface and coarse inside", "[S4]")
+{
+    // A 40 mm cube with 2 mm tetrahedra at its surface and 10 mm inside: the surface triangles are
+    // about 2 mm, the cells around the centre far larger, and the volume is still all filled.
+    const Surface        surface = voxel_surface({ { 0, 0, 0 } }, 40.);
+    TetrahedralizeParams params;
+    params.cell_size         = 10.;
+    params.surface_cell_size = 2.;
+    const TetMesh mesh       = tetrahedralize(surface.vertices, surface.triangles, params);
+    CHECK_THAT(volume(mesh), WithinRel(64000., 1e-6));
+
+    double surface_edges = 0.;
+    size_t count         = 0;
+    for (const auto &t : s4_boundary_triangles(mesh, mesh.points))
+        for (int k = 0; k < 3; ++k, ++count)
+            surface_edges += (mesh.points[t[k]] - mesh.points[t[(k + 1) % 3]]).norm();
+    surface_edges /= double(count);
+    CHECK(surface_edges < 3.);
+
+    double inner_edges = 0.;
+    count              = 0;
+    for (const auto &t : mesh.tets) {
+        const Eigen::Vector3d c = 0.25 * (mesh.points[t[0]] + mesh.points[t[1]] + mesh.points[t[2]] + mesh.points[t[3]]);
+        if ((c - Eigen::Vector3d::Constant(20.)).cwiseAbs().maxCoeff() > 8.)
+            continue;
+        for (int i = 0; i < 4; ++i)
+            for (int j = i + 1; j < 4; ++j, ++count)
+                inner_edges += (mesh.points[t[i]] - mesh.points[t[j]]).norm();
+    }
+    REQUIRE(count > 0);
+    CHECK(inner_edges / double(count) > 2. * surface_edges);
+}
+
+TEST_CASE("Size weighting leaves a uniform mesh's deformation as it is", "[S4]")
+{
+    // Every voxel cell has the same size, so every weight is 1.
+    const TetMesh mesh = voxel_mesh(cantilever_voxels(), 2.);
+    S4Params      params;
+    const S4Result plain    = s4_deform(mesh, params);
+    params.size_weighted    = true;
+    const S4Result weighted = s4_deform(mesh, params);
+    double         dev      = 0.;
+    for (size_t v = 0; v < mesh.points.size(); ++v)
+        dev = std::max(dev, (weighted.deformed[v] - plain.deformed[v]).norm());
+    CHECK(dev < 1e-9);
+}
+
 TEST_CASE("An open surface is rejected", "[S4]")
 {
     Surface open = voxel_surface({ { 0, 0, 0 } }, 10.);

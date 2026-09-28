@@ -20,10 +20,16 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
 
 1. **Tetrahedralize** (`Tetrahedralize`): CGAL Mesh_3 fills the closed model. The triangle
    soup is re-oriented first, sharp edges are protected, and slivers are removed; slivers are
-   nearly flat and the deformation turns them inside out easily. Cell size defaults to 1/20 of
-   the largest bounding box side. The balls protecting sharp edges shrink where edges come close
-   and stop at a quarter of the cell size: fine detail (a Benchy's lettering) would otherwise
-   shrink them practically forever.
+   nearly flat and the deformation turns them inside out easily. The mesh is graded by default:
+   tetrahedra of the surface cell size at the surface, which they follow to within a twentieth
+   of it, growing to the interior cell size inside. Walls are printed where the mesh's skin is,
+   so a coarse skin moves them (on a 100 mm part with the uniform default of 1/20 of its largest
+   side, 3 % of outer wall points ended up over 0.5 mm off the model); the inside only carries
+   smoothly varying layers and can stay coarse. A uniform mesh of one cell size (by default
+   1/20 of the largest bounding box side, following the surface to a tenth of it) remains
+   available. The balls protecting sharp edges shrink where edges come close and stop at a
+   quarter of the surface cell size: fine detail (a Benchy's lettering) would otherwise shrink
+   them practically forever.
 2. **Deform** (`S4Deformation`), per pass:
    - Cell attributes: the most downward boundary face normal gives the overhang angle; cells
      whose lowest face is within `bottom_threshold` of the lowest face sit on the bed; a
@@ -39,7 +45,14 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
      support to `max_rotation_far` for the cells farthest from it.
    - Rotation field: minimize `w * sum (r_i - r_j)^2` over face-adjacent cells plus
      `sum (r_i - t_i)^2` over cells with a target, within the limits. The Hessian is an
-     M-matrix, so a primal-dual active set method converges in a few sparse solves.
+     M-matrix, so a primal-dual active set method converges; each of its steps is a sparse
+     solve, and on fine meshes it takes dozens of steps, the bulk of the slicing time.
+   - Size weights (graded mesh): each cell's terms count in proportion to its size (the shape
+     term by volume, the target by area, the link between neighbours by their mean edge
+     length, all scaled to a mean of 1). Unweighted, the many small surface cells of a graded
+     mesh outvote the few large inner ones, which stiffens the skin and distorts the inside;
+     weighted, a graded mesh solves the problem a uniform one does, so the settings keep their
+     meaning.
    - Deformation: vertex positions whose cells best match their rotated, centred shapes, a
      linear least-squares problem whose axes decouple. Vertices on the bed are pinned; all
      other vertices stay at least `min(height, bottom_threshold)` above the bed (an active set
@@ -47,7 +60,17 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
      layers and printed in mid-air.
    - Inversion repair: cells turned inside out get their limits, and those of their two-ring
      neighbourhood, cut to 70 % and the pass is solved again, up to ten times. Zero rotation
-     cannot invert, so this converges.
+     cannot invert, so this converges. With warm start each of these rounds starts the active
+     set method from the last round's solution and its binding limits: the optimum is unique,
+     so only the number of steps changes (447 to 49 on a 102 mm Benchy with 2 mm cells).
+   - Multi-threading: the three axes of the deformation are solved at once. The rotation field
+     is factorized directly while that is cheap; once its first factorization has more than
+     3 million nonzeros it is solved by Jacobi-preconditioned conjugate gradients, warm-started
+     from the last step, over threads. The work is split in fixed chunks and summed in a fixed
+     order, so the result does not depend on the number of threads, and the switch depends on
+     the problem's size, not on a timing, so a model always takes the same route. Below the
+     switch the direct solve is faster; above it the iterative one is, the more so with more
+     cores. Warm start and multi-threading are application preferences, read at startup.
    - Planar base (`planar_height`): the part up to that height keeps its shape and plays the
      bed's role. Its vertices are pinned, its cells get a zero limit (so the rotation field
      starts from zero at its top), its cells are the Dijkstra sources, and the Z floor keeps the
@@ -198,8 +221,13 @@ takes inverse time feed. That gives the "ThetaFirm Core R-Theta" printer profile
 Two groups of settings switch the pipeline on:
 
 - **Print settings > Quality > Non-planar (S4)** (`s4_*`, per object): `s4_enabled`, the layer
-  shape (`s4_layer_shape`), the S4 deformation parameters, the surface gap and layout, and the
-  cone angle. Any change re-slices the object.
+  shape (`s4_layer_shape`), the S4 deformation parameters, the surface gap and layout, the
+  cone angle, and the mesh: graded (`s4_graded_mesh`, `s4_surface_cell_size`,
+  `s4_interior_cell_size`) or uniform (`s4_cell_size`, shown only when the mesh is not graded).
+  Any change re-slices the object.
+- **Preferences > General > Non-planar slicing**: warm start and multi-threading of the S4
+  solver (`s4_warm_start`, `s4_multithreading` in the application's configuration), on by
+  default; they change the time, not the result, and are read at startup.
 - **Print surface** (`s4_surface_core`): what offset layers are offset from. Either the parts set
   as print surface (`s4_print_surface`, a per-part setting, set from a part's context menu with
   *Print surface (non-planar)* or among its settings), or a generated sphere, cylinder, pillar,
@@ -296,9 +324,10 @@ and the non-planar building blocks:
 - **Polar G-code conversion:** path, extrusion, timing, machine blocks and their feed mode,
   arcs, and the record of each line's last machine line and pose.
 - **S4 deformation:** its guarantees (pinned base, planar base height, bed clearance, no
-  inverted cells, limits and rotation direction), and the bounded rotation solver against
-  closed-form solutions.
-- **Meshing:** volume.
+  inverted cells, limits and rotation direction), the bounded rotation solver against
+  closed-form solutions, warm start and multi-threading (the iterative route forced) giving
+  the same deformation in fewer solves, and size weights of 1 on a uniform mesh.
+- **Meshing:** volume; a graded mesh fine at the surface and coarse inside.
 - **Layer shapes:** signed distance, the gap all around, the unwrap, cones, fitting sphere and
   cylinder cores.
 - **Mapper:** identity, rigid tilt, squash, outside points.
@@ -307,6 +336,11 @@ and the non-planar building blocks:
   - tilt threshold and limits;
   - toolhead clearance against printed material and the bed;
   - per-object mapping with flat print surfaces, and kept windows.
+
+`tests/libslic3r/test_s4_quality.cpp` is a benchmark, hidden from normal runs (`[S4Quality]`):
+on a model given by `S4_QUALITY_MODEL` it compares mesh and solver variants
+(`S4_QUALITY_VARIANTS`) by how closely the mesh's skin follows the model, the share of the
+surface still overhanging, the layer tilt inside against a reference, and time.
 
 `tests/fff_print/test_nonplanar.cpp` slices through the whole pipeline:
 - S4 curves layers, holds them flat below the planar height, and needs relative extrusion;

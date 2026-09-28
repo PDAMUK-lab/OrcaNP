@@ -3,6 +3,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/NonPlanar/S4Deformation.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleMeshSlicer.hpp"
 
@@ -164,6 +165,33 @@ TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlan
         }
     CHECK(flat >= 8); // 0.3 mm layers
     CHECK(max_layer_z_span(moves) > 0.3);
+}
+
+TEST_CASE("S4 meshes a large part finely only at its surface, and a small part never coarser than uniformly", "[NonPlanar]")
+{
+    // A 120 mm bar: 2 mm tetrahedra at the surface instead of the automatic 6 mm (1/20 of 120). A 20
+    // mm cube: its automatic 1 mm caps the graded sizes, so it is no coarser than a uniform mesh.
+    auto surface_edge = [](const TriangleMesh &part, bool graded) {
+        Print              print;
+        Model              model;
+        DynamicPrintConfig config = s4_config();
+        config.set_deserialize_strict({ { "s4_graded_mesh", graded }, { "s4_surface_cell_size", 2. }, { "s4_interior_cell_size", 5. },
+                                        { "printable_area", "0x0,250x0,250x250,0x250" } });
+        init_print({ part }, print, model, config);
+        print.process();
+        const NonPlanar::TetMesh &mesh  = print.objects().front()->s4_deformation()->mesh;
+        double                   sum   = 0.;
+        size_t                   count = 0;
+        for (const auto &t : NonPlanar::s4_boundary_triangles(mesh, mesh.points))
+            for (int k = 0; k < 3; ++k, ++count)
+                sum += (mesh.points[t[k]] - mesh.points[t[(k + 1) % 3]]).norm();
+        return sum / double(count);
+    };
+    const TriangleMesh bar(its_make_cube(120., 20., 20.));
+    CHECK(surface_edge(bar, true) < 3.);
+    CHECK(surface_edge(bar, false) > 4.5);
+    const TriangleMesh cube(its_make_cube(20., 20., 20.));
+    CHECK(surface_edge(cube, true) <= surface_edge(cube, false) * 1.1);
 }
 
 TEST_CASE("S4 printing requires relative extrusion", "[NonPlanar]")

@@ -9,7 +9,6 @@
 #include <tbb/parallel_reduce.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -693,16 +692,14 @@ S4Result s4_deform(const TetMesh &mesh, const S4Params &params)
     constexpr int    max_rounds = 10;
     constexpr double shrink     = 0.7;
 
-    // EXPERIMENT, for evaluation only: S4_PROTO_WEIGHTED=1 weights each cell's terms by its size (1 on
-    // a uniform mesh), so a mesh refined at the surface solves the same problem. Unset, nothing changes.
+    // Size weights (mean 1): the shape term by volume, the target by area, neighbour links by length.
     std::vector<double> cell_w, pair_w, target_w;
-    const bool          weighted = std::getenv("S4_PROTO_WEIGHTED") != nullptr;
+    const bool          weighted = params.size_weighted;
     if (weighted) {
         std::vector<double> vol(n), side(n);
         double              mv = 0., ms = 0., ma = 0.;
         for (size_t c = 0; c < n; ++c) {
-            const std::array<int, 4> &t = mesh.tets[c];
-            vol[c]  = std::abs((mesh.points[t[1]] - mesh.points[t[0]]).dot((mesh.points[t[2]] - mesh.points[t[0]]).cross(mesh.points[t[3]] - mesh.points[t[0]]))) / 6.;
+            vol[c]  = std::abs(signed_volume(mesh.points, mesh.tets[c])) / 6.;
             side[c] = std::cbrt(vol[c]);
             mv += vol[c];
             ms += side[c];

@@ -5030,6 +5030,39 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionFloat(0));
 
+    def = this->add("s4_graded_mesh", coBool);
+    def->label    = L("Graded mesh");
+    def->category = L("Quality");
+    def->tooltip  = L("Fill the model with small tetrahedra at its surface and larger ones inside, instead of one size "
+                      "throughout. The surface is followed closely, so walls come out where the model has them, while the "
+                      "inside takes little extra time. Each tetrahedron counts in proportion to its size, so the non-planar "
+                      "settings act the same as on a uniform mesh.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("s4_surface_cell_size", coFloat);
+    def->label    = L("Surface cell size");
+    def->category = L("Quality");
+    def->tooltip  = L("Largest size of the tetrahedra at the model's surface; the mesh follows the surface to within a "
+                      "twentieth of it. Smaller keeps finer detail in the walls and is slower. A part smaller than 20 times "
+                      "this uses 1/20 of its largest side instead, so a small part is never meshed more coarsely than with a "
+                      "uniform mesh.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0.5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(2));
+
+    def = this->add("s4_interior_cell_size", coFloat);
+    def->label    = L("Interior cell size");
+    def->category = L("Quality");
+    def->tooltip  = L("Largest size the tetrahedra grow to inside the model. Larger is faster; the layers inside vary smoothly, "
+                      "so they need less detail than the surface. A part smaller than 20 times this uses 1/20 of its largest "
+                      "side instead.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 1;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(5));
+
     def = this->add("s4_planar_height", coFloat);
     def->label    = L("Planar up to height");
     def->category = L("Quality");

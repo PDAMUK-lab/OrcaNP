@@ -12,7 +12,6 @@
 #include <CGAL/make_mesh_3.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -33,6 +32,16 @@ using Criteria = CGAL::Mesh_criteria_3<Tr>;
 namespace PMP = CGAL::Polygon_mesh_processing;
 
 } // namespace
+
+double automatic_cell_size(const std::vector<Eigen::Vector3d> &vertices)
+{
+    Eigen::Vector3d lo = Eigen::Vector3d::Constant(std::numeric_limits<double>::max()), hi = -lo;
+    for (const Eigen::Vector3d &v : vertices) {
+        lo = lo.cwiseMin(v);
+        hi = hi.cwiseMax(v);
+    }
+    return (hi - lo).maxCoeff() / 20.;
+}
 
 TetMesh tetrahedralize(const std::vector<Eigen::Vector3d> &vertices, const std::vector<std::array<int, 3>> &triangles,
                        const TetrahedralizeParams &params)
@@ -55,15 +64,7 @@ TetMesh tetrahedralize(const std::vector<Eigen::Vector3d> &vertices, const std::
     if (! PMP::is_outward_oriented(surface))
         PMP::reverse_face_orientations(surface);
 
-    double size = params.cell_size;
-    if (size <= 0.) {
-        Eigen::Vector3d lo = Eigen::Vector3d::Constant(std::numeric_limits<double>::max()), hi = -lo;
-        for (const Eigen::Vector3d &v : vertices) {
-            lo = lo.cwiseMin(v);
-            hi = hi.cwiseMax(v);
-        }
-        size = (hi - lo).maxCoeff() / 20.;
-    }
+    const double size = params.cell_size > 0. ? params.cell_size : automatic_cell_size(vertices);
 
     Domain domain(surface);
     domain.detect_features(params.feature_angle);
@@ -71,13 +72,12 @@ TetMesh tetrahedralize(const std::vector<Eigen::Vector3d> &vertices, const std::
     // The sharp edges are protected by balls, which shrink where edges come close. Without a
     // lower bound a model with fine detail (lettering, small holes) keeps them shrinking
     // practically forever, so they stop at a quarter of the cell size.
-    // EXPERIMENT, for evaluation only: S4_PROTO_FACET_SIZE / S4_PROTO_FACET_DISTANCE (mm) refine the
-    // surface below the cell size. Unset, nothing changes.
-    auto         env = [](const char *name, double fallback) { const char *v = std::getenv(name); return v ? std::atof(v) : fallback; };
-    const double fs  = env("S4_PROTO_FACET_SIZE", size);
-    const double fd  = env("S4_PROTO_FACET_DISTANCE", size / 10.);
-    const Criteria criteria(p::edge_size = fs, p::edge_min_size = fs / 4., p::facet_angle = 25., p::facet_size = fs,
-                            p::facet_distance = fd, p::cell_radius_edge_ratio = 3., p::cell_size = size);
+    // A graded mesh refines the surface (its facets and sharp edges) below the cell size inside.
+    const bool     graded    = params.surface_cell_size > 0.;
+    const double   skin_size = graded ? params.surface_cell_size : size;
+    const double   distance  = graded ? skin_size / 20. : size / 10.;
+    const Criteria criteria(p::edge_size = skin_size, p::edge_min_size = skin_size / 4., p::facet_angle = 25., p::facet_size = skin_size,
+                            p::facet_distance = distance, p::cell_radius_edge_ratio = 3., p::cell_size = size);
     const Complex complex = params.optimize ? CGAL::make_mesh_3<Complex>(domain, criteria, p::perturb(), p::exude()) :
                                               CGAL::make_mesh_3<Complex>(domain, criteria, p::no_perturb(), p::no_exude());
 

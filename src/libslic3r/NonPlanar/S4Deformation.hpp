@@ -59,6 +59,10 @@ struct S4Params
     // Deformation passes; each pass deforms the result of the previous one.
     int passes = 1;
 
+    // Weight each cell's terms by its size (1 on a uniform mesh), so a graded mesh solves the same
+    // problem as a uniform one rather than letting its many small surface cells outvote the inside.
+    bool size_weighted = false;
+
     // Speed-ups that leave the result as it is (the application's preferences, s4_solver_options()).
     // Each round that cuts back rotation limits where cells inverted starts from the last round's
     // solution and the rotation limits it found binding, instead of from nothing.

@@ -2789,6 +2789,9 @@ void TabPrint::build()
         optgroup->append_single_option_line("s4_smoothing");
         optgroup->append_single_option_line("s4_rotation_multiplier");
         optgroup->append_single_option_line("s4_passes");
+        optgroup->append_single_option_line("s4_graded_mesh");
+        optgroup->append_single_option_line("s4_surface_cell_size");
+        optgroup->append_single_option_line("s4_interior_cell_size");
         optgroup->append_single_option_line("s4_cell_size");
         // Orca: it's not used yet, so hide it in UI for now
         // optgroup->append_single_option_line("ironing_expansion");

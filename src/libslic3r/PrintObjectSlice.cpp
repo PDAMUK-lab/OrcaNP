@@ -907,7 +907,13 @@ void PrintObject::deform_s4()
     s4->part_id            = part->id();
 
     NonPlanar::TetrahedralizeParams tp;
-    tp.cell_size = m_config.s4_cell_size.value;
+    if (m_config.s4_graded_mesh.value) {
+        // Never coarser than the automatic uniform mesh: a small part keeps its fine cells.
+        const double automatic = NonPlanar::automatic_cell_size(shell.vertices);
+        tp.cell_size           = std::min(m_config.s4_interior_cell_size.value, automatic);
+        tp.surface_cell_size   = std::min(m_config.s4_surface_cell_size.value, automatic);
+    } else
+        tp.cell_size = m_config.s4_cell_size.value;
     try {
         if (shape == S4LayerShape::Optimized) {
             NonPlanar::S4Params params;
@@ -920,6 +926,7 @@ void PrintObject::deform_s4()
             params.passes                = m_config.s4_passes.value;
             params.planar_height         = m_config.s4_planar_height.value;
             params.zero_initial_rotation = m_config.s4_hold_non_overhangs.value;
+            params.size_weighted         = m_config.s4_graded_mesh.value;
             params.warm_start            = NonPlanar::s4_solver_options().warm_start;
             params.multithreading        = NonPlanar::s4_solver_options().multithreading;
             // A tilting nozzle follows the layers, so they may lean no further than it can on either side.
