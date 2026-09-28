@@ -5097,7 +5097,9 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Surface gap");
     def->category = L("Quality");
     def->tooltip  = L("Distance between the print surface and the first layer printed over it, all around, as the gap between "
-                      "support and part. The part within this distance of the print surface is not printed.");
+                      "support and part, so the part comes off the surface. A generated pillar or dome lifts the part by it, and "
+                      "a generated sphere or cylinder is shrunk by it, so all of the part is printed; over print surface parts, "
+                      "the part within this distance of them is not printed. 0 prints the part fused to the surface.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->mode     = comAdvanced;
