@@ -106,9 +106,10 @@ These happen on their own and have no settings:
   move through the part.
 - **Support:** support is generated on the bent part, then printed in columns from the bed, or
   the part below, up to the real underside of the overhang it holds, keeping the support's top
-  and bottom Z distances. Painted support and support blocker or enforcer parts are bent with
-  the part, so they mark the faces they were placed on. Support of offset layers is not mapped
-  this way.
+  and bottom Z distances. Support that would stand beside the part above the overhang it
+  reaches for holds nothing and is left out. Painted support and support blocker or enforcer
+  parts are bent with the part, so they mark the faces they were placed on. Support of offset
+  layers is not mapped this way.
 
 ## Layer shapes
 

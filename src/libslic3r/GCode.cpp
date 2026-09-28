@@ -2597,6 +2597,9 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
             BOOST_LOG_TRIVIAL(info) << "S4: " << report.segments << " segments mapped (" << report.nearest << " beside the mesh), "
                                     << report.lifts << " travel lifts, " << report.retractions_added << " retractions added, filament "
                                     << report.filament_in << " -> " << report.filament_out << " mm";
+            if (report.support_unanchored > 0 || report.support_dropped > 0)
+                BOOST_LOG_TRIVIAL(info) << "S4: support: " << report.support_unanchored << " points with no part above mapped as the part, "
+                                        << report.support_dropped << " segments beside the part left out";
             for (const std::string &failed : report.failed)
                 BOOST_LOG_TRIVIAL(warning) << "S4 G-code check failed: " << failed;
             if (report.tilt_limited > 0)

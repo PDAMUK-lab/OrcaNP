@@ -109,6 +109,8 @@ struct S4GCodeReport
     size_t junctions    = 0; // travels between differently mapped toolpaths
     // Support moves with no part above them within reach, mapped as the part is instead.
     size_t support_unanchored = 0;
+    // Support segments not printed: beside the part, above the top of the column they follow.
+    size_t support_dropped = 0;
     // Checked positions where the nozzle or the head would hit printed material, with the first
     // few described.
     size_t                   head_collisions = 0;
@@ -124,8 +126,8 @@ public:
     explicit S4SupportSurface(const indexed_triangle_set &surface);
     ~S4SupportSurface();
     // Height of the part's surface first met going up (`up`) or down from `p` outside the part;
-    // none if there is none, or if `p` is inside the part.
-    std::optional<double> next(const Eigen::Vector3d &p, bool up) const;
+    // none if there is none, or if `p` is inside the part (then `inside` is set, if given).
+    std::optional<double> next(const Eigen::Vector3d &p, bool up, bool *inside = nullptr) const;
 
 private:
     struct Tree;

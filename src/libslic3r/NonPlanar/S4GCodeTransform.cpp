@@ -96,9 +96,11 @@ private:
     S4Mapper::Result map_point(const S4ObjectMapping &om, const Eigen::Vector3d &source);
     // Where a sliced support point prints: in its column between the part (or the bed) below and
     // the part above (see S4ObjectMapping::support_surface). Empty with no part above it nearby.
-    std::optional<S4Mapper::Result> map_support(const S4ObjectMapping &om, const Eigen::Vector3d &source);
+    // `loose` is set for a point that holds nothing up: beside the part and above the top of the
+    // column it follows, or level with the part and nothing above it within reach.
+    std::optional<S4Mapper::Result> map_support(const S4ObjectMapping &om, const Eigen::Vector3d &source, bool &loose);
     // map_support() for support where it applies, map_point() for the rest.
-    S4Mapper::Result place(const S4ObjectMapping &om, bool support, const Eigen::Vector3d &source);
+    S4Mapper::Result place(const S4ObjectMapping &om, bool support, const Eigen::Vector3d &source, bool &loose);
     void pass_junctions();
     const S4ObjectMapping &mapping(int object) const
     {
@@ -392,7 +394,8 @@ void Transform::build_records()
 void Transform::map_moves()
 {
     const Move *last = nullptr;
-    for (Record &r : m_records)
+    for (Record &r : m_records) {
+        bool dropped = false;
         for (Move &m : r.moves) {
             if (m.pure_e) {
                 if (last) {
@@ -413,7 +416,14 @@ void Transform::map_moves()
                 last = &m;
                 continue;
             }
-            const S4Mapper::Result res = place(om, m.support, m.source);
+            bool                   loose;
+            const S4Mapper::Result res = place(om, m.support, m.source, loose);
+            if (loose && m.printing) {
+                m.e.reset();
+                m.printing = false;
+                dropped    = true;
+                ++m_report.support_dropped;
+            }
             m.mapped_by                = om.mapper;
             m.pos                      = res.point;
             m.tilt                     = shape_tilt(res.tilt);
@@ -427,6 +437,15 @@ void Transform::map_moves()
             }
             last = &m;
         }
+        if (dropped && r.source_e) {
+            // The line's material is what its printed part needs.
+            double kept = 0.;
+            for (const Move &m : r.moves)
+                if (! m.pure_e && m.e)
+                    kept += *m.e;
+            r.source_e = kept;
+        }
+    }
 }
 
 S4Mapper::Result Transform::map_point(const S4ObjectMapping &om, const Eigen::Vector3d &source)
@@ -462,24 +481,55 @@ S4Mapper::Result Transform::map_point(const S4ObjectMapping &om, const Eigen::Ve
     return res;
 }
 
-std::optional<S4Mapper::Result> Transform::map_support(const S4ObjectMapping &om, const Eigen::Vector3d &source)
+std::optional<S4Mapper::Result> Transform::map_support(const S4ObjectMapping &om, const Eigen::Vector3d &source, bool &loose)
 {
-    // In the mapper's frame. Support reaches a little past the overhang it holds up, so the part
-    // above it is looked for straight up, then around it up to 2 mm away.
+    // In the mapper's frame. The part above is looked for straight up. Support also reaches past
+    // the overhang it holds up; a column there follows the nearest point of the part above, found
+    // on rings up to 6 mm out and then narrowed down to the edge, so that neighbouring columns
+    // follow neighbouring points and their layers stay in step. Support beside the part and
+    // higher than the top of such a column, or level with the part and nothing above it, holds
+    // nothing up: it is `loose`.
     const S4SupportSurface &surface = *om.support_surface;
     const Eigen::Vector3d   p       = source - m_cfg.offset;
-    std::optional<double>   above;
-    Eigen::Vector2d         at = p.head<2>();
-    for (double r : { 0., 0.5, 1., 2. }) {
-        for (int k = 0; k < (r > 0. ? 8 : 1) && ! above; ++k) {
-            at    = p.head<2>() + r * Eigen::Vector2d(std::cos(k * PI / 4.), std::sin(k * PI / 4.));
-            above = surface.next(Eigen::Vector3d(at.x(), at.y(), p.z()), true);
-        }
+    bool                    beside  = false; // the part is level with the point within reach
+    auto                    up_from = [&](const Eigen::Vector2d &q) { return surface.next(Eigen::Vector3d(q.x(), q.y(), p.z()), true, &beside); };
+    Eigen::Vector2d         at      = p.head<2>();
+    std::optional<double>   above   = up_from(at);
+    double                  inner   = 0.; // the last ring without the part above
+    for (double r : { 0.25, 0.5, 1., 1.5, 2., 3., 4., 6. }) {
         if (above)
             break;
+        constexpr int                dirs = 16;
+        std::vector<Eigen::Vector2d> hits;
+        Eigen::Vector2d              sum = Eigen::Vector2d::Zero();
+        for (int k = 0; k < dirs; ++k) {
+            const Eigen::Vector2d d(std::cos(2. * PI * k / dirs), std::sin(2. * PI * k / dirs));
+            if (up_from(p.head<2>() + r * d)) {
+                hits.push_back(d);
+                sum += d;
+            }
+        }
+        if (hits.empty()) {
+            inner = r;
+            continue;
+        }
+        // The hit direction closest to their mean, and the edge between the rings along it.
+        Eigen::Vector2d dir = hits.front();
+        for (const Eigen::Vector2d &d : hits)
+            if (d.dot(sum) > dir.dot(sum))
+                dir = d;
+        double lo = inner, hi = r;
+        for (int i = 0; i < 5; ++i) {
+            const double mid = 0.5 * (lo + hi);
+            (up_from(p.head<2>() + mid * dir) ? hi : lo) = mid;
+        }
+        at    = p.head<2>() + hi * dir;
+        above = up_from(at);
     }
-    if (! above)
+    if (! above) {
+        loose = beside;
         return std::nullopt;
+    }
 
     // The column's ends: the part's underside above, and the part's surface below or the bed.
     // Each is placed where the part itself prints (the underside and a surface below exactly;
@@ -507,6 +557,7 @@ std::optional<S4Mapper::Result> Transform::map_support(const S4ObjectMapping &om
     S4Mapper::Result res;
     res.tier     = S4Mapper::Tier::Inside;
     const double z = source.z();
+    loose = z > top_sliced && at != p.head<2>();
     if (z <= bottom_sliced) {
         res.point = source + bottom_shift;
     } else if (z >= top_sliced || span_sliced <= 1e-9) {
@@ -523,12 +574,14 @@ std::optional<S4Mapper::Result> Transform::map_support(const S4ObjectMapping &om
     return res;
 }
 
-S4Mapper::Result Transform::place(const S4ObjectMapping &om, bool support, const Eigen::Vector3d &source)
+S4Mapper::Result Transform::place(const S4ObjectMapping &om, bool support, const Eigen::Vector3d &source, bool &loose)
 {
+    loose = false;
     if (support && om.support_surface) {
-        if (std::optional<S4Mapper::Result> res = map_support(om, source))
+        if (std::optional<S4Mapper::Result> res = map_support(om, source, loose))
             return *res;
-        ++m_report.support_unanchored;
+        if (! loose)
+            ++m_report.support_unanchored;
     }
     return map_point(om, source);
 }
@@ -575,7 +628,8 @@ void Transform::pass_junctions()
         Eigen::Vector3d       target = end.source;
         double                tilt   = 0.;
         if (to.mapped_by) {
-            const S4Mapper::Result res = place(mapping(to.object), to.support, end.source);
+            bool                   loose;
+            const S4Mapper::Result res = place(mapping(to.object), to.support, end.source, loose);
             target                     = res.point;
             tilt                       = shape_tilt(res.tilt);
         }
@@ -1253,9 +1307,11 @@ S4SupportSurface::S4SupportSurface(const indexed_triangle_set &surface) : m_tree
 
 S4SupportSurface::~S4SupportSurface() = default;
 
-std::optional<double> S4SupportSurface::next(const Eigen::Vector3d &p, bool up) const
+std::optional<double> S4SupportSurface::next(const Eigen::Vector3d &p, bool up, bool *inside) const
 {
     const AABBMesh::hit_result hit = m_tree->aabb.query_ray_hit(p, Vec3d(0., 0., up ? 1. : -1.));
+    if (inside && hit.is_inside())
+        *inside = true;
     if (! hit.is_hit() || hit.is_inside())
         return std::nullopt;
     return p.z() + (up ? hit.distance() : -hit.distance());

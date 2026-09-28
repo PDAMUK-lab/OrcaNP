@@ -921,7 +921,8 @@ TEST_CASE("Support is mapped as columns from the bed up to the part's underside"
     // 17 mm. Support sliced under it, from the flat first layer up to 0.2 mm below it, stands on
     // the bed in the same flat first layer and reaches up to 0.2 mm below the real underside, its
     // layers spread evenly between. Mapped as the part is, it would print 1 mm lower all the way
-    // down, its first layer on the bed.
+    // down, its first layer on the bed. Support beside the arm above its underside holds nothing
+    // and is left out.
     const TetMesh                mesh = voxel_mesh(cantilever_voxels(), 2.);
     std::vector<Eigen::Vector3d> deformed;
     for (const Eigen::Vector3d &p : mesh.points)
@@ -944,11 +945,13 @@ TEST_CASE("Support is mapped as columns from the bed up to the part's underside"
     g << start_block << "; NONPLANAR_OBJECT 0\n;TYPE:Support\n";
     for (double z : { 0.2, 8.5, 16.8 })
         g << "G1 X9 Y0 Z" << z << " F3000\nG1 X11 Y0 E0.1 F1200\n";
+    g << "G1 X9 Y2.5 Z17.4 F3000\nG1 X11 Y2.5 E0.1 F1200\n";
     g << "; NONPLANAR_OBJECT_END\n";
     std::istringstream  in(g.str());
     std::ostringstream  out;
     const S4GCodeReport report = s4_transform_gcode(in, out, set, S4GCodeConfig());
     CHECK(report.support_unanchored == 0);
+    CHECK(report.support_dropped > 0);
     size_t first = 0, middle = 0, top = 0;
     for (const Eigen::Vector3d &q : parse_body(out.str()).printing) {
         CHECK_THAT(q.y(), WithinAbs(0., 1e-6));

@@ -33,6 +33,7 @@ struct Move
     int                    layer   = 0;
     double                 layer_z = 0.; // the layer's height in the sliced space (its ;Z: comment)
     std::string            type;         // the feature, from the last ;TYPE: comment
+    bool                   xy      = false; // the line moved in X or Y (an unretract does not)
 };
 
 std::vector<Move> body_moves(const std::string &gcode)
@@ -65,6 +66,7 @@ std::vector<Move> body_moves(const std::string &gcode)
                     m.e = v;
                 else if (w[0] != 'F')
                     pos[w[0]] = v;
+                m.xy |= w[0] == 'X' || w[0] == 'Y';
             }
         if (layer == 0)
             continue;
@@ -276,7 +278,7 @@ Vec2d t_centre(const std::vector<Move> &moves)
 {
     BoundingBoxf box;
     for (const Move &m : moves)
-        if (m.e > 0. && m.layer == 1 && m.type.find("Support") == std::string::npos && m.type.find("Brim") == std::string::npos &&
+        if (m.e > 0. && m.xy && m.layer == 1 && m.type.find("Support") == std::string::npos && m.type.find("Brim") == std::string::npos &&
             m.type.find("Skirt") == std::string::npos)
             box.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
     return box.center();
@@ -288,18 +290,20 @@ TEST_CASE("S4 support stands on the bed and stops the top gap below the real ove
 {
     // Support sliced under the deformed wings of a T is printed in columns up to the real wings:
     // its first layer flat on the bed at 0.3 mm, its top 0.3 mm (the top gap) below their undersides
-    // at 10 mm, the layers of each column in their order, and none of it inside the T.
+    // at 10 mm, and none of it inside the T. Each column's layers are in their order: where a layer
+    // is printed, none printed before it is higher (by more than a bead's give). Its layers slope
+    // where the part above does, so only a column a quarter of a millimetre across is level.
     DynamicPrintConfig config = s4_config();
     config.set_deserialize_strict({ { "enable_support", true }, { "support_type", "normal(auto)" },
                                     { "support_on_build_plate_only", true }, { "support_top_z_distance", 0.3 },
                                     { "support_bottom_z_distance", 0.3 } });
     const std::vector<Move> moves  = slice_t(config);
     const Vec2d             centre = t_centre(moves);
-    std::map<std::pair<int, int>, std::vector<std::pair<int, double>>> columns; // 1 mm cells: (layer, z)
+    std::map<std::pair<int, int>, std::vector<std::pair<int, double>>> columns; // (layer, z) in 0.25 mm cells
     double under_wings_top = 0.;
     size_t support = 0;
     for (const Move &m : moves) {
-        if (m.e <= 0. || m.type.find("Support") == std::string::npos)
+        if (m.e <= 0. || ! m.xy || m.type.find("Support") == std::string::npos)
             continue;
         ++support;
         const double dx = axis(m, 'X') - centre.x(), dy = axis(m, 'Y') - centre.y(), z = axis(m, 'Z');
@@ -310,7 +314,7 @@ TEST_CASE("S4 support stands on the bed and stops the top gap below the real ove
         CHECK_FALSE(in_slab);
         if (std::abs(dx) > 6. && std::abs(dx) < 14. && std::abs(dy) < 4.)
             under_wings_top = std::max(under_wings_top, z);
-        columns[{ int(std::floor(dx)), int(std::floor(dy)) }].emplace_back(m.layer, z);
+        columns[{ int(std::floor(4. * dx)), int(std::floor(4. * dy)) }].emplace_back(m.layer, z);
     }
     REQUIRE(support > 0);
     CHECK(under_wings_top <= 10. - 0.3 + 0.02);
@@ -325,7 +329,7 @@ TEST_CASE("S4 support stands on the bed and stops the top gap below the real ove
         }
         double below = -1.;
         for (const auto &[layer, span] : by_layer) {
-            if (span.first < below - 1e-3)
+            if (span.first < below - 0.1)
                 ++out_of_order;
             below = std::max(below, span.second);
         }
@@ -358,7 +362,7 @@ TEST_CASE("S4 prints support where it is painted on the part", "[NonPlanar]")
         const Vec2d             centre = t_centre(moves);
         size_t                  support = 0, under_other_wing = 0;
         for (const Move &m : moves)
-            if (m.e > 0. && m.type.find("Support") != std::string::npos) {
+            if (m.e > 0. && m.xy && m.type.find("Support") != std::string::npos) {
                 ++support;
                 if (axis(m, 'X') - centre.x() < 0.)
                     ++under_other_wing;

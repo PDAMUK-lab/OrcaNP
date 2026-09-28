@@ -109,15 +109,21 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    Support is mapped in columns instead. The support generator works in the sliced space, where
    the overhangs are where the deformation put them, and the cell a support point sits in or
    next to moves it with the part: into the part, or under layers printed long before it. So a
-   support point looks for the part above it on the deformed surface, straight up and then
-   around it up to 2 mm away (support reaches a little past the overhang it holds), and below it
-   for the part's surface, else the bed or the top of what prints flat. Both ends are mapped as
-   the part is, the support's top and bottom Z distances kept between them and the support, and
-   the point is placed between them by its sliced height: its height, XY shift and tilt in
-   proportion, its flow by how far the column was stretched. So a column stands on what is
-   really below it, stops the top Z distance under the real overhang, and keeps its layers in
-   order. Support with no part above it is mapped like the part, and so is all support of
-   offset layers, whose overhangs in the sliced space say nothing about the part's.
+   support point looks for the part above it on the deformed surface, and below it for the
+   part's surface, else the bed or the top of what prints flat. Both ends are mapped as the part
+   is, the support's top and bottom Z distances kept between them and the support, and the point
+   is placed between them by its sliced height: its height, XY shift and tilt in proportion, its
+   flow by how far the column was stretched. So a column stands on what is really below it, stops
+   the top Z distance under the real overhang, and keeps its layers in order.
+   Support also reaches past the overhang it holds. A point with nothing straight above it
+   follows the nearest point of the part above instead, found on rings up to 6 mm out and then
+   narrowed down to the underside's edge: taking whichever direction happened to hit first put
+   neighbouring columns under different points, and on a sloped underside their layers crossed.
+   A point beside the part that is higher than the top of the column it follows, or level with
+   the part with nothing above it, holds nothing up in the real part; it is left out (its
+   segments become moves without extrusion). Support with no part anywhere near is mapped like
+   the part, and so is all support of offset layers, whose overhangs in the sliced space say
+   nothing about the part's.
    The tilt is then shaped for the machine: below `tilt_threshold` the nozzle stays vertical,
    between it and twice it the tilt ramps up to the layer's, and it never exceeds `max_tilt`.
    Repair passes follow: extrusion scaled by the flow factor (clipped to 0.25–3 with the clipped
@@ -376,7 +382,8 @@ and the non-planar building blocks:
 - **G-code transform:**
   - identity, flow, travel lifts, absolute extrusion refused;
   - flat layers near the bed easing into the mapped ones;
-  - support in columns from the bed up to the part's underside;
+  - support in columns from the bed up to the part's underside, and none beside the part above
+    it;
   - tilt threshold and limits;
   - toolhead clearance against printed material and the bed;
   - per-object mapping with flat print surfaces, and kept windows.
@@ -402,4 +409,5 @@ surface still overhanging, the layer tilt inside against a reference, and time.
   volume; a dome is a hemisphere.
 - support under a T stands on the bed and stops the top Z distance below the real wings, its
   columns in order and none of it inside the part; support painted under one wing is printed
-  under that wing, as it is without S4.
+  under that wing, as it is without S4, where without carrying the painting into the sliced
+  space there was none.
