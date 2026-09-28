@@ -96,22 +96,21 @@ jobs:
           The README (https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/README.md) explains every setting OrcaNP adds: what it is for and how to use it.
 
           New in this build:
-          - Graded tetrahedral mesh for S4, on by default (Quality > Non-planar (S4) > Graded mesh, Surface cell size, Interior cell size): small tetrahedra at the surface, larger inside. Curved walls now follow the model as closely as flat walls do; on a 102 mm 3DBenchy the outer wall's 99th percentile distance to the model fell from 0.60 mm to 0.33 mm (flat layers: 0.32 mm). Small parts are never meshed more coarsely than before.
-          - Preferences > General > Non-planar slicing: Warm start and Multi-threading, both on by default (restart to apply). They change the time S4 takes, not its result: the S4 solve of a 102 mm Benchy with 2 mm cells went from 490 s to 28 s.
-          - Print surfaces Pillar, Dome and Domed pillar (Layer shape: Offset from print surface), with Size Automatic or Custom (Diameter, Height): lift the part off the bed so a tilting nozzle can lean under it, or print a concave underside on a dome.
-
-          Earlier features:
-          - Non-planar printing (Print settings > Quality > Non-planar (S4)): optimized S4 layers, conical layers, and layers offset from a print surface (support-like core parts, or a generated sphere or cylinder fitted to the part's cavity, with a surface gap all around).
-          - Polar printers (Printer settings > Basic information > Polar kinematics and Non-planar toolhead): machine G-code in bed angle, radius, Z and tilt with inverse time feed, tilt and radius travel limits, toolhead clearance checks.
-          - Printer profile "ThetaFirm Core R-Theta" (Custom printers) for the Core R-Theta 4-axis printer with the ThetaFirm RepRapFirmware configuration.
-          - Preview: the tool marker leans with the nozzle and shows the toolhead's clearance body (nozzle cone and head); for polar printers the marker's window shows the machine pose (bed angle, radius, tilt), "Turn bed" turns the bed and the print to the machine's angle at the current move, and the G-code window shows the machine G-code.
-          - Preview playback: the play/pause button left of the moves slider runs through the print move by move and layer by layer at 10x to 1000x the estimated print time (click the speed to change it); it stops at the end or on pause.
-          - Print surface parts: right-click a part in the object list > "Print surface (non-planar)". The print surface must be a part of the same object (Add part, or select both objects and Assemble).
+          - Printer structure Polar (Printer settings > Basic information > Advanced > Printer structure): choosing it makes a printer polar, and the Polar kinematics settings show only for polar printers. Printer presets that had the old Polar kinematics checkbox load as Polar; the ThetaFirm Core R-Theta profile is Polar.
+          - Preview playback at 1x (real time), besides 10x to 1000x.
+          - A warning before slicing when a part with the Optimized S4 layer shape has nothing overhanging more than the Maximum overhang: its layers would be bent and bent back for nothing.
 
           Fixed since the previous test build:
-          - S4 (Optimized) now lays its first layer flat on the bed. It used to follow the tetrahedra above it: where the part above was lifted, the first layer came as close as 0.06 mm to the bed (a 3DBenchy's bow), and where it was lowered, it rose off the bed. "Planar up to height" is now exact; the layers above ease into the curved ones over one surface cell.
-          - On a printer that cannot tilt the nozzle (a Voron, a Prusa, a Core R-Theta without tilt), S4 layers now lean no more than the Nozzle clearance angle (Printer > Basic information > Non-planar toolhead); before, only a tilting nozzle's travel limited them.
-          - The same model with the same settings now always gives the same G-code. CGAL stopped its sliver removal on a timer, so the mesh, and the slice, depended on how busy the computer was.
+          - Supports on S4 parts. Painted support enforcers and blockers, and support enforcer and blocker parts, were sliced where they are on the real part while the part was sliced bent, so manual (painted) support came out empty; they are now bent with the part. Support toolpaths followed the nearest bit of the part back into the real part, so support could end up inside the part or under layers printed long before; support is now printed in columns from the bed, or the part below it, up to the real underside of the overhang it holds, keeping the support's top and bottom Z distances. Support that would stand beside the part above the overhang it reaches for, or under an overhang that leaves no room for it, holds nothing and is left out.
+
+          Earlier features:
+          - Non-planar printing (Print settings > Quality > Non-planar (S4)): optimized S4 layers, conical layers, and layers offset from a print surface (support-like core parts, a generated sphere or cylinder fitted to the part's cavity, or a generated pillar, dome or domed pillar, with a surface gap all around).
+          - Graded tetrahedral mesh for S4, on by default, and the Warm start and Multi-threading preferences (Preferences > General > Non-planar slicing).
+          - Polar printers (Printer settings > Basic information > Printer structure Polar, Polar kinematics and Non-planar toolhead): machine G-code in bed angle, radius, Z and tilt with inverse time feed, tilt and radius travel limits, toolhead clearance checks.
+          - Printer profile "ThetaFirm Core R-Theta" (Custom printers) for the Core R-Theta 4-axis printer with the ThetaFirm RepRapFirmware configuration.
+          - Preview: the tool marker leans with the nozzle and shows the toolhead's clearance body (nozzle cone and head); for polar printers the marker's window shows the machine pose (bed angle, radius, tilt), "Turn bed" turns the bed and the print to the machine's angle at the current move, and the G-code window shows the machine G-code.
+          - Preview playback: the play/pause button left of the moves slider runs through the print move by move and layer by layer at 1x to 1000x the estimated print time (click the speed to change it); it stops at the end or on pause.
+          - Print surface parts: right-click a part in the object list > "Print surface (non-planar)". The print surface must be a part of the same object (Add part, or select both objects and Assemble).
 
           Known limitations:
           - The Non-planar toolhead defaults (50 degree clearance angle, 20 mm toolhead radius) describe no real toolhead: set them to yours before printing non-planar, most of all on a printer that cannot tilt the nozzle.
@@ -121,6 +120,8 @@ jobs:
           - Opening a polar .gcode file on its own (G-code viewer) shows it as Cartesian; preview polar prints after slicing them.
           - Offset layers meeting the bed stand vertical there; a tilting nozzle reaches them only within its tilt range, and the clearance check warns where the head would hit.
           - A non-planar object has one part printed non-planar (besides print surface parts) and one instance.
+          - A part on a generated pillar much narrower than it (a 3DBenchy on a thin stick) is printed in layers that wrap around the pillar's rim, which bends its bottom badly. The next build lays flat layers over the pillar and conical ones beyond it.
+          - Support of layers offset from a print surface is still printed as the part's layers take it.
           EOF
           gh release create "$tag" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
