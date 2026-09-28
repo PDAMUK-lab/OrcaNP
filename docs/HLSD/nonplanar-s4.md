@@ -172,7 +172,12 @@ whose flat slices are chosen surfaces (`LayerShapes`):
   - Laid out *from above*: the horizontal position is the direction from a centre below the
     core's top, as an azimuthal equidistant projection scaled to be undistorted at the top, for
     domes, spheres and capped cylinders. Circumferential lengths shrink towards the equator
-    (to 64 % there); the flow correction keeps the material right.
+    (to 64 % there); the flow correction keeps the material right. A pillar's flat top is laid
+    out straight from above instead, since from a centre only as deep as a low, wide pillar the
+    part over it would shrink several times over and its thin features vanish from the slices:
+    over the top the horizontal position is kept (the layers there are flat), and beside the
+    pillar, below its top, a point moves out from the axis by its depth, so what hangs there at
+    different heights stays apart.
   - Laid out *around the rotation axis*: the angle becomes length and the height width, for
     sleeves. A closed ring has no seam-free unwrap: sliced as a strip, its ends would become
     walls. So the part is cut in half through the axis, each half unwrapped and placed twice,
@@ -331,9 +336,10 @@ and the non-planar building blocks:
   inverted cells, limits and rotation direction), the bounded rotation solver against
   closed-form solutions, warm start and multi-threading (the iterative route forced) giving
   the same deformation in fewer solves, and size weights of 1 on a uniform mesh.
-- **Meshing:** volume; a graded mesh fine at the surface and coarse inside.
-- **Layer shapes:** signed distance, the gap all around, the unwrap, cones, fitting sphere and
-  cylinder cores.
+- **Meshing:** volume; the same mesh every time; a graded mesh fine at the surface and coarse
+  inside.
+- **Layer shapes:** signed distance, the gap all around, the layout over a flat top, the
+  unwrap, cones, fitting sphere and cylinder cores.
 - **Mapper:** identity, rigid tilt, squash, outside points.
 - **G-code transform:**
   - identity, flow, travel lifts, absolute extrusion refused;
@@ -355,4 +361,5 @@ surface still overhanging, the layer tilt inside against a reference, and time.
   whichever of the two parts was added first; a print surface above the bed is refused;
 - a hollow dome gets a generated core and its first layer on its inner surface;
 - a block printed on a pillar stands the gap above it, lifted off the bed, its corners beyond
-  the pillar; an automatic pillar is as high as the toolhead needs; a dome is a hemisphere.
+  the pillar; an automatic pillar is as high as the toolhead needs; a plate much wider than its
+  pillar is high takes as much filament as its volume; a dome is a hemisphere.

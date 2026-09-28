@@ -737,6 +737,26 @@ TEST_CASE("Layers offset from a print surface start the gap away from it, all ar
     CHECK(out[2].z() < base);
 }
 
+TEST_CASE("Layers over a flat top keep their place, and move out by their depth beside it", "[S4]")
+{
+    // A 10 mm cube core from -5 to 5 in X and Y, its top at 10 mm.
+    std::vector<std::array<int, 3>> voxel { { 0, 0, 0 } };
+    Surface                         cube = voxel_surface(voxel, 10.);
+    for (Eigen::Vector3d &v : cube.vertices)
+        v -= Eigen::Vector3d(5., 5., 0.);
+    const SurfaceDistance d(cube.vertices, cube.triangles);
+    const double          gap = 0.3, base = 10.2;
+    // 2 mm over the top, 3 mm out; 2 mm beside the side, 4 mm below the top.
+    const std::vector<Eigen::Vector3d> out = deform_offset_flat_top({ { 3., 1., 12. }, { 7., 0., 6. } }, d, Eigen::Vector2d::Zero(), 10.,
+                                                                    base, gap);
+    CHECK_THAT(out[0].x(), WithinAbs(3., 1e-9));
+    CHECK_THAT(out[0].y(), WithinAbs(1., 1e-9));
+    CHECK_THAT(out[0].z(), WithinAbs(base + 2. - gap, 1e-9));
+    CHECK_THAT(out[1].x(), WithinAbs(7. + 4., 1e-9));
+    CHECK_THAT(out[1].y(), WithinAbs(0., 1e-9));
+    CHECK_THAT(out[1].z(), WithinAbs(base + 2. - gap, 1e-9));
+}
+
 TEST_CASE("Unwrapping around the axis turns angle into length and height into width", "[S4]")
 {
     std::vector<std::array<int, 3>> voxel { { 0, 0, 0 } };

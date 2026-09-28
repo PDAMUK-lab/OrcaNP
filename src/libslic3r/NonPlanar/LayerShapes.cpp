@@ -363,6 +363,21 @@ std::vector<Eigen::Vector3d> deform_offset_from_above(const std::vector<Eigen::V
     return out;
 }
 
+std::vector<Eigen::Vector3d> deform_offset_flat_top(const std::vector<Eigen::Vector3d> &points, const SurfaceDistance &surface,
+                                                    const Eigen::Vector2d &axis, double top_z, double base_z, double gap)
+{
+    std::vector<Eigen::Vector3d> out;
+    out.reserve(points.size());
+    for (const Eigen::Vector3d &p : points) {
+        const Eigen::Vector2d v     = p.head<2>() - axis;
+        const double          h     = v.norm();
+        const double          depth = std::max(0., top_z - p.z());
+        const Eigen::Vector2d xy    = h > 1e-12 ? Eigen::Vector2d(axis + v * ((h + depth) / h)) : Eigen::Vector2d(p.head<2>());
+        out.emplace_back(xy.x(), xy.y(), base_z + surface.signed_distance(p) - gap);
+    }
+    return out;
+}
+
 std::vector<Eigen::Vector3d> deform_offset_around_axis(const std::vector<Eigen::Vector3d> &points, const SurfaceDistance &surface,
                                                        const Eigen::Vector2d &axis, double from_angle, double scale, double base_z,
                                                        double gap, double shift)

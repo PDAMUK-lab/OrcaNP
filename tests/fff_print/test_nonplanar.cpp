@@ -470,6 +470,40 @@ TEST_CASE("A part is printed on a pillar, lifted off the bed", "[NonPlanar]")
     CHECK(block_reach >= 4.5); // beyond the post
 }
 
+TEST_CASE("A part much wider than its pillar is high is printed at its full size", "[NonPlanar]")
+{
+    // A solid plate 30 mm wide and 1.5 mm thick on an automatic pillar 2 mm high (the printer does
+    // not tilt): the layers over the pillar's flat top are flat, so the plate takes as much filament
+    // as its volume.
+    const double width = 30., thickness = 1.5;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "plate.stl";
+    object->add_volume(TriangleMesh(its_make_cube(width, width, thickness)));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "pillar" },
+                                              { "s4_surface_size", "auto" }, { "use_relative_e_distances", true },
+                                              { "layer_change_gcode", "G92 E0" }, { "skirt_loops", 0 }, { "brim_type", "no_brim" },
+                                              { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
+                                              { "sparse_infill_density", "100%" }, { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    REQUIRE(print.validate().string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+
+    const PrintObject::S4Deformation *s4 = print.objects().front()->s4_deformation();
+    REQUIRE(s4 != nullptr);
+    CHECK_THAT(bounding_box(s4->core).size().z(), WithinAbs(2., 1e-3));
+    double plate_e = 0.;
+    for (const Move &m : moves)
+        if (m.layer_z > s4->surface_top + 1e-3)
+            plate_e += m.e;
+    const double filament_area = 0.25 * PI * std::pow(config.opt_float("filament_diameter", 0), 2);
+    CHECK_THAT(plate_e * filament_area, WithinRel(width * width * thickness, 0.1));
+}
+
 TEST_CASE("An automatic pillar is as high as the toolhead needs to lean under the part", "[NonPlanar]")
 {
     // Leaning 60 degrees, the head's rim 20 mm out, 15 mm up the nozzle, drops 20 sin 60 - 15 cos 60

@@ -96,6 +96,13 @@ FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const
 std::vector<Eigen::Vector3d> deform_offset_from_above(const std::vector<Eigen::Vector3d> &points, const SurfaceDistance &surface,
                                                       const Eigen::Vector3d &centre, double scale, double base_z, double gap);
 
+// Projected straight down onto a flat top at `top_z` (a pillar about `axis`): the horizontal
+// position is kept, so the layers over the top, which are flat, are not distorted. Below the top,
+// beside the surface, a point moves away from the axis by its depth below the top, so what hangs
+// beside the surface at different heights stays apart.
+std::vector<Eigen::Vector3d> deform_offset_flat_top(const std::vector<Eigen::Vector3d> &points, const SurfaceDistance &surface,
+                                                    const Eigen::Vector2d &axis, double top_z, double base_z, double gap);
+
 // Projected around a vertical axis: the angle about the axis, measured from `from_angle` over
 // [0, 2 pi), becomes arc length at `scale` along X, and the height becomes Y. Suits sleeves
 // around the axis. `shift` moves the result along X (for the copies that continue the unwrap past

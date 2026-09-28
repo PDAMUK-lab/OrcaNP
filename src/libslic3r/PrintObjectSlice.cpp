@@ -2,6 +2,8 @@
 
 #include <tbb/parallel_for.h>
 
+#include <optional>
+
 #include "ClipperUtils.hpp"
 #include "ElephantFootCompensation.hpp"
 #include "Exception.hpp"
@@ -959,6 +961,7 @@ void PrintObject::deform_s4()
             S4Mesh       core;
             const double gap  = m_config.s4_surface_gap.value;
             double       lift = 0.; // of the part, standing on a generated post
+            std::optional<Eigen::Vector2d> pillar_axis; // of a generated pillar, whose top is flat
             if (from_parts)
                 for (const ModelVolume *v : surfaces) {
                     const S4Mesh m    = to_s4_mesh(volume_in_slicing_frame(*this, *v));
@@ -983,6 +986,8 @@ void PrintObject::deform_s4()
                     post.height = custom ? m_config.s4_surface_height.value : std::max(toolhead_clearance(m_print->config()), 2.);
                 if (kind != S4SurfaceCore::Pillar)
                     post.dome_height = post.radius; // a hemisphere
+                else
+                    pillar_axis = post.centre;
                 if (post.radius < 0.5)
                     throw Slic3r::SlicingError(L("The part stands on too small a base for an automatic size: choose a custom size."), this->id().id);
                 if (post.height + post.dome_height < 0.5)
@@ -1051,9 +1056,13 @@ void PrintObject::deform_s4()
                 const Eigen::Vector3d lo = distance.bbox_min(), hi = distance.bbox_max();
                 const Eigen::Vector3d centre(0.5 * (lo.x() + hi.x()), 0.5 * (lo.y() + hi.y()),
                                              std::max(lo.z(), hi.z() - 0.5 * std::max(hi.x() - lo.x(), hi.y() - lo.y())));
-                s4->mesh     = NonPlanar::tetrahedralize(shell.vertices, shell.triangles, tp);
-                s4->deformed = NonPlanar::deform_offset_from_above(s4->mesh.points, distance, centre, hi.z() - centre.z() + gap,
-                                                                   s4->surface_top, gap);
+                s4->mesh = NonPlanar::tetrahedralize(shell.vertices, shell.triangles, tp);
+                // A pillar is seen straight from above: from a centre only as far below as the pillar is
+                // high, a pillar wider than it is high would shrink what stands on it several times over.
+                s4->deformed = pillar_axis ?
+                                   NonPlanar::deform_offset_flat_top(s4->mesh.points, distance, *pillar_axis, hi.z(), s4->surface_top, gap) :
+                                   NonPlanar::deform_offset_from_above(s4->mesh.points, distance, centre, hi.z() - centre.z() + gap,
+                                                                       s4->surface_top, gap);
             } else {
                 // Unwrapped around the axis. The part is split through the axis so no tetrahedron
                 // straddles the unwrap's ends, and each half is laid out twice, so a full turn can be
