@@ -968,6 +968,43 @@ TEST_CASE("Support is mapped as columns from the bed up to the part's underside"
     CHECK(first + middle + top == parse_body(out.str()).printing.size());
 }
 
+TEST_CASE("Support is left out where the real part leaves no room for it", "[S4]")
+{
+    // An arm 2 mm over the bed, sliced 20 times higher: the support sliced under it would squeeze
+    // twenty layers into the arm's real clearance, which is about what the support gaps take.
+    std::vector<std::array<int, 3>> voxels { { 0, 0, 0 } };
+    for (int x = 0; x < 4; ++x)
+        voxels.push_back({ x, 0, 1 });
+    const TetMesh                mesh = voxel_mesh(voxels, 2.);
+    std::vector<Eigen::Vector3d> deformed;
+    for (const Eigen::Vector3d &p : mesh.points)
+        deformed.emplace_back(p.x(), p.y(), 20. * p.z());
+    const S4Mapper       mapper(mesh, deformed, Eigen::Vector2d::Zero());
+    indexed_triangle_set surface;
+    for (const Eigen::Vector3d &p : deformed)
+        surface.vertices.emplace_back(p.cast<float>());
+    for (const std::array<int, 3> &t : s4_boundary_triangles(mesh, deformed))
+        surface.indices.emplace_back(t[0], t[1], t[2]);
+    const S4SupportSurface surface_tree(surface);
+    S4MapperSet            set;
+    set.objects[0].mapper             = &mapper;
+    set.objects[0].flat_top_z         = 0.2;
+    set.objects[0].blend_top_z        = 2.2;
+    set.objects[0].support_surface    = &surface_tree;
+    set.objects[0].support_top_gap    = 0.2;
+    set.objects[0].support_bottom_gap = 0.2;
+    std::ostringstream g;
+    g << start_block << "; NONPLANAR_OBJECT 0\n;TYPE:Support\n";
+    for (double z : { 0.2, 20., 39.6 })
+        g << "G1 X5 Y1 Z" << z << " F3000\nG1 X7 Y1 E0.1 F1200\n";
+    g << "; NONPLANAR_OBJECT_END\n";
+    std::istringstream  in(g.str());
+    std::ostringstream  out;
+    const S4GCodeReport report = s4_transform_gcode(in, out, set, S4GCodeConfig());
+    CHECK(report.support_dropped > 0);
+    CHECK(parse_body(out.str()).printing.empty());
+}
+
 TEST_CASE("The clearance check finds a leaning toolhead reaching the bed", "[S4]")
 {
     // Layers leaning 20 degrees (the rigid tilt of the mapping test); a 20 mm head 5 mm up the

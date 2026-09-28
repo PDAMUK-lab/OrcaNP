@@ -120,8 +120,10 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    narrowed down to the underside's edge: taking whichever direction happened to hit first put
    neighbouring columns under different points, and on a sloped underside their layers crossed.
    A point beside the part that is higher than the top of the column it follows, or level with
-   the part with nothing above it, holds nothing up in the real part; it is left out (its
-   segments become moves without extrusion). Support with no part anywhere near is mapped like
+   the part with nothing above it, holds nothing up in the real part; so does a column the real
+   part leaves a twentieth of its sliced height or less, where the overhang is about as low as
+   what the support would stand on. Such support is left out (its segments become moves without
+   extrusion). Support with no part anywhere near is mapped like
    the part, and so is all support of offset layers, whose overhangs in the sliced space say
    nothing about the part's.
    The tilt is then shaped for the machine: below `tilt_threshold` the nozzle stays vertical,
@@ -389,7 +391,7 @@ and the non-planar building blocks:
   - identity, flow, travel lifts, absolute extrusion refused;
   - flat layers near the bed easing into the mapped ones;
   - support in columns from the bed up to the part's underside, and none beside the part above
-    it;
+    it or where the real part leaves no room;
   - tilt threshold and limits;
   - toolhead clearance against printed material and the bed;
   - per-object mapping with flat print surfaces, and kept windows.

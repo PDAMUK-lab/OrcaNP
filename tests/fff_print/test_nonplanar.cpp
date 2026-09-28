@@ -385,9 +385,13 @@ TEST_CASE("S4 warns before slicing a part with nothing overhanging", "[NonPlanar
         Print print;
         for (ModelObject *mo : model.objects)
             print.auto_assign_extruders(mo);
-        print.apply(model, s4_config());
+        DynamicPrintConfig config = s4_config();
+        config.set_deserialize_strict({ { "layer_change_gcode", "G92 E0" } });
+        print.apply(model, config);
         std::vector<StringObjectException> warnings;
-        REQUIRE(print.validate(&warnings).string.empty());
+        const StringObjectException        error = print.validate(&warnings);
+        INFO(error.string);
+        REQUIRE(error.string.empty());
         const bool warned = std::any_of(warnings.begin(), warnings.end(),
                                         [](const StringObjectException &w) { return w.opt_key == "s4_max_overhang"; });
         INFO(object->name);
@@ -922,3 +926,25 @@ TEST_CASE("A generated sphere core puts the first layer on the part's inner surf
     CHECK(shell_min >= inner - 0.05);
 }
 
+TEST_CASE("A polar printer is chosen by its structure, and older presets load as one", "[NonPlanar]")
+{
+    // The structure Polar turns the conversion on.
+    DynamicPrintConfig chosen;
+    chosen.set_deserialize_strict("printer_structure", "polar");
+    chosen.set_deserialize_strict("polar_kinematics", "0");
+    chosen.handle_legacy_composite();
+    CHECK(chosen.opt_bool("polar_kinematics"));
+    // A preset from before the structure had a polar value has only the switch.
+    DynamicPrintConfig older;
+    older.set_deserialize_strict("printer_structure", "undefine");
+    older.set_deserialize_strict("polar_kinematics", "1");
+    older.handle_legacy_composite();
+    CHECK(older.option<ConfigOptionEnum<PrinterStructure>>("printer_structure")->value == psPolar);
+    // Any other printer stays as it is.
+    DynamicPrintConfig other;
+    other.set_deserialize_strict("printer_structure", "corexy");
+    other.set_deserialize_strict("polar_kinematics", "0");
+    other.handle_legacy_composite();
+    CHECK_FALSE(other.opt_bool("polar_kinematics"));
+    CHECK(other.option<ConfigOptionEnum<PrinterStructure>>("printer_structure")->value == psCoreXY);
+}

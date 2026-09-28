@@ -1,7 +1,6 @@
 #include <catch2/catch_all.hpp>
 
 #include "libslic3r/NonPlanar/PolarKinematics.hpp"
-#include "libslic3r/PrintConfig.hpp"
 
 #include <cmath>
 #include <sstream>
@@ -352,28 +351,4 @@ TEST_CASE("Each input line is recorded with its last output line and the machine
     // A line after the move keeps the pose.
     CHECK(output[records[4].out_lines - 1] == "M106 S0");
     CHECK_THAT(records[4].angle, WithinAbs(90., 1e-4));
-}
-
-TEST_CASE("A polar printer is chosen by its structure, and older presets load as one", "[Polar]")
-{
-    using namespace Slic3r;
-    // The structure Polar turns the conversion on.
-    DynamicPrintConfig chosen;
-    chosen.set_deserialize_strict("printer_structure", "polar");
-    chosen.set_deserialize_strict("polar_kinematics", "0");
-    chosen.handle_legacy_composite();
-    CHECK(chosen.opt_bool("polar_kinematics"));
-    // A preset from before the structure had a polar value has only the switch.
-    DynamicPrintConfig older;
-    older.set_deserialize_strict("printer_structure", "undefine");
-    older.set_deserialize_strict("polar_kinematics", "1");
-    older.handle_legacy_composite();
-    CHECK(older.option<ConfigOptionEnum<PrinterStructure>>("printer_structure")->value == psPolar);
-    // Any other printer stays as it is.
-    DynamicPrintConfig other;
-    other.set_deserialize_strict("printer_structure", "corexy");
-    other.set_deserialize_strict("polar_kinematics", "0");
-    other.handle_legacy_composite();
-    CHECK_FALSE(other.opt_bool("polar_kinematics"));
-    CHECK(other.option<ConfigOptionEnum<PrinterStructure>>("printer_structure")->value == psCoreXY);
 }

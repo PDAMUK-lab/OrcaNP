@@ -97,7 +97,8 @@ private:
     // Where a sliced support point prints: in its column between the part (or the bed) below and
     // the part above (see S4ObjectMapping::support_surface). Empty with no part above it nearby.
     // `loose` is set for a point that holds nothing up: beside the part and above the top of the
-    // column it follows, or level with the part and nothing above it within reach.
+    // column it follows, level with the part and nothing above it within reach, or in a column the
+    // real part leaves no room for.
     std::optional<S4Mapper::Result> map_support(const S4ObjectMapping &om, const Eigen::Vector3d &source, bool &loose);
     // map_support() for support where it applies, map_point() for the rest.
     S4Mapper::Result place(const S4ObjectMapping &om, bool support, const Eigen::Vector3d &source, bool &loose);
@@ -550,14 +551,17 @@ std::optional<S4Mapper::Result> Transform::map_support(const S4ObjectMapping &om
         // The bed, or the top of what prints as sliced: the flat first layers or a print surface.
         bottom_sliced = bottom_real = std::max({ m_cfg.z_floor, om.flat_top_z, om.identity_below_z });
     // A column the real part leaves less room for than the sliced one still rises, so its layers
-    // never fold over each other.
+    // never fold over each other. Where that leaves it a twentieth of its sliced height or less, the
+    // overhang is about as low as what the support stands on: there is no room for support, and
+    // what was sliced there holds nothing up.
     const double span_sliced = top_sliced - bottom_sliced;
-    const double top_real    = std::max(top.point.z() - om.support_top_gap, bottom_real + 0.05 * std::max(span_sliced, 0.));
+    const double room        = top.point.z() - om.support_top_gap - bottom_real;
+    const double top_real    = std::max(bottom_real + room, bottom_real + 0.05 * std::max(span_sliced, 0.));
 
     S4Mapper::Result res;
     res.tier     = S4Mapper::Tier::Inside;
     const double z = source.z();
-    loose = z > top_sliced && at != p.head<2>();
+    loose = (z > top_sliced && at != p.head<2>()) || room < 0.05 * span_sliced;
     if (z <= bottom_sliced) {
         res.point = source + bottom_shift;
     } else if (z >= top_sliced || span_sliced <= 1e-9) {
