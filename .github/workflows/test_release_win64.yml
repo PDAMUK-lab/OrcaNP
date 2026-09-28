@@ -93,7 +93,14 @@ jobs:
 
           **Windows x64, installer** (\`OrcaNP_${tag}_Windows_x64_installer.exe\`): installs as OrcaSlicer, replacing an installed OrcaSlicer and sharing its settings. Prefer the portable build to keep both.
 
-          What is new:
+          The README (https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/README.md) explains every setting OrcaNP adds: what it is for and how to use it.
+
+          New in this build:
+          - Graded tetrahedral mesh for S4, on by default (Quality > Non-planar (S4) > Graded mesh, Surface cell size, Interior cell size): small tetrahedra at the surface, larger inside. Curved walls now follow the model as closely as flat walls do; on a 102 mm 3DBenchy the outer wall's 99th percentile distance to the model fell from 0.60 mm to 0.33 mm (flat layers: 0.32 mm). Small parts are never meshed more coarsely than before.
+          - Preferences > General > Non-planar slicing: Warm start and Multi-threading, both on by default (restart to apply). They change the time S4 takes, not its result: the S4 solve of a 102 mm Benchy with 2 mm cells went from 490 s to 28 s.
+          - Print surfaces Pillar, Dome and Domed pillar (Layer shape: Offset from print surface), with Size Automatic or Custom (Diameter, Height): lift the part off the bed so a tilting nozzle can lean under it, or print a concave underside on a dome.
+
+          Earlier features:
           - Non-planar printing (Print settings > Quality > Non-planar (S4)): optimized S4 layers, conical layers, and layers offset from a print surface (support-like core parts, or a generated sphere or cylinder fitted to the part's cavity, with a surface gap all around).
           - Polar printers (Printer settings > Basic information > Polar kinematics and Non-planar toolhead): machine G-code in bed angle, radius, Z and tilt with inverse time feed, tilt and radius travel limits, toolhead clearance checks.
           - Printer profile "ThetaFirm Core R-Theta" (Custom printers) for the Core R-Theta 4-axis printer with the ThetaFirm RepRapFirmware configuration.
@@ -102,12 +109,12 @@ jobs:
           - Print surface parts: right-click a part in the object list > "Print surface (non-planar)". The print surface must be a part of the same object (Add part, or select both objects and Assemble).
 
           Fixed since the previous test build:
-          - OrcaSlicer closed while slicing layers offset from a print surface part that was added after the part printed over it (Add part > Cylinder, or the second part of a split).
-          - A print surface part standing on the part instead of the bed (for example a cylinder under a bracket's arm) is refused with a clear message: the print surface is printed first, so it must stand on the bed. It used to fail with an empty first layer message.
-          - A generated cylinder print surface under a part that covers the rotation axis just above the bed (a bottom not quite level) now says so, instead of "cavity too small".
-          - The toolhead clearance warning was shown twice when the radius travel warning came with it.
+          - S4 (Optimized) now lays its first layer flat on the bed. It used to follow the tetrahedra above it: where the part above was lifted, the first layer came as close as 0.06 mm to the bed (a 3DBenchy's bow), and where it was lowered, it rose off the bed. "Planar up to height" is now exact; the layers above ease into the curved ones over one surface cell.
+          - On a printer that cannot tilt the nozzle (a Voron, a Prusa, a Core R-Theta without tilt), S4 layers now lean no more than the Nozzle clearance angle (Printer > Basic information > Non-planar toolhead); before, only a tilting nozzle's travel limited them.
+          - The same model with the same settings now always gives the same G-code. CGAL stopped its sliver removal on a timer, so the mesh, and the slice, depended on how busy the computer was.
 
           Known limitations:
+          - The Non-planar toolhead defaults (50 degree clearance angle, 20 mm toolhead radius) describe no real toolhead: set them to yours before printing non-planar, most of all on a printer that cannot tilt the nozzle.
           - The Non-planar (S4) settings and the wall generator are Advanced settings: switch the process settings to Advanced (the toggle next to "Process") to see them.
           - The progress bar stays at 5% while a model is deformed for S4 (half a minute for 3DBenchy, minutes for complex models); it is working.
           - Offset from print surface layers all of the part by its distance from the print surface, so it suits parts printed over their print surface (domes, spheres, cups upside down, sleeves). Under a single overhang of a part standing on the bed (a bracket's arm), the rest of the part would be printed in vertical shells around the print surface, which the toolhead cannot reach; the clearance check warns. The generated sphere or cylinder needs a cavity open to the bed; other parts get a message saying so.
