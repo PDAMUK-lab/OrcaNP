@@ -88,6 +88,9 @@ private:
     void split_blocks(const std::vector<std::string> &lines);
     void build_records();
     void map_moves();
+    // Where a sliced point (G-code coordinates) prints through an object's mapper, flat near the
+    // bed and easing into the mapped layers above (see S4ObjectMapping). The tilt is unshaped.
+    S4Mapper::Result map_point(const S4ObjectMapping &om, const Eigen::Vector3d &source);
     void pass_junctions();
     const S4ObjectMapping &mapping(int object) const
     {
@@ -124,6 +127,8 @@ private:
     bool                     m_start_retracted = false;
     double                   m_retract_length = 0., m_retract_feed = 0.;
     int                      m_next_id        = 0;
+    // Slicer output revisits coordinates constantly; each distinct point is mapped once.
+    std::unordered_map<std::string, S4Mapper::Result> m_map_cache;
 };
 
 void Transform::split_blocks(const std::vector<std::string> &lines)
@@ -373,10 +378,7 @@ void Transform::build_records()
 
 void Transform::map_moves()
 {
-    // Slicer output revisits coordinates constantly; map each distinct point once.
-    std::unordered_map<std::string, S4Mapper::Result> cache;
-    char                                              key[96];
-    const Move                                       *last = nullptr;
+    const Move *last = nullptr;
     for (Record &r : m_records)
         for (Move &m : r.moves) {
             if (m.pure_e) {
@@ -398,16 +400,12 @@ void Transform::map_moves()
                 last = &m;
                 continue;
             }
-            std::snprintf(key, sizeof(key), "%p %.6f %.6f %.6f", (const void *) om.mapper, m.source.x(), m.source.y(), m.source.z());
-            auto it = cache.find(key);
-            if (it == cache.end())
-                it = cache.emplace(key, om.mapper->map(m.source - m_cfg.offset)).first;
-            const S4Mapper::Result &res = it->second;
-            m.mapped_by                 = om.mapper;
-            m.pos  = res.point + m_cfg.offset;
-            m.tilt = shape_tilt(res.tilt);
-            m.flow = res.flow;
-            m.tier = res.tier;
+            const S4Mapper::Result res = map_point(om, m.source);
+            m.mapped_by                = om.mapper;
+            m.pos                      = res.point;
+            m.tilt                     = shape_tilt(res.tilt);
+            m.flow                     = res.flow;
+            m.tier                     = res.tier;
             switch (res.tier) {
             case S4Mapper::Tier::Inside: ++m_report.inside; break;
             case S4Mapper::Tier::Nearest: ++m_report.nearest; break;
@@ -416,6 +414,39 @@ void Transform::map_moves()
             }
             last = &m;
         }
+}
+
+S4Mapper::Result Transform::map_point(const S4ObjectMapping &om, const Eigen::Vector3d &source)
+{
+    auto mapped = [&](const Eigen::Vector3d &q) {
+        char key[96];
+        std::snprintf(key, sizeof(key), "%p %.6f %.6f %.6f", (const void *) om.mapper, q.x(), q.y(), q.z());
+        auto it = m_map_cache.find(key);
+        if (it == m_map_cache.end())
+            it = m_map_cache.emplace(key, om.mapper->map(q - m_cfg.offset)).first;
+        S4Mapper::Result res = it->second;
+        res.point += m_cfg.offset;
+        return res;
+    };
+    S4Mapper::Result res = mapped(source);
+    if (const double z = source.z(), base = om.flat_top_z; z < om.blend_top_z) {
+        if (z <= base + 1e-3) {
+            res.point.z() = z;
+            res.flow      = 1.;
+            res.tilt      = 0.;
+        } else {
+            const double span = om.blend_top_z - base;
+            const double top  = mapped(Eigen::Vector3d(source.x(), source.y(), om.blend_top_z)).point.z();
+            // Lifted so far that the mapper puts the blend's top below the flat layers, a point
+            // still keeps rising, so the layers never fold over each other.
+            const double rise = std::max(top - base, 0.05 * span);
+            const double frac = (z - base) / span;
+            res.point.z()     = base + rise * frac;
+            res.flow          = rise / span;
+            res.tilt *= frac;
+        }
+    }
+    return res;
 }
 
 void Transform::pass_junctions()
@@ -460,8 +491,8 @@ void Transform::pass_junctions()
         Eigen::Vector3d       target = end.source;
         double                tilt   = 0.;
         if (to.mapped_by) {
-            const S4Mapper::Result res = to.mapped_by->map(end.source - m_cfg.offset);
-            target                     = res.point + m_cfg.offset;
+            const S4Mapper::Result res = map_point(mapping(to.object), end.source);
+            target                     = res.point;
             tilt                       = shape_tilt(res.tilt);
         }
         for (const Ref &r : job->run)

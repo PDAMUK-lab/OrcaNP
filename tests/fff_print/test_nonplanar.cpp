@@ -141,15 +141,11 @@ TEST_CASE("S4 printing curves the layers of an overhanging part", "[NonPlanar]")
             REQUIRE(axis(m, 'Z') > 0.);
 }
 
-TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlanar]")
-{
-    DynamicPrintConfig config = s4_config();
-    config.set_deserialize_strict({ { "s4_planar_height", 6. } });
-    const std::vector<Move> moves = body_moves(slice({ inverted_frustum() }, config));
+namespace {
 
-    // Layers wholly below 6 mm are flat, except where tetrahedra reaching above it blend into the
-    // bend (within about one 2 mm cell, the default 1/20 of the part's 40 mm width); above it the
-    // part still bends.
+// The lowest and highest extrusion of each layer.
+std::map<int, std::pair<double, double>> layer_z_spans(const std::vector<Move> &moves)
+{
     std::map<int, std::pair<double, double>> span;
     for (const Move &m : moves)
         if (m.e > 0.) {
@@ -157,14 +153,66 @@ TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlan
             it->second.first  = std::min(it->second.first, axis(m, 'Z'));
             it->second.second = std::max(it->second.second, axis(m, 'Z'));
         }
+    return span;
+}
+
+} // namespace
+
+TEST_CASE("S4 printing keeps the layers flat below the planar height", "[NonPlanar]")
+{
+    DynamicPrintConfig config = s4_config();
+    config.set_deserialize_strict({ { "s4_planar_height", 6. } });
+    const std::vector<Move> moves = body_moves(slice({ inverted_frustum() }, config));
+
+    // The 20 layers of 0.3 mm up to 6 mm are flat, each at its height; above it the part still
+    // bends.
     size_t flat = 0;
-    for (const auto &[layer, s] : span)
-        if (s.second < 2.5) {
-            CHECK_THAT(s.second - s.first, WithinAbs(0., 1e-3));
+    for (const auto &[layer, s] : layer_z_spans(moves))
+        if (s.second < 6. + 1e-3) {
+            CHECK_THAT(s.first, WithinAbs(0.3 * layer, 1e-3));
+            CHECK_THAT(s.second, WithinAbs(0.3 * layer, 1e-3));
             ++flat;
         }
-    CHECK(flat >= 8); // 0.3 mm layers
+    CHECK(flat == 20);
     CHECK(max_layer_z_span(moves) > 0.3);
+}
+
+TEST_CASE("S4 printing lays its first layer flat on the bed, and eases into the bend above it", "[NonPlanar]")
+{
+    // The frustum overhangs from the bed up, so the layers above its foot lift: the first layer
+    // still lies flat at its height, and every layer above stays above it.
+    const std::vector<Move> moves = body_moves(slice({ inverted_frustum() }, s4_config()));
+    const auto              spans = layer_z_spans(moves);
+    REQUIRE(spans.count(1) == 1);
+    CHECK_THAT(spans.at(1).first, WithinAbs(0.3, 1e-3));
+    CHECK_THAT(spans.at(1).second, WithinAbs(0.3, 1e-3));
+    for (const Move &m : moves)
+        if (m.e > 0. && m.layer > 1)
+            REQUIRE(axis(m, 'Z') > 0.3);
+    CHECK(max_layer_z_span(moves) > 0.3);
+}
+
+TEST_CASE("S4 layers lean no further than a nozzle that cannot tilt clears", "[NonPlanar]")
+{
+    // The frustum's 45 degree overhang turns its layers steeper than 12 degrees; a vertical nozzle
+    // clearing only 8 degrees keeps them within that.
+    auto steepest = [](const std::vector<Move> &moves) {
+        double      out  = 0.;
+        const Move *prev = nullptr;
+        for (const Move &m : moves) {
+            if (m.e > 0. && prev != nullptr && prev->layer == m.layer) {
+                const double run = std::hypot(axis(m, 'X') - axis(*prev, 'X'), axis(m, 'Y') - axis(*prev, 'Y'));
+                if (run > 0.2)
+                    out = std::max(out, std::atan2(std::abs(axis(m, 'Z') - axis(*prev, 'Z')), run) * 180. / PI);
+            }
+            prev = &m;
+        }
+        return out;
+    };
+    DynamicPrintConfig config = s4_config();
+    CHECK(steepest(body_moves(slice({ inverted_frustum() }, config))) > 12.);
+    config.set_deserialize_strict({ { "nonplanar_nozzle_clearance_angle", 8. } });
+    CHECK(steepest(body_moves(slice({ inverted_frustum() }, config))) < 8.);
 }
 
 TEST_CASE("S4 meshes a large part finely only at its surface, and a small part never coarser than uniformly", "[NonPlanar]")
@@ -532,6 +580,36 @@ TEST_CASE("An automatic pillar is as high as the toolhead needs to lean under th
     const BoundingBoxf3 post = bounding_box(s4->core);
     CHECK_THAT(post.size().z(), WithinAbs(20. * std::sin(PI / 3.) - 15. * std::cos(PI / 3.), 1e-3));
     CHECK_THAT(post.size().x(), WithinAbs(std::sqrt(50.) * 2., 0.05)); // the base's corners
+}
+
+TEST_CASE("A wider toolhead re-slices a part on an automatic pillar onto a higher one", "[NonPlanar]")
+{
+    // As above, the head's rim 20 mm out stands the pillar 20 sin 60 - 15 cos 60 high; changing it
+    // to 30 mm on the same print must slice again, onto a pillar 30 sin 60 - 15 cos 60 high.
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "block.stl";
+    object->add_volume(TriangleMesh(its_make_cube(10., 10., 4.)));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "pillar" },
+                                              { "s4_surface_size", "auto" }, { "use_relative_e_distances", true },
+                                              { "layer_change_gcode", "G92 E0" }, { "printable_area", "0x0,200x0,200x200,0x200" },
+                                              { "polar_kinematics", true }, { "polar_tilt_axis", true }, { "polar_tilt_min", -45 },
+                                              { "polar_tilt_max", 60 }, { "nonplanar_head_radius", 20 }, { "nonplanar_nozzle_length", 15 },
+                                              { "nonplanar_nozzle_tip_diameter", 0.8 }, { "nonplanar_nozzle_clearance_angle", 50 },
+                                              { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    Test::gcode(print);
+    auto pillar_height = [&print]() { return bounding_box(print.objects().front()->s4_deformation()->core).size().z(); };
+    CHECK_THAT(pillar_height(), WithinAbs(20. * std::sin(PI / 3.) - 15. * std::cos(PI / 3.), 1e-3));
+
+    config.set_deserialize_strict({ { "nonplanar_head_radius", 30 } });
+    print.apply(model, config);
+    Test::gcode(print);
+    CHECK_THAT(pillar_height(), WithinAbs(30. * std::sin(PI / 3.) - 15. * std::cos(PI / 3.), 1e-3));
 }
 
 TEST_CASE("A dome is a hemisphere of its diameter, the part on its top", "[NonPlanar]")

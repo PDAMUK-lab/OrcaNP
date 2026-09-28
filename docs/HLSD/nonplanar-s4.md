@@ -46,7 +46,9 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
      neighbourhoods.
    - Target rotation: how far the overhang exceeds `max_overhang`, times the direction and
      `rotation_multiplier`, bounded by a limit tapering from `max_rotation_near` next to the
-     support to `max_rotation_far` for the cells farthest from it.
+     support to `max_rotation_far` for the cells farthest from it. Both limits are capped by
+     what the nozzle can follow: the tilt axis's reach on a printer that tilts it, and otherwise
+     the nozzle's clearance angle, since a vertical nozzle digs into a layer sloping more steeply.
    - Rotation field: minimize `w * sum (r_i - r_j)^2` over face-adjacent cells plus
      `sum (r_i - t_i)^2` over cells with a target, within the limits. The Hessian is an
      M-matrix, so a primal-dual active set method converges; each of its steps is a sparse
@@ -78,8 +80,8 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    - Planar base (`planar_height`): the part up to that height keeps its shape and plays the
      bed's role. Its vertices are pinned, its cells get a zero limit (so the rotation field
      starts from zero at its top), its cells are the Dijkstra sources, and the Z floor keeps the
-     rest above it. The base prints with ordinary flat layers, blending into the curved ones over
-     the tetrahedra that reach above the base's top (about one cell).
+     rest above it. The base keeps its shape only in whole cells, so the G-code transform makes
+     it exact (below).
    - Holding the rest (`zero_initial_rotation`): boundary cells that do not overhang get a zero
      target instead of none, so the bend stays near the overhangs instead of spreading through
      the part.
@@ -94,6 +96,16 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
      `F = D1 D0^-1`, interpolated from volume-weighted vertex normals and measured in the radial
      plane;
    - the flow factor: the cell's undeformed / deformed volume ratio.
+   Near the bed the mapping is overridden. The cells are a couple of millimetres tall and linear,
+   so a layer a fraction of that above the pinned bed follows the cell above it: where the part
+   above is lifted, the first layer came out as little as 0.06 mm off the bed (on a Benchy's
+   bow), and where it is lowered, up in the air. So the layers up to the first layer's top, or
+   the planar base's if higher, are printed flat at their sliced heights, with their mapped XY,
+   no tilt and the flow as sliced. Over one surface cell above that, a point rises linearly with
+   its sliced height to where the mapping puts the point at the blend's top above it, and its
+   tilt and flow follow; so each column stays in order, and the layers meet the mapped ones at
+   the blend's top. Only the optimized shape needs this: offset layers start at the print
+   surface, and conical ones are flat over the footprint.
    The tilt is then shaped for the machine: below `tilt_threshold` the nozzle stays vertical,
    between it and twice it the tilt ramps up to the layer's, and it never exceeds `max_tilt`.
    Repair passes follow: extrusion scaled by the flow factor (clipped to 0.25–3 with the clipped
@@ -258,8 +270,10 @@ Most printer settings only affect G-code export. The tilt travel also bounds the
 with a tilting nozzle the S4 rotation limits are capped at the travel both sides of vertical
 share, because with axis crossing the polar conversion may reach a point from either side of
 the rotation axis, which flips the sign of the tilt. The G-code transform caps the tilt at the
-same value, or, without axis crossing, at the travel on each side. Changing the travel, the tilt
-axis or polar kinematics therefore re-slices S4 objects.
+same value, or, without axis crossing, at the travel on each side. Without a tilting nozzle
+the limits are capped at the nozzle clearance angle instead. And an automatic pillar is as high
+as the toolhead needs. Changing the travel, the tilt axis, polar kinematics or the toolhead's
+dimensions therefore re-slices S4 objects.
 
 The pipeline hooks into the print steps as follows:
 
@@ -343,6 +357,7 @@ and the non-planar building blocks:
 - **Mapper:** identity, rigid tilt, squash, outside points.
 - **G-code transform:**
   - identity, flow, travel lifts, absolute extrusion refused;
+  - flat layers near the bed easing into the mapped ones;
   - tilt threshold and limits;
   - toolhead clearance against printed material and the bed;
   - per-object mapping with flat print surfaces, and kept windows.
@@ -353,7 +368,9 @@ on a model given by `S4_QUALITY_MODEL` it compares mesh and solver variants
 surface still overhanging, the layer tilt inside against a reference, and time.
 
 `tests/fff_print/test_nonplanar.cpp` slices through the whole pipeline:
-- S4 curves layers, holds them flat below the planar height, and needs relative extrusion;
+- S4 curves layers, holds them flat below the planar height, lays the first layer flat on
+  the bed, keeps its layers within a vertical nozzle's clearance angle, and needs relative
+  extrusion;
 - polar export drives angle and radius, and tilts the nozzle over S4 layers;
 - the preview of a polar print has each move's machine pose, and its line is the machine move
   that ends it;
@@ -361,5 +378,6 @@ surface still overhanging, the layer tilt inside against a reference, and time.
   whichever of the two parts was added first; a print surface above the bed is refused;
 - a hollow dome gets a generated core and its first layer on its inner surface;
 - a block printed on a pillar stands the gap above it, lifted off the bed, its corners beyond
-  the pillar; an automatic pillar is as high as the toolhead needs; a plate much wider than its
-  pillar is high takes as much filament as its volume; a dome is a hemisphere.
+  the pillar; an automatic pillar is as high as the toolhead needs, and is sliced again when the
+  toolhead changes; a plate much wider than its pillar is high takes as much filament as its
+  volume; a dome is a hemisphere.

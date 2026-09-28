@@ -879,6 +879,41 @@ TEST_CASE("Extrusion outside an unwrapped object's window is left out", "[S4]")
         CHECK(pt.x() >= 2. - 1e-6);
 }
 
+TEST_CASE("Layers near the bed are printed flat, then ease into the mapped ones", "[S4]")
+{
+    // Sliced twice as high as it prints, a mapped layer is half as thick: the first would print
+    // 0.1 mm off the bed. Flat up to 0.2 and easing in by 2.2, a layer halfway up the blend lies
+    // halfway from 0.2 to where 2.2 maps (1.1), and a layer above it is mapped.
+    const TetMesh                mesh = voxel_mesh(cantilever_voxels(), 2.);
+    std::vector<Eigen::Vector3d> deformed;
+    for (const Eigen::Vector3d &p : mesh.points)
+        deformed.emplace_back(p.x(), p.y(), 2. * p.z());
+    const S4Mapper mapper(mesh, deformed, Eigen::Vector2d::Zero());
+    S4MapperSet    set;
+    set.objects[1].mapper      = &mapper;
+    set.objects[1].flat_top_z  = 0.2;
+    set.objects[1].blend_top_z = 2.2;
+    std::istringstream in(start_block + "; NONPLANAR_OBJECT 1\n" + square(0.2) + square(1.2) + square(3.) + "; NONPLANAR_OBJECT_END\n");
+    std::ostringstream out;
+    s4_transform_gcode(in, out, set, S4GCodeConfig());
+    const Parsed p = parse_body(out.str());
+    size_t       flat = 0, blended = 0, mapped = 0;
+    for (const Eigen::Vector3d &q : p.printing) {
+        if (std::abs(q.z() - 0.2) < 1e-6)
+            ++flat;
+        else if (std::abs(q.z() - 0.65) < 1e-6)
+            ++blended;
+        else if (std::abs(q.z() - 1.5) < 1e-6)
+            ++mapped;
+    }
+    CHECK(flat == 16);
+    CHECK(blended == 16);
+    CHECK(mapped == 16);
+    // Each square lays 0.4 mm of filament as sliced: all of it flat, 0.45 of it in the blend (its
+    // layers are 0.9 / 2 as thick), and half of it mapped.
+    CHECK_THAT(p.e_total, WithinAbs(0.4 + 0.4 * 0.45 + 0.4 * 0.5, 1e-6));
+}
+
 TEST_CASE("The clearance check finds a leaning toolhead reaching the bed", "[S4]")
 {
     // Layers leaning 20 degrees (the rigid tilt of the mapping test); a 20 mm head 5 mm up the

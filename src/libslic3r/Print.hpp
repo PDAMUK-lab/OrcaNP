@@ -392,6 +392,11 @@ public:
         Vec2d                        axis;     // the printer's rotation axis
         // Print surface parts are printed as sliced up to this height; the part is above it.
         double surface_top = -std::numeric_limits<double>::infinity();
+        // Optimized layers are flat up to flat_top (the first layer, or the planar base) and ease
+        // into the deformation's over `blend` above it: its cells, about `blend` tall at the
+        // surface, cannot hold a thinner layer flat.
+        double flat_top = -std::numeric_limits<double>::infinity();
+        double blend    = 0.;
         // Unwrapped layers are sliced over more than a turn: only extrusion in [keep_min_x,
         // keep_max_x) of the slicing frame is printed.
         double keep_min_x = -std::numeric_limits<double>::infinity();

@@ -58,6 +58,8 @@ std::unique_ptr<S4Mappers> s4_mappers(const Print &print)
         m.mapper           = out->storage.back().get();
         // G-code heights carry three decimals: the surface's top layer must not read as above it.
         m.identity_below_z = s4->surface_top + offset.z() + 1e-3;
+        m.flat_top_z       = s4->flat_top + offset.z();
+        m.blend_top_z      = m.flat_top_z + s4->blend;
         m.keep_min_x       = s4->keep_min_x + offset.x();
         m.keep_max_x       = s4->keep_max_x + offset.x();
     }

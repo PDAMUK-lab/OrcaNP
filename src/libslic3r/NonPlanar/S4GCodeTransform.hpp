@@ -117,6 +117,12 @@ struct S4ObjectMapping
     const S4Mapper *mapper = nullptr; // null: printed as sliced
     // Sliced space up to this height is the object's print surface, printed as sliced.
     double identity_below_z = -std::numeric_limits<double>::infinity();
+    // Layers up to flat_top_z are printed flat, at their sliced heights. Between it and
+    // blend_top_z a point rises linearly, with its sliced height, to where the mapper puts the
+    // point at blend_top_z above it, so the layers ease into the mapped ones: the mapper's cells
+    // cannot hold a layer thinner than themselves flat.
+    double flat_top_z  = -std::numeric_limits<double>::infinity();
+    double blend_top_z = -std::numeric_limits<double>::infinity();
     // Only extrusion whose sliced X lies in [keep_min_x, keep_max_x) is printed: an unwrapped
     // layer is sliced over more than a turn, and the rest repeats what is printed here.
     double keep_min_x = -std::numeric_limits<double>::infinity();

@@ -931,16 +931,21 @@ void PrintObject::deform_s4()
             params.size_weighted         = m_config.s4_graded_mesh.value;
             params.warm_start            = NonPlanar::s4_solver_options().warm_start;
             params.multithreading        = NonPlanar::s4_solver_options().multithreading;
-            // A tilting nozzle follows the layers, so they may lean no further than it can on either side.
-            const PrintConfig &pc = m_print->config();
-            if (pc.polar_kinematics.value && pc.polar_tilt_axis.value) {
-                const double reach       = std::min(-pc.polar_tilt_min.value, pc.polar_tilt_max.value);
-                params.max_rotation_near = std::min(params.max_rotation_near, reach);
-                params.max_rotation_far  = std::min(params.max_rotation_far, reach);
-            }
+            // A tilting nozzle follows the layers, so they may lean no further than it can on either
+            // side; a vertical one no further than the slope its clearance angle clears.
+            const PrintConfig &pc    = m_print->config();
+            const double       reach = pc.polar_kinematics.value && pc.polar_tilt_axis.value ?
+                                           std::min(-pc.polar_tilt_min.value, pc.polar_tilt_max.value) :
+                                           pc.nonplanar_nozzle_clearance_angle.value;
+            params.max_rotation_near = std::min(params.max_rotation_near, reach);
+            params.max_rotation_far  = std::min(params.max_rotation_far, reach);
             s4->mesh = NonPlanar::tetrahedralize(shell.vertices, shell.triangles, tp);
             m_print->throw_if_canceled();
             s4->deformed = NonPlanar::s4_deform(s4->mesh, params).deformed;
+            s4->flat_top = std::max(pc.initial_layer_print_height.value, params.planar_height);
+            s4->blend    = tp.surface_cell_size > 0. ? tp.surface_cell_size :
+                           tp.cell_size > 0.         ? tp.cell_size :
+                                                       NonPlanar::automatic_cell_size(shell.vertices);
         } else if (shape == S4LayerShape::Cone) {
             // Flat over the radii the part stands on the bed at, so its whole footprint is in the
             // first layer; conical beyond them (within them for a negative angle).

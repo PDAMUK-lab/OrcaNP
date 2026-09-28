@@ -5067,8 +5067,9 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Planar up to height");
     def->category = L("Quality");
     def->tooltip  = L("The part is printed with flat layers up to this height above the bed, and non-planar above it, where "
-                      "the flat part is the base the deformation starts from. The layers blend from flat to curved over about "
-                      "one tetrahedron below this height. Overhangs below it are not corrected. 0 deforms from the bed up.");
+                      "the flat part is the base the deformation starts from. The first layer is always flat. Above the flat "
+                      "layers the layers ease from flat to curved over one surface cell. Overhangs below this height are not "
+                      "corrected. 0 deforms from the first layer up.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->mode     = comAdvanced;
@@ -8364,7 +8365,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Nozzle clearance angle");
     def->tooltip  = L("Angle of absolute clearance: from the edge of the flat nozzle tip, the nozzle and hotend stay above a "
                       "cone rising at this angle from the tip's face (0 degrees is flat). With a vertical nozzle, surfaces "
-                      "sloping more steeply than this reach into it.");
+                      "sloping more steeply than this reach into it, so on a printer that cannot tilt the nozzle, non-planar "
+                      "(S4) layers lean no more than this.");
     def->sidetext = u8"°";	// degrees, don't need translation
     def->min      = 5;
     def->max      = 90;
