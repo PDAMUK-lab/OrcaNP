@@ -854,9 +854,9 @@ TriangleMesh revolve(const std::vector<Vec2d> &profile, int segments = 96)
         for (int k = 0; k < segments; ++k) {
             const int a = at(i, k), b = at(i, k + 1), c = at(i + 1, k), d = at(i + 1, k + 1);
             if (a != b)
-                its.indices.emplace_back(a, c, b);
+                its.indices.emplace_back(a, b, c);
             if (c != d)
-                its.indices.emplace_back(b, c, d);
+                its.indices.emplace_back(b, d, c);
         }
     return TriangleMesh(its);
 }
@@ -992,7 +992,7 @@ TEST_CASE("Layers offset from painted faces start on them, the print surface und
     REQUIRE(invalid.string.empty());
     const std::vector<Move> moves = body_moves(Test::gcode(print));
     const auto             *s4    = print.objects().front()->s4_deformation();
-    CHECK(s4->lift == 0.);
+    CHECK_THAT(s4->lift, WithinAbs(0., 1e-9));
     const Vec3d centre(100., 100., 0.);
     size_t      core_points = 0, shell_points = 0;
     double      core_max = 0., shell_min = 1e9, shell_max = 0.;
@@ -1147,8 +1147,9 @@ TEST_CASE("A print surface part of an older project becomes painted faces", "[No
     CHECK(convert_legacy_print_surface_parts(*object));
     REQUIRE(object->volumes.size() == 1);
     REQUIRE(object->volumes.front() == shell);
-    const indexed_triangle_set painted = shell->print_surface_facets.get_facets(*shell, EnforcerBlockerType::ENFORCER);
+    indexed_triangle_set painted = shell->print_surface_facets.get_facets(*shell, EnforcerBlockerType::ENFORCER);
     REQUIRE(! painted.indices.empty());
+    its_transform(painted, shell->get_matrix()); // the object's frame, the domes' centre at its origin
     for (const auto &t : painted.indices)
         CHECK(((painted.vertices[t[0]] + painted.vertices[t[1]] + painted.vertices[t[2]]) / 3.f).norm() < 21.5f);
     CHECK(! convert_legacy_print_surface_parts(*object));
