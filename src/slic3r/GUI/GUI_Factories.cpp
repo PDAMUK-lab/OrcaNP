@@ -113,8 +113,7 @@ std::map<std::string, std::vector<SimpleSettingData>> SettingsFactory::PART_CATE
        {"zaa_minimize_perimeter_height", "", 2},
        {"zaa_dont_alternate_fill_direction", "", 3},
        {"zaa_min_z", "", 4},
-       // Orca: non-planar layers offset from a print surface part.
-       {"s4_print_surface", "", 20}}},
+}},
      {L("Strength"),
       {{"wall_loops", "", 1},
        {"top_shell_layers", L("Top solid layers"), 1},
@@ -954,16 +953,6 @@ wxMenuItem* MenuFactory::append_menu_item_printable(wxMenu* menu)
     return menu_item_printable;
 }
 
-wxMenuItem* MenuFactory::append_menu_item_print_surface(wxMenu* menu)
-{
-    return append_menu_check_item(menu, wxID_ANY, _L("Print surface (non-planar)"),
-        _L("Print this part first with flat layers, as the surface the object's other part is printed on in layers offset from it "
-           "(non-planar layer shape \"Offset from print surface\")."),
-        [](wxCommandEvent&) { obj_list()->toggle_print_surface(); }, menu,
-        []() { return obj_list()->has_selected_parts(); },
-        []() { return obj_list()->selected_parts_are_print_surface(); }, m_parent);
-}
-
 wxMenuItem* MenuFactory::append_menu_item_auto_drop(wxMenu* menu)
 {
     wxString    menu_text                       = _L("Auto Drop");
@@ -1595,7 +1584,6 @@ void MenuFactory::create_part_menu()
         [](wxCommandEvent&) { plater()->split_volume(); }, "split_parts", nullptr,
         []() { return plater()->can_split(false); }, m_parent);
     m_part_menu.AppendSeparator();
-    append_menu_item_print_surface(&m_part_menu);
     append_menu_item_per_object_process(&m_part_menu);
     append_menu_item_per_object_settings(&m_part_menu);
 }
@@ -1657,7 +1645,6 @@ void MenuFactory::create_bbl_part_menu()
     append_submenu(menu, split_menu, wxID_ANY, _L("Split"), _L("Split the selected object"), "",
         []() { return plater()->can_split(true); }, m_parent);
     menu->AppendSeparator();
-    append_menu_item_print_surface(menu);
     append_menu_item_per_object_process(menu);
     append_menu_item_per_object_settings(menu);
     append_menu_item_change_type(menu);

@@ -222,7 +222,7 @@ enum class S4LayerShape
 // part's inner surface, or a pillar or dome generated for the part to stand on.
 enum class S4SurfaceCore
 {
-    Parts,
+    Painted, // generated under or inside the part's faces painted as print surface
     Sphere,
     Cylinder,
     // Under the part, which stands on them.

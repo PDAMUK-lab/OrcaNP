@@ -1789,28 +1789,23 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     for (const PrintObject *object : m_objects) {
         if (! object->config().s4_enabled.value)
             continue;
-        size_t parts = 0, surfaces = 0, others = 0;
+        size_t parts = 0, others = 0;
         for (const ModelVolume *v : object->model_object()->volumes) {
-            if (PrintObject::is_s4_print_surface(*v))
-                ++surfaces;
-            else if (v->is_model_part())
+            if (v->is_model_part())
                 ++parts;
             else if (v->is_modifier() || v->is_negative_volume())
                 ++others;
         }
         if (parts != 1 || others != 0 || object->instances().size() != 1)
-            return { L("Non-planar (S4) printing supports objects with one part printed non-planar (besides print surface parts), "
-                       "without modifiers or negative volumes, placed once."), object, "s4_enabled" };
-        const bool offset = object->config().s4_layer_shape.value == S4LayerShape::Offset &&
-                            object->config().s4_surface_core.value == S4SurfaceCore::Parts;
-        if (offset && surfaces == 0)
-            return { L("Layers offset from a print surface need a part of the same object set as print surface: add it to the "
-                       "object as a part (right-click the object > Add part, or select both objects and Assemble them), then "
-                       "right-click the part > Print surface (non-planar). Or generate one with Print surface \"Sphere\" or "
-                       "\"Cylinder\"."), object, "s4_layer_shape" };
-        if (! offset && surfaces > 0)
-            return { L("Print surface parts need the layer shape \"Offset from print surface\" with the print surface \"Parts\"."),
-                     object, "s4_layer_shape" };
+            return { L("Non-planar (S4) printing supports objects with one part, without modifiers or negative volumes, "
+                       "placed once."), object, "s4_enabled" };
+        if (object->config().s4_layer_shape.value == S4LayerShape::Offset &&
+            object->config().s4_surface_core.value == S4SurfaceCore::Painted &&
+            std::none_of(object->model_object()->volumes.begin(), object->model_object()->volumes.end(),
+                         [](const ModelVolume *v) { return v->is_model_part() && v->is_print_surface_painted(); }))
+            return { L("Layers offset from painted faces need the faces the part is printed onto painted as print surface: "
+                       "select the object and paint them with the print surface painting tool, or choose a generated print "
+                       "surface."), object, "s4_surface_core" };
         if (! m_config.use_relative_e_distances)
             return { L("Non-planar (S4) printing needs relative extrusion (use_relative_e_distances)."), object, "use_relative_e_distances" };
         if (m_config.spiral_mode)
@@ -1818,7 +1813,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         // The optimized shape only turns overhangs: a part without them is bent and bent back for nothing.
         if (object->config().s4_layer_shape.value == S4LayerShape::Optimized)
             for (const ModelVolume *v : object->model_object()->volumes)
-                if (v->is_model_part() && ! PrintObject::is_s4_print_surface(*v)) {
+                if (v->is_model_part()) {
                     indexed_triangle_set its = v->mesh().its;
                     its_transform(its, object->trafo_centered() * v->get_matrix(), true);
                     std::vector<Eigen::Vector3d>    vertices;
@@ -2849,6 +2844,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             if (!model_volume1.mmu_segmentation_facets.equals(model_volume2.mmu_segmentation_facets))
                 return false;
             if (!model_volume1.fuzzy_skin_facets.equals(model_volume2.fuzzy_skin_facets))
+                return false;
+            if (!model_volume1.print_surface_facets.equals(model_volume2.print_surface_facets))
                 return false;
             if (model_volume1.config.get() != model_volume2.config.get())
                 return false;

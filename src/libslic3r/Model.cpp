@@ -12,6 +12,7 @@
 #include "MTUtils.hpp"
 #include "TriangleMeshSlicer.hpp"
 #include "TriangleSelector.hpp"
+#include "AABBTreeIndirect.hpp"
 #include "MaterialType.hpp"
 
 #include "Format/AMF.hpp"
@@ -493,6 +494,7 @@ Model Model::read_from_archive(const std::string& input_file, DynamicPrintConfig
         throw Slic3r::RuntimeError(_L("Loading of a model file failed."));
 
     for (ModelObject *o : model.objects) {
+        convert_legacy_print_surface_parts(*o);
 //        if (boost::algorithm::iends_with(input_file, ".zip.amf"))
 //        {
 //            // we remove the .zip part of the extension to avoid it be added to filenames when exporting
@@ -1947,6 +1949,7 @@ void ModelObject::convert_units(ModelObjectPtrs& new_objects, ConversionType con
             vol->seam_facets.assign(volume->seam_facets);
             vol->mmu_segmentation_facets.assign(volume->mmu_segmentation_facets);
             vol->fuzzy_skin_facets.assign(volume->fuzzy_skin_facets);
+            vol->print_surface_facets.assign(volume->print_surface_facets);
 
             // Perform conversion only if the target "imperial" state is different from the current one.
             // This check supports conversion of "mixed" set of volumes, each with different "imperial" state.
@@ -2059,6 +2062,7 @@ void ModelVolume::reset_extra_facets()
     this->seam_facets.reset();
     this->mmu_segmentation_facets.reset();
     this->fuzzy_skin_facets.reset();
+    this->print_surface_facets.reset();
 }
 
 std::optional<TriangleSelector::SavedPainting> ModelVolume::save_painting() const
@@ -2070,6 +2074,7 @@ std::optional<TriangleSelector::SavedPainting> ModelVolume::save_painting() cons
         sp.seam      = seam_facets.get_data();
         sp.mmu       = mmu_segmentation_facets.get_data();
         sp.fuzzy     = fuzzy_skin_facets.get_data();
+        sp.print_surface = print_surface_facets.get_data();
         return sp;
     }
 
@@ -2102,6 +2107,7 @@ void ModelVolume::restore_painting(const std::optional<TriangleSelector::SavedPa
     remap_one(saved->seam,      seam_facets);
     remap_one(saved->mmu,       mmu_segmentation_facets);
     remap_one(saved->fuzzy,     fuzzy_skin_facets);
+    remap_one(saved->print_surface, print_surface_facets);
 }
 
 static void invalidate_translations(ModelObject* object, const ModelInstance* src_instance)
@@ -2214,6 +2220,7 @@ void ModelObject::split(ModelObjectPtrs* new_objects, const bool remap_paint)
                 COPY_FACETS(seam_facets);
                 COPY_FACETS(mmu_segmentation_facets);
                 COPY_FACETS(fuzzy_skin_facets);
+                COPY_FACETS(print_surface_facets);
             } else if (saved_painting) {
                 // Geometry changed, attempt to remap them to the new mesh
                 new_vol->restore_painting(saved_painting);
@@ -2941,6 +2948,7 @@ void ModelVolume::assign_new_unique_ids_recursive()
     seam_facets.set_new_unique_id();
     mmu_segmentation_facets.set_new_unique_id();
     fuzzy_skin_facets.set_new_unique_id();
+    print_surface_facets.set_new_unique_id();
 }
 
 void ModelVolume::rotate(double angle, Axis axis)
@@ -3836,6 +3844,55 @@ bool model_fuzzy_skin_data_changed(const ModelObject &mo, const ModelObject &mo_
     return model_property_changed(mo, mo_new,
         [](const ModelVolumeType t) { return t == ModelVolumeType::MODEL_PART; },
         [](const ModelVolume &mv_old, const ModelVolume &mv_new){ return mv_old.fuzzy_skin_facets.timestamp_matches(mv_new.fuzzy_skin_facets); });
+}
+
+bool convert_legacy_print_surface_parts(ModelObject &object)
+{
+    std::vector<size_t> surfaces;
+    ModelVolume        *part = nullptr;
+    for (size_t i = 0; i < object.volumes.size(); ++i) {
+        ModelVolume *v = object.volumes[i];
+        if (! v->is_model_part())
+            continue;
+        if (v->config.has("s4_print_surface") && v->config.opt_bool("s4_print_surface"))
+            surfaces.push_back(i);
+        else if (part == nullptr)
+            part = v;
+    }
+    if (surfaces.empty())
+        return false;
+    if (part != nullptr) {
+        // The part's faces within a millimetre of the print surface parts, which covers the surface gap.
+        indexed_triangle_set core;
+        for (size_t i : surfaces) {
+            indexed_triangle_set its = object.volumes[i]->mesh().its;
+            its_transform(its, object.volumes[i]->get_matrix());
+            its_merge(core, its);
+        }
+        const auto               tree  = AABBTreeIndirect::build_tree_over_indexed_triangle_set(core.vertices, core.indices);
+        const indexed_triangle_set &its = part->mesh().its;
+        const Transform3d        trafo = part->get_matrix();
+        TriangleSelector         selector(part->mesh());
+        for (size_t i = 0; i < its.indices.size(); ++i) {
+            const auto &t = its.indices[i];
+            const Vec3d c = trafo * ((its.vertices[t[0]] + its.vertices[t[1]] + its.vertices[t[2]]).cast<double>() / 3.);
+            size_t      hit;
+            Vec3d       closest;
+            if (AABBTreeIndirect::squared_distance_to_indexed_triangle_set(core.vertices, core.indices, tree, c, hit, closest) < 1.)
+                selector.set_facet(int(i), EnforcerBlockerType::ENFORCER);
+        }
+        part->print_surface_facets.set(selector);
+    }
+    for (auto it = surfaces.rbegin(); it != surfaces.rend(); ++it)
+        object.delete_volume(*it);
+    return true;
+}
+
+bool model_print_surface_data_changed(const ModelObject &mo, const ModelObject &mo_new)
+{
+    return model_property_changed(mo, mo_new,
+        [](const ModelVolumeType t) { return t == ModelVolumeType::MODEL_PART; },
+        [](const ModelVolume &mv_old, const ModelVolume &mv_new){ return mv_old.print_surface_facets.timestamp_matches(mv_new.print_surface_facets); });
 }
 
 bool model_brim_points_data_changed(const ModelObject& mo, const ModelObject& mo_new)

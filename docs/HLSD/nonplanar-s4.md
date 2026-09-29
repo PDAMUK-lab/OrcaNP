@@ -170,8 +170,8 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
 Besides the optimized S4 field, the same deform → slice → map-back pipeline takes deformations
 whose flat slices are chosen surfaces (`LayerShapes`):
 
-- **Offset from a print surface.** Parts of the object set as print surface form a core that is
-  printed first with flat layers. The object's other part is printed over it in layers at
+- **Offset from a print surface.** A core generated under or inside the part's painted faces,
+  or to fit the part, is printed first with flat layers. The part is printed over it in layers at
   constant distance from the core's surface, like support: a point at signed distance d from
   the core goes to height H + d - gap. H is the top of the layer holding the core's top, so the
   core's layers all come first, the first layer over the core lies the gap away from it all
@@ -184,7 +184,20 @@ whose flat slices are chosen surfaces (`LayerShapes`):
     core propping up one overhang of a part (a bracket's arm): the rest of that part, printed
     after the core in shells around it, would need a horizontal nozzle next to the bed, which
     the clearance check reports.
-  - The core is either the object's parts set as print surface, or generated to fit the part:
+  - The core is generated, under or inside the part's faces painted as print surface, or to fit
+    the part:
+    - Under or inside the **painted faces** (`ModelVolume::print_surface_facets`), the gap short
+      of them. Laid out from above (`painted_surface_from_above()`): the painted faces facing
+      down, each vertex moved off them along its faces' normals far enough to keep the gap from
+      each, walls from their open edges down to the bed, and a bottom there; a painted face over
+      another is left out, so the core stands under the lowest. Laid out around the axis
+      (`painted_surface_around_axis()`): rays out from the axis, about half a millimetre apart
+      on the faces, find the painted faces facing the axis, the gap short of them along the
+      face's normal; a ray that misses takes the nearest hit above or below it, the rings are
+      capped at the top and continued down to the bed as a column, and faces that do not go all
+      the way round the axis are refused. The part is lifted as onto a pillar: automatically
+      when it stands only on painted faces (nine tenths of the area it stands on) or is printed
+      round the axis, or by the custom height.
     - A **sphere** centred below the part's top by half its width, out to the part's nearest
       point.
     - A **cylinder** about the rotation axis, from the bed to the roof of the part's cavity, out to
@@ -206,7 +219,7 @@ whose flat slices are chosen surfaces (`LayerShapes`):
     printed first.
 
     A generated core is sliced with the part and always printed as support is, since it is
-    removed after printing (a modelled print surface part keeps its own part settings): up to
+    removed after printing: up to
     the surface's top the layers hold
     nothing else, so after the infill step, and again after the support step (whose settings it
     follows), their extrusions are rebuilt from their slices
@@ -293,15 +306,18 @@ Two groups of settings switch the pipeline on:
 - **Preferences > General > Non-planar slicing**: warm start and multi-threading of the S4
   solver (`s4_warm_start`, `s4_multithreading` in the application's configuration), on by
   default; they change the time, not the result, and are read at startup.
-- **Print surface** (`s4_surface_core`): what offset layers are offset from. Either the parts set
-  as print surface (`s4_print_surface`, a per-part setting, set from a part's context menu with
-  *Print surface (non-planar)* or among its settings), or a generated sphere, cylinder, pillar,
-  dome or domed pillar (`s4_surface_size`, `s4_surface_diameter`, `s4_surface_height`). A part
-  on a pillar is lifted only in slicing: the plater shows it on the bed, the preview where it
-  prints.
-  OrcaSlicer places every object on the bed, so a modelled core and what is printed over it are
-  two parts of one object. Orca's check for overhangs needing support is skipped for offset
-  layers: they lie on the print surface, not on the layers sliced below them.
+- **Print surface** (`s4_surface_core`): what offset layers are offset from. Either the part's
+  faces painted as print surface (painted with the *Paint-on print surface* gizmo, which works
+  like the other painting gizmos; saved in the 3MF as `paint_print_surface`; a change re-slices
+  the object), or a generated sphere, cylinder, pillar, dome or domed pillar
+  (`s4_surface_size`, `s4_surface_diameter`, `s4_surface_height`). A lifted part is lifted only
+  in slicing: the plater shows it on the bed, the preview where it prints. Orca's check for
+  overhangs needing support is skipped for offset layers: they lie on the print surface, not on
+  the layers sliced below them.
+  Projects from before painted print surfaces had parts set as print surface
+  (`s4_print_surface`, still read but not shown): on loading, the other part's faces within a
+  millimetre of them are painted and they are removed (`convert_legacy_print_surface_parts()`),
+  and the print surface "parts" reads as painted faces.
 - **Printer settings > Basic information > Advanced > Printer structure**: *Polar* is what makes
   a printer polar. `polar_kinematics`, which the pipeline reads, follows it and is not shown:
   the tab sets it when the structure changes, and loading a configuration makes the two agree
@@ -338,9 +354,8 @@ The pipeline hooks into the print steps as follows:
   where the deformation moved the faces they mark. The rotation axis in that frame is the
   centre of the printable area moved into the object's frame through the instance shift and
   plate origin. So moving the object, or changing the bed shape, re-slices it.
-- **Validation** (`Print::validate()`): an S4 object has one part printed non-planar, besides
-  print surface parts (only, and at least one, with offset layers), no modifiers or negative
-  volumes, and one instance. The mapping only handles relative extrusion, and spiral vase is
+- **Validation** (`Print::validate()`): an S4 object has one part, no modifiers or negative
+  volumes, and one instance; layers offset from painted faces need some faces painted. The mapping only handles relative extrusion, and spiral vase is
   refused.
 - **Export** (`GCode::do_export()`): when an object is deformed, generation writes the
   sliced-space G-code to a side file without the G-code processor, marking each object's

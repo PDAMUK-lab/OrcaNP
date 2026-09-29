@@ -1031,12 +1031,14 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
     const bool          has_pillar = has_s4 && s4_shape == S4LayerShape::Offset &&
                             (s4_core == S4SurfaceCore::Pillar || s4_core == S4SurfaceCore::Dome || s4_core == S4SurfaceCore::DomedPillar);
     const bool          custom     = has_pillar && config->opt_enum<S4SurfaceSize>("s4_surface_size") == S4SurfaceSize::Custom;
-    toggle_line("s4_surface_size", has_pillar);
-    // A generated print surface is printed as support; a modelled one has its own part settings.
-    toggle_line("s4_surface_wall_loops", has_s4 && s4_shape == S4LayerShape::Offset && s4_core != S4SurfaceCore::Parts);
+    const bool painted = has_s4 && s4_shape == S4LayerShape::Offset && s4_core == S4SurfaceCore::Painted;
+    toggle_line("s4_surface_size", has_pillar || painted);
+    // Every print surface is generated, and printed as support.
+    toggle_line("s4_surface_wall_loops", has_s4 && s4_shape == S4LayerShape::Offset);
     toggle_line("s4_surface_layer_height", has_s4 && s4_shape == S4LayerShape::Offset);
     toggle_line("s4_surface_diameter", custom);
-    toggle_line("s4_surface_height", custom && s4_core != S4SurfaceCore::Dome);
+    toggle_line("s4_surface_height", (custom && s4_core != S4SurfaceCore::Dome) ||
+                                         (painted && config->opt_enum<S4SurfaceSize>("s4_surface_size") == S4SurfaceSize::Custom));
     // Orca: also the slope of the layers beyond a pillar's top.
     toggle_line("s4_cone_angle", has_s4 && (s4_shape == S4LayerShape::Cone ||
                                             (s4_shape == S4LayerShape::Offset && s4_core == S4SurfaceCore::Pillar)));

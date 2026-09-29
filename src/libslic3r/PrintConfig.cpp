@@ -331,7 +331,7 @@ static t_config_enum_values s_keys_map_S4SurfaceSize{
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceSize)
 
 static t_config_enum_values s_keys_map_S4SurfaceCore{
-    { "parts",    int(S4SurfaceCore::Parts) },
+    { "painted",  int(S4SurfaceCore::Painted) },
     { "sphere",   int(S4SurfaceCore::Sphere) },
     { "cylinder", int(S4SurfaceCore::Cylinder) },
     { "pillar",       int(S4SurfaceCore::Pillar) },
@@ -5115,29 +5115,33 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Print surface");
     def->category = L("Quality");
     def->tooltip  = L("What the layers are offset from.\n"
-                      "Parts: the object's parts set as print surface.\n"
+                      "Painted faces: the part's faces painted with the print surface painting tool. The print surface is "
+                      "generated under them down to the bed (Surface layout From above: paint the underside the part is "
+                      "printed onto), or inside them round the rotation axis with a column down to the bed under them "
+                      "(Surface layout Around the rotation axis: paint the inside, of a ring or bracelet for example), the "
+                      "surface gap short of them, so the part's first layer is its painted faces. Size lifts the part onto it.\n"
                       "Generated sphere: a sphere fitted inside the part, centred below its top by half its width, sized to "
                       "the part's inner surface less the surface gap, so the first layer is the part's inner surface.\n"
                       "Generated cylinder: the same with a cylinder around the rotation axis, up to the part's inner roof.\n"
                       "Pillar: a cylinder under the part's base. Dome: a hemisphere under it. Domed pillar: a cylinder topped "
                       "by a hemisphere as wide. The part is printed on it, lifted the surface gap above it (a concave "
                       "underside nests on a dome), so the toolhead can lean under the part without reaching the bed.\n"
-                      "A generated print surface is printed first with the part's settings.");
+                      "A generated print surface is printed first, as support: it is removed after printing.");
     def->enum_keys_map = &ConfigOptionEnum<S4SurfaceCore>::get_enum_values();
-    def->enum_values.push_back("parts");
+    def->enum_values.push_back("painted");
     def->enum_values.push_back("sphere");
     def->enum_values.push_back("cylinder");
     def->enum_values.push_back("pillar");
     def->enum_values.push_back("dome");
     def->enum_values.push_back("domed_pillar");
-    def->enum_labels.push_back(L("Parts"));
+    def->enum_labels.push_back(L("Painted faces"));
     def->enum_labels.push_back(L("Generated sphere"));
     def->enum_labels.push_back(L("Generated cylinder"));
     def->enum_labels.push_back(L("Pillar"));
     def->enum_labels.push_back(L("Dome"));
     def->enum_labels.push_back(L("Domed pillar"));
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionEnum<S4SurfaceCore>(S4SurfaceCore::Parts));
+    def->set_default_value(new ConfigOptionEnum<S4SurfaceCore>(S4SurfaceCore::Painted));
 
     def = this->add("s4_surface_projection", coEnum);
     def->label    = L("Surface layout");
@@ -5169,9 +5173,10 @@ void PrintConfigDef::init_fff_params()
     def = this->add("s4_surface_size", coEnum);
     def->label    = L("Size");
     def->category = L("Quality");
-    def->tooltip  = L("Size of the pillar or dome.\n"
+    def->tooltip  = L("Size of the pillar or dome, or how far a part printed on painted faces is lifted.\n"
                       "Automatic: as wide as the part's base, and a pillar as high as the toolhead needs to lean as far as the "
-                      "tilt axis goes under the part without reaching the bed.\n"
+                      "tilt axis goes under the part without reaching the bed. A part on painted faces is lifted as high, if "
+                      "it stands only on painted faces or its painted inside is printed round the rotation axis.\n"
                       "Custom: the diameter and height set below.");
     def->enum_keys_map = &ConfigOptionEnum<S4SurfaceSize>::get_enum_values();
     def->enum_values.push_back("auto");
@@ -5194,7 +5199,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("s4_surface_height", coFloat);
     def->label    = L("Height");
     def->category = L("Quality");
-    def->tooltip  = L("Height of the pillar's straight side; a domed pillar's dome adds half its diameter.");
+    def->tooltip  = L("Height of the pillar's straight side; a domed pillar's dome adds half its diameter. With painted "
+                      "faces, how far the part is lifted onto the print surface generated under them.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->mode     = comAdvanced;
@@ -5225,9 +5231,9 @@ void PrintConfigDef::init_fff_params()
     def = this->add("s4_print_surface", coBool);
     def->label    = L("Print surface");
     def->category = L("Quality");
-    def->tooltip  = L("Print this part first with flat layers, as the surface the rest of the object is printed on with "
-                      "non-planar layers offset from it (layer shape \"Offset from print surface\"). The print surface is a part "
-                      "of the same object: right-click the part in the object list > Print surface (non-planar).");
+    // Orca: read from projects made before painted print surfaces, whose parts set as print surface are
+    // converted to painted faces on loading (convert_legacy_print_surface_parts()); not shown.
+    def->tooltip  = L("A part set as print surface, in projects made before print surfaces were painted.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -9563,6 +9569,9 @@ void PrintConfigDef::init_sla_params()
 
 void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &value)
 {
+    // Orca: print surface parts gave way to painted print surface faces.
+    if (opt_key == "s4_surface_core" && value == "parts")
+        value = "painted";
     //BBS: handle legacy options
     if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
         value = "Supertack Plate";

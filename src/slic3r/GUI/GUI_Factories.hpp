@@ -155,7 +155,6 @@ private:
     wxMenuItem* append_menu_item_change_type(wxMenu* menu);
     wxMenuItem* append_menu_item_instance_to_object(wxMenu* menu);
     wxMenuItem* append_menu_item_printable(wxMenu* menu);
-    wxMenuItem* append_menu_item_print_surface(wxMenu* menu);
     wxMenuItem* append_menu_item_auto_drop(wxMenu* menu);
     void        append_menu_item_rename(wxMenu* menu);
     wxMenuItem* append_menu_item_fix_through_cgal(wxMenu* menu);

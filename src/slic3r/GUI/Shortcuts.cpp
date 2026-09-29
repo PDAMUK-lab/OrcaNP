@@ -100,6 +100,7 @@ constexpr std::array<ShortcutInfo, size_t(Shortcut::Count)> shortcut_table = {{
     SHORTCUT(GizmoFdmSupports,  "gizmo_fdm_supports", L("Gizmo FDM paint-on supports"),                          PLATER, { 'L' }),
     SHORTCUT(GizmoSeam,         "gizmo_seam",         L("Gizmo FDM paint-on seam"),                              PLATER, { 'P' }),
     SHORTCUT(GizmoFuzzySkin,    "gizmo_fuzzy_skin",   L("Gizmo FDM paint-on fuzzy skin"),                        PLATER, { 'H' }),
+    SHORTCUT(GizmoPrintSurface, "gizmo_print_surface", L("Gizmo paint-on print surface (non-planar)"),           PLATER, { 'J' }),
     SHORTCUT(GizmoMmuSegmentation, "gizmo_mmu_segmentation", L("Gizmo multi-material painting"),                 PLATER, { 'N' }),
     SHORTCUT(GizmoEmboss,       "gizmo_emboss",       L("Gizmo text emboss/engrave"),                            PLATER, { 'T' }),
     SHORTCUT(GizmoMeasure,      "gizmo_measure",      L("Gizmo measure"),                                        PLATER, { 'U' }),

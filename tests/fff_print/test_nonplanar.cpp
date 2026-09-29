@@ -558,94 +558,6 @@ TriangleMesh dome(double radius)
 
 } // namespace
 
-TEST_CASE("Layers offset from a print surface part keep the surface gap all around it", "[NonPlanar]")
-{
-    // A 20 mm dome printed flat as the print surface, and over it a 26 mm dome: what is left of
-    // it is a shell from the gap out to 26 mm, printed after the whole core. The print surface
-    // may be added before or after the part.
-    const bool core_first = GENERATE(true, false);
-    INFO("print surface added " << (core_first ? "before" : "after") << " the part");
-    const double core_radius = 20., shell_radius = 26., gap = 0.4;
-    Model        model;
-    ModelObject *object = model.add_object();
-    object->name        = "dome.stl";
-    if (! core_first)
-        object->add_volume(dome(shell_radius));
-    ModelVolume *core = object->add_volume(dome(core_radius));
-    core->config.set_key_value("s4_print_surface", new ConfigOptionBool(true));
-    if (core_first)
-        object->add_volume(dome(shell_radius));
-    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
-
-    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_gap", gap },
-                                              { "use_relative_e_distances", true }, { "layer_change_gcode", "G92 E0" },
-                                              { "skirt_loops", 0 }, { "brim_type", "no_brim" },
-                                              { "layer_height", 0.3 }, { "initial_layer_print_height", 0.3 },
-                                              { "enable_support", false } });
-    Print print;
-    for (ModelObject *mo : model.objects)
-        print.auto_assign_extruders(mo);
-    print.apply(model, config);
-    const StringObjectException invalid = print.validate();
-    INFO(invalid.string);
-    REQUIRE(invalid.string.empty());
-    const std::vector<Move> moves = body_moves(Test::gcode(print));
-
-    // The dome's centre, on the bed, from the core's first layer.
-    BoundingBoxf first;
-    for (const Move &m : moves)
-        if (m.e > 0. && m.layer == 1)
-            first.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
-    const Vec3d centre(first.center().x(), first.center().y(), 0.);
-
-    // The core fills the layers up to its top, the shell the layers above; nothing lies within
-    // the gap, and the shell stays inside its dome.
-    const double core_top    = surface_top(core_radius);
-    size_t       core_points = 0, shell_points = 0;
-    double       core_max = 0., shell_min = 1e9, shell_max = 0.;
-    for (const Move &m : moves) {
-        if (m.e <= 0. || m.layer == 1) // only the core prints on the bed
-            continue;
-        const double d = (Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')) - centre).norm();
-        if (m.layer_z <= core_top + 1e-3) {
-            ++core_points;
-            core_max = std::max(core_max, d);
-        } else {
-            ++shell_points;
-            shell_min = std::min(shell_min, d);
-            shell_max = std::max(shell_max, d);
-        }
-    }
-    REQUIRE(core_points > 0);
-    REQUIRE(shell_points > 0);
-    CHECK(core_max <= core_radius + 0.35); // the top layer's cap, printed at the layer's top
-    CHECK(shell_min >= core_radius + gap - 0.05);
-    CHECK(shell_max <= shell_radius + 0.5);
-}
-
-TEST_CASE("A print surface part must stand on the bed", "[NonPlanar]")
-{
-    // The core is printed first: 3 mm up, inside the 26 mm dome, it would start in mid-air.
-    Model        model;
-    ModelObject *object = model.add_object();
-    object->name        = "dome.stl";
-    object->add_volume(dome(26.));
-    TriangleMesh raised = dome(20.);
-    raised.translate(0.f, 0.f, 3.f);
-    object->add_volume(raised)->config.set_key_value("s4_print_surface", new ConfigOptionBool(true));
-    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
-
-    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" },
-                                              { "use_relative_e_distances", true }, { "layer_change_gcode", "G92 E0" },
-                                              { "enable_support", false } });
-    Print print;
-    for (ModelObject *mo : model.objects)
-        print.auto_assign_extruders(mo);
-    print.apply(model, config);
-    REQUIRE(print.validate().string.empty());
-    CHECK_THROWS_WITH(Test::gcode(print), Catch::Matchers::ContainsSubstring("must stand on the bed"));
-}
-
 TEST_CASE("A part is printed on a pillar, lifted off the bed", "[NonPlanar]")
 {
     // A 10 x 10 x 4 mm block on a pillar 8 mm wide and 5 mm high: the pillar first, then the
@@ -1018,6 +930,228 @@ TEST_CASE("A generated sphere core puts the first layer on the part's inner surf
     CHECK(core_max <= core_radius + 0.35);
     // The shell's first layer is its modelled inner surface.
     CHECK(shell_min >= inner - 0.05);
+}
+
+namespace {
+
+// A ring standing on the bed about the Z axis.
+TriangleMesh ring(double inner, double outer, double height)
+{
+    indexed_triangle_set its = revolve({ { inner, 0. }, { outer, 0. }, { outer, height }, { inner, height }, { inner, 0. } }).its;
+    its_merge_vertices(its);
+    return TriangleMesh(its);
+}
+
+// Paints the volume's faces for which `painted(centre, normal)` holds as print surface.
+template<class Painted> void paint_print_surface(ModelVolume &volume, Painted painted)
+{
+    const indexed_triangle_set &its = volume.mesh().its;
+    TriangleSelector            selector(volume.mesh());
+    for (size_t i = 0; i < its.indices.size(); ++i) {
+        const auto &t = its.indices[i];
+        const Vec3d a = its.vertices[t[0]].cast<double>(), b = its.vertices[t[1]].cast<double>(), c = its.vertices[t[2]].cast<double>();
+        if (painted((a + b + c) / 3., (b - a).cross(c - a).normalized()))
+            selector.set_facet(int(i), EnforcerBlockerType::ENFORCER);
+    }
+    volume.print_surface_facets.set(selector);
+}
+
+DynamicPrintConfig painted_config(std::initializer_list<ConfigBase::SetDeserializeItem> items)
+{
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "painted" },
+                                              { "use_relative_e_distances", true }, { "layer_change_gcode", "G92 E0" },
+                                              { "skirt_loops", 0 }, { "brim_type", "no_brim" }, { "layer_height", 0.3 },
+                                              { "initial_layer_print_height", 0.3 }, { "enable_support", false },
+                                              { "printable_area", "0x0,200x0,200x200,0x200" } });
+    config.set_deserialize_strict(items);
+    return config;
+}
+
+bool is_support(const Move &m) { return m.type.find("Support") != std::string::npos; }
+
+} // namespace
+
+TEST_CASE("Layers offset from painted faces start on them, the print surface under them the gap away", "[NonPlanar]")
+{
+    // A dome shell 20 mm inside and 26 mm outside, its inside painted: the print surface fills it,
+    // the gap short of it, as support; the shell is printed from its inside out, not lifted, as it
+    // stands on its unpainted rim.
+    const double inner = 20., outer = 26., gap = 0.4;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "shell.stl";
+    ModelVolume *shell  = object->add_volume(hollow_dome(inner, outer));
+    paint_print_surface(*shell, [](const Vec3d &c, const Vec3d &n) { return n.dot(c) < -0.1 * c.norm(); });
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, painted_config({ { "s4_surface_gap", gap } }));
+    const StringObjectException invalid = print.validate();
+    INFO(invalid.string);
+    REQUIRE(invalid.string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+    const S4Deformation    *s4    = print.objects().front()->s4_deformation();
+    CHECK(s4->lift == 0.);
+    const Vec3d centre(100., 100., 0.);
+    size_t      core_points = 0, shell_points = 0;
+    double      core_max = 0., shell_min = 1e9, shell_max = 0.;
+    for (const Move &m : moves) {
+        if (m.e <= 0. || ! m.xy)
+            continue;
+        const double d = (Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')) - centre).norm();
+        if (m.layer_z <= s4->surface_top + 1e-3) {
+            CHECK(is_support(m));
+            ++core_points;
+            core_max = std::max(core_max, d);
+        } else {
+            CHECK(! is_support(m));
+            ++shell_points;
+            shell_min = std::min(shell_min, d);
+            shell_max = std::max(shell_max, d);
+        }
+    }
+    REQUIRE(core_points > 0);
+    REQUIRE(shell_points > 0);
+    CHECK(core_max <= inner - gap + 0.35); // the top layer's cap, printed at the layer's top
+    CHECK(shell_min >= inner - 0.05);      // its first layer on its inside
+    CHECK(shell_max <= outer + 0.5);
+}
+
+TEST_CASE("A part standing on painted faces is lifted onto the print surface under them", "[NonPlanar]")
+{
+    // A 10 x 10 x 4 mm block with its base painted: lifted 2 mm (automatic, on a printer that does
+    // not tilt) or as high as set, onto a print surface under its base, the gap below it.
+    const bool   custom = GENERATE(false, true);
+    const double lift = custom ? 5. : 2., gap = 0.4;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "block.stl";
+    ModelVolume *block  = object->add_volume(TriangleMesh(its_make_cube(10., 10., 4.)));
+    paint_print_surface(*block, [](const Vec3d &, const Vec3d &n) { return n.z() < -0.9; });
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, painted_config({ { "s4_surface_gap", gap }, { "s4_surface_size", custom ? "custom" : "auto" },
+                                        { "s4_surface_height", 5. } }));
+    REQUIRE(print.validate().string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+    CHECK_THAT(print.objects().front()->s4_deformation()->lift, WithinAbs(lift, 1e-6));
+    BoundingBoxf3 core, part;
+    for (const Move &m : moves)
+        if (m.e > 0. && m.xy)
+            (is_support(m) ? core : part).merge(Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')));
+    REQUIRE(core.defined);
+    REQUIRE(part.defined);
+    CHECK(core.max.z() <= lift - gap + 0.35);
+    CHECK(part.min.z() >= lift - 0.05);
+    CHECK(part.max.z() <= lift + 4. + 0.35);
+    CHECK(core.size().x() <= 10.05);
+    CHECK(core.size().y() <= 10.05);
+}
+
+TEST_CASE("A ring is printed round its painted inside, lifted for the toolhead", "[NonPlanar]")
+{
+    // A ring 30 mm inside and 34 mm outside, 8 mm high, round the rotation axis, its inside
+    // painted, laid out round the axis: a column of print surface up to its top, the gap inside its
+    // inside, and the ring in cylindrical layers from its inside out, lifted 2 mm.
+    const double inner = 30., outer = 34., height = 8., gap = 0.4, lift = 2.;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "ring.stl";
+    ModelVolume *band   = object->add_volume(ring(inner, outer, height));
+    paint_print_surface(*band, [](const Vec3d &c, const Vec3d &n) {
+        const Vec3d r(c.x(), c.y(), 0.);
+        return r.norm() > 0. && n.dot(r.normalized()) < -0.5;
+    });
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, painted_config({ { "s4_surface_gap", gap }, { "s4_surface_projection", "axis" } }));
+    const StringObjectException invalid = print.validate();
+    INFO(invalid.string);
+    REQUIRE(invalid.string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+    CHECK_THAT(print.objects().front()->s4_deformation()->lift, WithinAbs(lift, 1e-6));
+    double                        core_max = 0., ring_min = 1e9, ring_max = 0., ring_low = 1e9, core_top = 0.;
+    std::map<int, std::pair<double, double>> layer_radii;
+    for (const Move &m : moves) {
+        if (m.e <= 0. || ! m.xy)
+            continue;
+        const double r = std::hypot(axis(m, 'X') - 100., axis(m, 'Y') - 100.);
+        if (is_support(m)) {
+            core_max = std::max(core_max, r);
+            core_top = std::max(core_top, axis(m, 'Z'));
+        } else {
+            ring_min = std::min(ring_min, r);
+            ring_max = std::max(ring_max, r);
+            ring_low = std::min(ring_low, axis(m, 'Z'));
+            auto [it, added] = layer_radii.try_emplace(m.layer, r, r);
+            it->second = { std::min(it->second.first, r), std::max(it->second.second, r) };
+        }
+    }
+    REQUIRE(core_max > 0.);
+    REQUIRE(ring_max > 0.);
+    CHECK(core_max <= inner - gap + 0.1);
+    CHECK(core_top <= lift + height + 0.35);
+    CHECK(ring_min >= inner - 0.1); // its first layer on its inside
+    CHECK(ring_max <= outer + 0.5);
+    CHECK(ring_low >= lift - 0.05);
+    // Each of its layers a cylinder: the same distance from the axis all round and all the way up.
+    for (const auto &[layer, radii] : layer_radii) {
+        INFO("layer " << layer << ": " << radii.first << " to " << radii.second);
+        CHECK(radii.second - radii.first < 0.6);
+    }
+}
+
+TEST_CASE("Painted faces that do not face the print surface are refused", "[NonPlanar]")
+{
+    // A block painted on top gives nothing to lay out from above; a ring painted inside half way
+    // round, nothing to lay out round the axis; a part painted nowhere is refused before slicing.
+    const int kind = GENERATE(0, 1, 2);
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "part.stl";
+    ModelVolume *part   = object->add_volume(kind == 1 ? ring(30., 34., 8.) : TriangleMesh(its_make_cube(10., 10., 4.)));
+    if (kind == 0)
+        paint_print_surface(*part, [](const Vec3d &, const Vec3d &n) { return n.z() > 0.9; });
+    else if (kind == 1)
+        paint_print_surface(*part, [](const Vec3d &c, const Vec3d &n) {
+            const Vec3d r(c.x(), c.y(), 0.);
+            return c.y() > 0. && n.dot(r.normalized()) < -0.5;
+        });
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, painted_config({ { "s4_surface_projection", kind == 1 ? "axis" : "above" } }));
+    if (kind == 2) {
+        CHECK_THAT(print.validate().string, Catch::Matchers::ContainsSubstring("painted as print surface"));
+        return;
+    }
+    REQUIRE(print.validate().string.empty());
+    CHECK_THROWS_WITH(Test::gcode(print), Catch::Matchers::ContainsSubstring(kind == 0 ? "faces down" : "all the way round"));
+}
+
+TEST_CASE("A print surface part of an older project becomes painted faces", "[NonPlanar]")
+{
+    // A dome shell over a 20 mm dome set as print surface: the part is removed and the shell's
+    // faces within reach of it, its inside, painted.
+    Model        model;
+    ModelObject *object = model.add_object();
+    ModelVolume *shell  = object->add_volume(hollow_dome(20.4, 26.));
+    object->add_volume(dome(20.))->config.set_key_value("s4_print_surface", new ConfigOptionBool(true));
+    object->add_instance();
+    CHECK(convert_legacy_print_surface_parts(*object));
+    REQUIRE(object->volumes.size() == 1);
+    REQUIRE(object->volumes.front() == shell);
+    const indexed_triangle_set painted = shell->print_surface_facets.get_facets(*shell, EnforcerBlockerType::ENFORCER);
+    REQUIRE(! painted.indices.empty());
+    for (const auto &t : painted.indices)
+        CHECK(((painted.vertices[t[0]] + painted.vertices[t[1]] + painted.vertices[t[2]]) / 3.f).norm() < 21.5f);
+    CHECK(! convert_legacy_print_surface_parts(*object));
 }
 
 TEST_CASE("A polar printer is chosen by its structure, and older presets load as one", "[NonPlanar]")

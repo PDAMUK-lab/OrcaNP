@@ -406,7 +406,6 @@ public:
     };
     const S4Deformation*         s4_deformation() const { return m_s4.get(); }
     // A part set to be the print surface that non-planar layers are offset from.
-    static bool                  is_s4_print_surface(const ModelVolume &volume);
 
     // BBS
     void generate_support_preview();

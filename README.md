@@ -123,8 +123,8 @@ it. Use it to print a part onto something, or to print a thin curved shell in ev
 
 | Setting | What it is for | How to use it |
 | --- | --- | --- |
-| Print surface | What the layers follow: the object's parts marked as print surface, or a generated sphere, cylinder, pillar, dome or domed pillar. | See [Print surfaces](#print-surfaces). |
-| Surface gap | The offset between the print surface and the part printed over it, all around. Like the gap between support and part, it lets the part come off the surface after printing. | 0.2 mm by default. Raise it (0.25 to 0.4 mm) if the part sticks to the surface; lower it (0.1 mm) for a smoother underside; 0 fuses the part to the surface. A generated pillar or dome lifts the part by the gap, and a generated sphere or cylinder is shrunk by it, so all of the part is printed. Over print surface parts you modelled, the part within the gap of them is left out. |
+| Print surface | What the layers follow: generated under or inside the part's faces painted as print surface, or a generated sphere, cylinder, pillar, dome or domed pillar. | See [Print surfaces](#print-surfaces). |
+| Surface gap | The offset between the print surface and the part printed over it, all around. Like the gap between support and part, it lets the part come off the surface after printing. | 0.2 mm by default. Raise it (0.25 to 0.4 mm) if the part sticks to the surface; lower it (0.1 mm) for a smoother underside; 0 fuses the part to the surface. A generated pillar or dome lifts the part by the gap, and a generated sphere or cylinder, or the surface under painted faces, is kept the gap short of the part, so all of the part is printed. |
 | Surface layout | How the layers over the surface are laid out for slicing. **From above** suits domes, spheres and capped cylinders; **Around the rotation axis** suits sleeves around the bed's axis. | Use From above unless the part wraps around the axis. |
 
 ### Conical
@@ -139,11 +139,11 @@ stands on the bed, so the first layer is all on the bed.
 ## Print surfaces
 
 The print surface is what **Offset from print surface** layers follow. It is printed first, with
-flat layers and the part's own settings, and the part is printed over it **Surface gap** away.
+flat layers, as support, and the part is printed over it **Surface gap** away.
 
 | Print surface | What it is for | How to use it |
 | --- | --- | --- |
-| Parts | A surface you modelled yourself. | Add it as a part of the same object, then right-click it in the object list and choose **Print surface (non-planar)**. It must stand on the bed. |
+| Painted faces | Printing the part on its own faces: a domed or flat underside, or the inside of a ring or bracelet. | Select the object, choose **Paint-on print surface** in the toolbar (J) and paint, or smart-fill, the faces it is printed onto. With **Surface layout** *From above*, the print surface is generated under the painted faces that face down, down to the bed. With *Around the rotation axis*, it is generated inside the painted faces that face the axis, which must go all the way round it, with a column down to the bed under them: the part is printed from its inside out, the nozzle leaning towards horizontal. **Size** *Automatic* lifts the part as high as the toolhead needs to lean under it, if it stands only on painted faces or is printed round the axis; *Custom* lifts it by **Height**. Projects from earlier test builds with parts set as print surface open with the faces next to those parts painted and the parts removed. |
 | Generated sphere | Printing the inside of a dome or a hollow sphere on a core that fills it. | The sphere is fitted inside the part's cavity, so the first layer is the part's inner surface. |
 | Generated cylinder | The same for a sleeve or a cup around the rotation axis. | The cylinder is fitted up to the roof of the cavity. |
 | Pillar | Lifting the part off the bed on a column, so a tilting nozzle can lean under it without hitting the bed. | The part stands on top of the pillar, **Surface gap** above it. Over the pillar's flat top its layers are flat; beyond the rim they slope down at the **Cone angle** (20° by default), so a part much wider than the pillar prints on layers the nozzle can follow. What hangs below those layers beside the pillar is not printed, and slicing warns: raise the cone angle or widen the pillar. |
@@ -171,7 +171,8 @@ It shows as support in the preview and filament statistics.
 | Wall loops | Walls round the print surface. | 1 by default; 2 for a sturdier pillar. |
 | Print surface layer height | The surface's own layer height, up to its top, where the part's layers begin. | 0 uses the part's layer height. Thicker layers (0.28 to 0.3 mm with a 0.4 mm nozzle) print it faster. |
 
-Print surface parts you modelled are printed with their own part settings.
+The painting tool warns when the object is not printed in layers offset from painted faces, and sets it to be with one
+click.
 
 The plater shows the part on the bed; the preview shows it where it prints, on the pillar.
 

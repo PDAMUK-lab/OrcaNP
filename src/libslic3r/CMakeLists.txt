@@ -345,6 +345,8 @@ set(lisbslic3r_sources
     NonPlanar/GCodeWords.hpp
     NonPlanar/LayerShapes.cpp
     NonPlanar/LayerShapes.hpp
+    NonPlanar/PaintedSurface.cpp
+    NonPlanar/PaintedSurface.hpp
     NonPlanar/PolarKinematics.cpp
     NonPlanar/PolarKinematics.hpp
     NonPlanar/S4Deformation.cpp

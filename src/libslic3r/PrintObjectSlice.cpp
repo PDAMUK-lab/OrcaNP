@@ -15,6 +15,7 @@
 #include "MultiMaterialSegmentation.hpp"
 #include "Print.hpp"
 #include "NonPlanar/LayerShapes.hpp"
+#include "NonPlanar/PaintedSurface.hpp"
 #include "NonPlanar/S4Mapping.hpp"
 #include "NonPlanar/Tetrahedralize.hpp"
 #include "TriangleMeshSlicer.hpp"
@@ -863,11 +864,6 @@ void append_tets(NonPlanar::TetMesh &mesh, std::vector<Eigen::Vector3d> &deforme
 
 } // namespace
 
-bool PrintObject::is_s4_print_surface(const ModelVolume &volume)
-{
-    return volume.is_model_part() && volume.config.has("s4_print_surface") && volume.config.get().opt_bool("s4_print_surface");
-}
-
 // How high the part must stand for the toolhead to lean as far as the tilt axis goes under it
 // without reaching the bed: the lowest points of the nozzle's tip, the top of its cone and the
 // head's rim, leaning that far.
@@ -885,20 +881,14 @@ static double toolhead_clearance(const PrintConfig &config)
 
 void PrintObject::deform_s4()
 {
-    // Print::validate() guarantees one instance and one part printed non-planar; the others
-    // (only with layers offset from them) are print surfaces.
-    const ModelVolume                *part = nullptr;
-    std::vector<const ModelVolume *> surfaces;
+    // Print::validate() guarantees one instance and one part.
+    const ModelVolume *part = nullptr;
     for (const ModelVolume *v : this->model_object()->volumes)
-        if (is_s4_print_surface(*v))
-            surfaces.push_back(v);
-        else if (v->is_model_part() && part == nullptr)
+        if (v->is_model_part() && part == nullptr)
             part = v;
-    const S4LayerShape  shape      = m_config.s4_layer_shape.value;
-    const bool          from_parts = shape == S4LayerShape::Offset && m_config.s4_surface_core.value == S4SurfaceCore::Parts;
-    if (part == nullptr || m_instances.size() != 1 || from_parts == surfaces.empty())
-        throw Slic3r::SlicingError(L("Non-planar (S4) printing needs a single instance with one part to print non-planar, "
-                                     "and print surface parts exactly when the layers are offset from them."));
+    const S4LayerShape shape = m_config.s4_layer_shape.value;
+    if (part == nullptr || m_instances.size() != 1)
+        throw Slic3r::SlicingError(L("Non-planar (S4) printing needs a single instance with one part to print non-planar."));
 
     m_print->set_status(5, L("Deforming the model for non-planar printing"));
     S4Mesh shell = to_s4_mesh(volume_in_slicing_frame(*this, *part));
@@ -964,21 +954,49 @@ void PrintObject::deform_s4()
             for (Eigen::Vector3d &p : s4->deformed)
                 p.z() -= min_z;
         } else {
-            // The print surface parts print as sliced, up to the top of the layer holding their top;
-            // the part goes above that, in layers at constant distance from their surface.
+            // The print surface prints as support, up to the top of the layer holding its top; the
+            // part goes above that, in layers at constant distance from its surface.
             S4Mesh       core;
             const double gap  = m_config.s4_surface_gap.value;
             double       lift = 0.; // of the part, standing on a generated post
             std::optional<NonPlanar::Post> pillar; // a generated pillar, whose top is flat
-            if (from_parts)
-                for (const ModelVolume *v : surfaces) {
-                    const S4Mesh m    = to_s4_mesh(volume_in_slicing_frame(*this, *v));
-                    const int    base = int(core.vertices.size());
-                    core.vertices.insert(core.vertices.end(), m.vertices.begin(), m.vertices.end());
-                    for (const std::array<int, 3> &t : m.triangles)
-                        core.triangles.push_back({ t[0] + base, t[1] + base, t[2] + base });
-                }
-            else if (const S4SurfaceCore kind = m_config.s4_surface_core.value;
+            if (m_config.s4_surface_core.value == S4SurfaceCore::Painted) {
+                // Under or inside the part's painted faces, the gap short of them, down to the bed.
+                indexed_triangle_set painted = part->print_surface_facets.get_facets_strict(*part, EnforcerBlockerType::ENFORCER);
+                if (painted.indices.empty())
+                    throw Slic3r::SlicingError(L("No face of the part is painted as print surface. Paint the faces it is "
+                                                 "printed onto with the print surface painting tool, or choose a generated "
+                                                 "print surface."), this->id().id);
+                its_transform(painted, this->trafo_centered() * part->get_matrix());
+                const bool   around = m_config.s4_surface_projection.value == S4SurfaceProjection::Axis;
+                const double first  = m_print->config().initial_layer_print_height.value;
+                double       bottom = std::numeric_limits<double>::infinity();
+                for (const Eigen::Vector3d &v : shell.vertices)
+                    bottom = std::min(bottom, v.z());
+                // Lifted for the toolhead to lean under the part, if it stands only on painted faces (laid
+                // out from above) or is printed round its painted inside.
+                auto standing_area = [&](const indexed_triangle_set &its) {
+                    double area = 0.;
+                    for (const stl_triangle_vertex_indices &t : its.indices) {
+                        const Vec3d a = its.vertices[t[0]].cast<double>(), b = its.vertices[t[1]].cast<double>(),
+                                    c = its.vertices[t[2]].cast<double>();
+                        if (std::max({ a.z(), b.z(), c.z() }) < bottom + 0.5 * first)
+                            area += 0.5 * std::abs((b - a).cross(c - a).z());
+                    }
+                    return area;
+                };
+                const indexed_triangle_set whole = volume_in_slicing_frame(*this, *part);
+                const bool on_painted = standing_area(painted) > 0.9 * standing_area(whole);
+                lift = m_config.s4_surface_size.value == S4SurfaceSize::Custom ? m_config.s4_surface_height.value :
+                       around || on_painted ? std::max(toolhead_clearance(m_print->config()), 2.) : 0.;
+                s4->lift = lift;
+                for (Eigen::Vector3d &v : shell.vertices)
+                    v.z() += lift;
+                its_translate(painted, Vec3f(0.f, 0.f, float(lift)));
+                s4->core = around ? NonPlanar::painted_surface_around_axis(painted, s4->axis, gap, bottom) :
+                                    NonPlanar::painted_surface_from_above(painted, gap, bottom);
+                core = to_s4_mesh(s4->core);
+            } else if (const S4SurfaceCore kind = m_config.s4_surface_core.value;
                      kind == S4SurfaceCore::Pillar || kind == S4SurfaceCore::Dome || kind == S4SurfaceCore::DomedPillar) {
                 // A pillar or dome under the part's base, and the part lifted onto it the gap above:
                 // off the bed, the toolhead can lean under the part.
@@ -1051,8 +1069,7 @@ void PrintObject::deform_s4()
             const double floor_z = std::min(lowest(shell), lowest(core));
             // The print surface is printed first, from the bed: standing on the part, it would start in mid-air.
             if (lowest(core) > floor_z + 0.5 * first)
-                throw Slic3r::SlicingError(L("The print surface is printed first, so it must stand on the bed. Extend the print "
-                                             "surface parts down to the bed."), this->id().id);
+                throw Slic3r::SlicingError(L("The print surface is printed first, so it must stand on the bed."), this->id().id);
             // The surface's faces on the bed are not printed over.
             const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles, floor_z);
             // The print surface's layers end on its own layer grid, if it has its own layer height.
@@ -1529,21 +1546,13 @@ void PrintObject::slice_volumes()
     std::vector<VolumeSlices> objSliceByVolume;
     if (!slice_zs.empty() && m_s4) {
         // S4: the deformed surface stands in for the object's single model part.
-        // Print surface parts are sliced as they are, under the rest of the object.
-        ModelVolumePtrs surfaces;
-        for (ModelVolume *v : this->model_object()->volumes)
-            if (is_s4_print_surface(*v))
-                surfaces.push_back(v);
-        if (! surfaces.empty())
-            objSliceByVolume = slice_volumes_inner(print->config(), this->config(), this->trafo_centered(), surfaces,
-                                                   m_shared_regions->layer_ranges, slice_zs, throw_on_cancel_callback);
         MeshSlicingParamsEx params;
         params.closing_radius = m_config.slice_closing_radius.value;
         params.resolution     = print->config().resolution <= 0.001 ? 0.0f : 0.0025;
         params.trafo          = Transform3d::Identity();
         std::vector<ExPolygons> part_slices = slice_mesh_ex(m_s4->surface, slice_zs, params, throw_on_cancel_callback);
         if (! m_s4->core.indices.empty()) {
-            // A generated print surface is printed with the part's settings, under it.
+            // A generated print surface is sliced with the part, under it, and printed as support.
             std::vector<ExPolygons> core_slices = slice_mesh_ex(m_s4->core, slice_zs, params, throw_on_cancel_callback);
             for (size_t i = 0; i < part_slices.size(); ++i)
                 if (! core_slices[i].empty()) {
@@ -1552,9 +1561,6 @@ void PrintObject::slice_volumes()
                 }
         }
         objSliceByVolume.push_back({ m_s4->part_id, std::move(part_slices) });
-        // slices_to_regions() looks the volumes up by id; print surfaces added after the part come later.
-        std::sort(objSliceByVolume.begin(), objSliceByVolume.end(),
-                  [](const VolumeSlices &l, const VolumeSlices &r) { return l.volume_id < r.volume_id; });
     } else if (!slice_zs.empty()) {
         objSliceByVolume = slice_volumes_inner(
             print->config(), this->config(), this->trafo_centered(),
