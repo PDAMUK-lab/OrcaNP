@@ -1567,6 +1567,13 @@ void PrintObject::slice_volumes()
                 }
         }
         objSliceByVolume.push_back({ m_s4->part_id, std::move(part_slices) });
+        // Placed print surface parts are not printed: empty slices, for slices_to_regions(), which looks
+        // every part up by id.
+        for (const ModelVolume *v : this->model_object()->volumes)
+            if (is_s4_placed_surface(*v))
+                objSliceByVolume.push_back({ v->id(), std::vector<ExPolygons>(slice_zs.size()) });
+        std::sort(objSliceByVolume.begin(), objSliceByVolume.end(),
+                  [](const VolumeSlices &l, const VolumeSlices &r) { return l.volume_id < r.volume_id; });
     } else if (!slice_zs.empty()) {
         objSliceByVolume = slice_volumes_inner(
             print->config(), this->config(), this->trafo_centered(),

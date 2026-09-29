@@ -2205,7 +2205,9 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
 
         // Check that there are extrusions on the very first layer. The case with empty
         // first layer may result in skirt/brim in the air and maybe other issues.
-        if (layers_to_print.size() == 1u) {
+        // Orca: printed onto a placed print surface, nothing is printed under the part.
+        const bool on_placed = object.s4_deformation() != nullptr && ! object.s4_deformation()->placed.indices.empty();
+        if (layers_to_print.size() == 1u && ! on_placed) {
             // Orca: non-planar layers keep off the bed wherever the object does not stand on it.
             if (!has_extrusions && object.s4_deformation() != nullptr)
                 throw Slic3r::SlicingError(_(L("This non-planar (S4) object has an empty first layer: it stands on the bed on too small an "
@@ -2242,7 +2244,7 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
                 + std::max(0., extra_gap);
             // Negative support_contact_z is not taken into account, it can result in false positives in cases
 
-            if (has_extrusions && layer_to_print.print_z() > maximal_print_z + 2. * EPSILON)
+            if (has_extrusions && layer_to_print.print_z() > maximal_print_z + 2. * EPSILON && ! (on_placed && ! last_extrusion_layer))
                 warning_ranges.emplace_back(std::make_pair((last_extrusion_layer ? last_extrusion_layer->print_z() : 0.), layers_to_print.back().print_z()));
         }
         // Remember last layer with extrusions.
