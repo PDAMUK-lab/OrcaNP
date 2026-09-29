@@ -13,6 +13,7 @@
 #include "NonPlanar/S4Mapping.hpp"
 #include "PrintConfig.hpp"
 #include "SLA/IndexedMesh.hpp"
+#include "Support/SupportCommon.hpp"
 #include "Support/SupportMaterial.hpp"
 #include "Support/SupportSpotsGenerator.hpp"
 #include "Support/TreeSupport.hpp"
@@ -822,6 +823,7 @@ void PrintObject::infill()
         /*  we could free memory now, but this would make this step not idempotent
         ### $_->fill_surfaces->clear for map @{$_->regions}, @{$object->layers};
         */
+        this->s4_print_surface_as_support();
         this->set_done(posInfill);
     }
 }
@@ -994,8 +996,64 @@ void PrintObject::generate_support_material()
             this->_generate_support_material();
             m_print->throw_if_canceled();
         }
+        // The support settings a print surface printed as support follows may have changed.
+        this->s4_print_surface_as_support();
         this->set_done(posSupportMaterial);
     }
+}
+
+void PrintObject::s4_print_surface_as_support()
+{
+    // A generated print surface (the only kind kept in S4Deformation::core) holds the part up while
+    // it prints and is removed afterwards, so it is printed as support is. The layers up to the
+    // surface's top hold nothing else: the part's layers start above it. Rebuilt from the layers'
+    // slices each time, so running it again, after the support settings change, gives the same.
+    const S4Deformation *s4 = m_s4.get();
+    if (s4 == nullptr || s4->core.indices.empty() || ! m_config.s4_surface_as_support.value)
+        return;
+    std::vector<Layer *> layers;
+    for (Layer *layer : m_layers)
+        if (layer->print_z <= s4->surface_top + EPSILON)
+            layers.push_back(layer);
+    std::vector<ExPolygons> outline(layers.size());
+    for (size_t i = 0; i < layers.size(); ++ i) {
+        for (const LayerRegion *region : layers[i]->regions())
+            append(outline[i], to_expolygons(region->slices.surfaces));
+        outline[i] = union_ex(outline[i]);
+    }
+    const SupportParameters support_params(*this);
+    const int               interface_layers = std::max(1, m_config.support_interface_top_layers.value);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++ i) {
+            // Facing the part: what the next interface layers of the surface do not all cover. The
+            // part is not the surface, so the surface's top layers face it all over.
+            Polygons covered;
+            for (int k = 1; k <= interface_layers; ++ k) {
+                if (i + k >= layers.size()) {
+                    covered.clear();
+                    break;
+                }
+                covered = k == 1 ? to_polygons(outline[i + k]) : intersection(covered, to_polygons(outline[i + k]));
+            }
+            const ExPolygons     interface = diff_ex(outline[i], covered);
+            ExtrusionEntitiesPtr paths;
+            generate_print_surface_support_paths(paths, outline[i], interface, m_config.s4_surface_wall_loops.value, layers[i]->id() == 0,
+                                                 float(layers[i]->height), *this, support_params);
+            LayerRegion *holder = nullptr;
+            for (LayerRegion *region : layers[i]->regions()) {
+                if (holder == nullptr && ! region->slices.empty())
+                    holder = region;
+                region->perimeters.clear();
+                region->fills.clear();
+                region->thin_fills.clear();
+            }
+            if (holder != nullptr)
+                holder->fills.append(std::move(paths));
+            else
+                for (ExtrusionEntity *e : paths)
+                    delete e;
+        }
+    });
 }
 
 void PrintObject::estimate_curled_extrusions()
@@ -1235,6 +1293,8 @@ bool PrintObject::invalidate_state_by_config_options(
             }
         } else if (
                opt_key == "wall_loops"
+            || opt_key == "s4_surface_as_support"
+            || opt_key == "s4_surface_wall_loops"
             || opt_key == "alternate_extra_wall"
             || opt_key == "top_one_wall_type"
             || opt_key == "min_width_top_surface"
@@ -1303,6 +1363,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "s4_surface_size"
             || opt_key == "s4_surface_diameter"
             || opt_key == "s4_surface_height"
+            || opt_key == "s4_surface_layer_height"
             || opt_key == "s4_print_surface"
             || opt_key == "slowdown_for_curled_perimeters"
             || opt_key == "make_overhang_printable"

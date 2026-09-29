@@ -1055,7 +1055,8 @@ void PrintObject::deform_s4()
                                              "surface parts down to the bed."), this->id().id);
             // The surface's faces on the bed are not printed over.
             const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles, floor_z);
-            const double layer = m_config.layer_height.value;
+            // The print surface's layers end on its own layer grid, if it has its own layer height.
+            const double layer = m_config.s4_surface_layer_height.value > 0. ? m_config.s4_surface_layer_height.value : m_config.layer_height.value;
             const double top   = distance.bbox_max().z();
             s4->surface_top    = top <= first ? first : first + std::ceil((top - first) / layer - 1e-6) * layer;
 
@@ -1175,6 +1176,12 @@ void PrintObject::slice()
     m_print->set_status(5, L("Slicing mesh"), PrintBase::SlicingStatus::RELOAD_SCENE);
     std::vector<coordf_t> layer_height_profile;
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);
+    // Orca: a print surface's own layer height, up to its top, where the part's layers start.
+    if (m_s4 && std::isfinite(m_s4->surface_top) && m_config.s4_surface_layer_height.value > 0. &&
+        this->model_object()->layer_height_profile.empty()) {
+        const double h = m_config.s4_surface_layer_height.value, top = m_s4->surface_top, rest = m_slicing_params.layer_height;
+        layer_height_profile = { 0., h, top, h, top + 1e-4, rest, std::max(m_slicing_params.object_print_z_height(), top + 2e-4), rest };
+    }
     m_print->throw_if_canceled();
     m_typed_slices = false;
     this->clear_layers();

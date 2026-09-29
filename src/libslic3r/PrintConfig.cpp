@@ -5200,6 +5200,35 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(20));
 
+    def = this->add("s4_surface_as_support", coBool);
+    def->label    = L("Print as support");
+    def->category = L("Quality");
+    def->tooltip  = L("Print a generated print surface (sphere, cylinder, pillar, dome) as support is printed, to be removed "
+                      "afterwards: walls, the support's base pattern at its spacing inside, and its top interface pattern "
+                      "where the surface faces the part, as many layers deep as the support's top interface layers "
+                      "(Support settings). Off, it is printed as solid as the part.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("s4_surface_wall_loops", coInt);
+    def->label    = L("Wall loops");
+    def->category = L("Quality");
+    def->tooltip  = L("Walls round a generated print surface printed as support.");
+    def->min      = 0;
+    def->max      = 10;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(1));
+
+    def = this->add("s4_surface_layer_height", coFloat);
+    def->label    = L("Print surface layer height");
+    def->category = L("Quality");
+    def->tooltip  = L("Layer height of a generated print surface, up to its top, where the part's layers start. Thicker "
+                      "layers print it faster. 0: the part's layer height.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
     def = this->add("s4_print_surface", coBool);
     def->label    = L("Print surface");
     def->category = L("Quality");
@@ -8261,6 +8290,26 @@ void PrintConfigDef::init_fff_params()
     def->min      = 0.001;
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionFloat(0.05));
+
+    def = this->add("polar_radius_offset", coFloat);
+    def->label    = L("Radius offset");
+    def->tooltip  = L("How much farther from the head's zero radius the bed's rotation axis really is: a ring printed "
+                      "about it comes out this much larger in radius than commanded. Subtracted from every commanded "
+                      "radius. Measure it with Calibration > Polar alignment.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("polar_radius_scale", coFloat);
+    def->label    = L("Radius scale");
+    def->tooltip  = L("Radius the machine moves per commanded radius, in percent: a ring printed about the rotation axis "
+                      "comes out this much larger than commanded beyond the offset. Commanded radii are divided by it. "
+                      "Measure it with Calibration > Polar alignment.");
+    def->sidetext = u8"%";
+    def->min      = 50;
+    def->max      = 150;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(100));
 
     def = this->add("polar_inverse_time_feed", coBool);
     def->label   = L("Inverse time feed (G93)");

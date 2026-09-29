@@ -13,6 +13,7 @@
 #include <functional>
 #include <iterator>
 #include <map>
+#include <set>
 #include <sstream>
 
 #include "test_helpers.hpp"
@@ -707,6 +708,56 @@ TEST_CASE("A part is printed on a pillar, lifted off the bed", "[NonPlanar]")
     CHECK(block_high >= post_height + gap + height - 0.35);
     CHECK(block_reach <= 5.05);
     CHECK(block_reach >= 4.5); // beyond the post
+}
+
+TEST_CASE("A generated pillar is printed as support, in its own layer height", "[NonPlanar]")
+{
+    // A 10 x 10 x 4 mm block on a pillar 12 mm wide and 6 mm high, printed as support in 0.3 mm
+    // layers under the block's 0.15 mm ones: support and support interface only, its top layers
+    // interface, and less filament than the same pillar printed solid.
+    auto pillar = [](bool as_support) {
+        Model        model;
+        ModelObject *object = model.add_object();
+        object->name        = "block.stl";
+        object->add_volume(TriangleMesh(its_make_cube(10., 10., 4.)));
+        object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+        DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "pillar" },
+                                                  { "s4_surface_size", "custom" }, { "s4_surface_diameter", 12. },
+                                                  { "s4_surface_height", 6. }, { "s4_surface_as_support", as_support },
+                                                  { "s4_surface_layer_height", 0.3 }, { "use_relative_e_distances", true },
+                                                  { "layer_change_gcode", "G92 E0" }, { "skirt_loops", 0 }, { "brim_type", "no_brim" },
+                                                  { "layer_height", 0.15 }, { "initial_layer_print_height", 0.3 },
+                                                  { "enable_support", false } });
+        Print print;
+        for (ModelObject *mo : model.objects)
+            print.auto_assign_extruders(mo);
+        print.apply(model, config);
+        REQUIRE(print.validate().string.empty());
+        const std::vector<Move> moves = body_moves(Test::gcode(print));
+        const double            top   = print.objects().front()->s4_deformation()->surface_top;
+        return std::make_pair(moves, top);
+    };
+    const auto [moves, top] = pillar(true);
+    CHECK_THAT(top, WithinAbs(6., 1e-6)); // on the 0.3 mm grid
+    double      pillar_e = 0., interface_e = 0.;
+    std::set<double> heights;
+    for (const Move &m : moves) {
+        if (m.e <= 0. || ! m.xy || m.layer_z > top + 1e-3)
+            continue;
+        heights.insert(m.layer_z);
+        CHECK(m.type.find("Support") != std::string::npos);
+        pillar_e += m.e;
+        if (m.type == "Support interface" && m.layer_z > top - 0.3 - 1e-3)
+            interface_e += m.e;
+    }
+    CHECK(heights.size() == 20); // 0.3 to 6 mm
+    CHECK(interface_e > 0.);
+    double solid_e = 0.;
+    const auto [solid_moves, solid_top] = pillar(false);
+    for (const Move &m : solid_moves)
+        if (m.e > 0. && m.xy && m.layer_z <= solid_top + 1e-3)
+            solid_e += m.e;
+    CHECK(pillar_e < 0.6 * solid_e);
 }
 
 TEST_CASE("A part much wider than its pillar is high is printed at its full size", "[NonPlanar]")

@@ -2779,6 +2779,9 @@ void TabPrint::build()
         optgroup->append_single_option_line("s4_surface_diameter");
         optgroup->append_single_option_line("s4_surface_height");
         optgroup->append_single_option_line("s4_surface_gap");
+        optgroup->append_single_option_line("s4_surface_as_support");
+        optgroup->append_single_option_line("s4_surface_wall_loops");
+        optgroup->append_single_option_line("s4_surface_layer_height");
         optgroup->append_single_option_line("s4_surface_projection");
         optgroup->append_single_option_line("s4_cone_angle");
         optgroup->append_single_option_line("s4_planar_height");
@@ -5208,6 +5211,8 @@ void TabPrinter::build_fff()
         optgroup->append_single_option_line("polar_reverse_tilt");
         optgroup->append_single_option_line("polar_signed_radius");
         optgroup->append_single_option_line("polar_radius_min");
+        optgroup->append_single_option_line("polar_radius_offset");
+        optgroup->append_single_option_line("polar_radius_scale");
         optgroup->append_single_option_line("polar_radius_max");
         optgroup->append_single_option_line("polar_inverse_time_feed");
         optgroup->append_single_option_line("polar_max_rotation_speed");
@@ -6189,6 +6194,7 @@ void TabPrinter::toggle_options()
         const auto &printer_cfg = m_preset_bundle->printers.get_edited_preset().config;
         const bool polar = m_config->opt_bool("polar_kinematics");
         for (auto el : {"polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_signed_radius", "polar_radius_min",
+                        "polar_radius_offset", "polar_radius_scale",
                         "polar_radius_max", "polar_inverse_time_feed", "polar_max_rotation_speed",
                         "polar_max_tilt_speed", "polar_tilt_pivot_length", "polar_angle_step", "polar_min_radius"})
             toggle_line(el, polar);

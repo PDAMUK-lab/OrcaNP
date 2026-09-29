@@ -572,6 +572,8 @@ private:
     void slice_volumes();
     // Computes m_s4 and the slicing parameters of the deformed object.
     void deform_s4();
+    // Orca: rewrites the extrusions of a generated print surface as support's (s4_surface_as_support).
+    void s4_print_surface_as_support();
     //BBS
     ExPolygons _shrink_contour_holes(double contour_delta, double hole_delta, const ExPolygons& polys) const;
     // BBS

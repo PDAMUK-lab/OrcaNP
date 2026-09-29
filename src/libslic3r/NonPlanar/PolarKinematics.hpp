@@ -59,6 +59,10 @@ struct PolarKinematicsConfig
     // Distance from the nozzle tip to the tilt pivot. Non-zero when the firmware positions the
     // pivot rather than the tip, so the commanded radius and Z must be compensated.
     double tilt_pivot_length = 0.;
+    // Calibration of the radius axis: a commanded radius R puts the tip radius_scale * R +
+    // radius_offset from the rotation axis (along the head's line, signed), so R is solved from that.
+    double radius_offset = 0.;
+    double radius_scale  = 1.;
     char angle_axis  = 'C';
     char radius_axis = 'X';
     char tilt_axis   = 'B';

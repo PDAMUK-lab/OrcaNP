@@ -761,6 +761,41 @@ void fill_expolygons_with_sheath_generate_paths(
     }
 }
 
+void generate_print_surface_support_paths(ExtrusionEntitiesPtr &dst, const ExPolygons &area, const ExPolygons &interface, int walls,
+                                          bool first_layer, float layer_height, const PrintObject &object,
+                                          const SupportParameters &support_params)
+{
+    const Flow   flow      = first_layer ? support_material_1st_layer_flow(&object, layer_height) : support_material_flow(&object, layer_height);
+    const Flow   top_flow  = support_material_interface_flow(&object, layer_height);
+    const double spacing   = flow.scaled_spacing();
+    const BoundingBox bbox(Point(-scale_(1.), -scale_(1.)), Point(scale_(1.), scale_(1.)));
+    // Walls, from the outside in; the fill overlaps the innermost a little, as the support's sheath.
+    for (int w = 0; w < walls; ++ w)
+        for (const ExPolygon &loop : offset_ex(area, float(-(w + 0.5) * spacing)))
+            extrusion_entities_append_paths(dst, draw_perimeters(loop, spacing * 0.15), ExtrusionRole::erSupportMaterial,
+                                            flow.mm3_per_mm(), flow.width(), flow.height());
+    const ExPolygons inside = walls > 0 ? offset_ex(area, float(-(walls - 0.1) * spacing)) : area;
+    auto fill = [&](ExPolygons &&areas, InfillPattern pattern, float angle, float density, ExtrusionRole role, const Flow &f) {
+        if (areas.empty() || density <= 0.f)
+            return;
+        std::unique_ptr<Fill> filler(Fill::new_from_type(pattern));
+        filler->set_bounding_box(bbox);
+        filler->angle   = angle;
+        filler->spacing = f.spacing();
+        fill_expolygons_generate_paths(dst, std::move(areas), filler.get(), density, role, f);
+    };
+    const PrintObjectConfig &config = object.config();
+    if (first_layer)
+        fill(ExPolygons(inside), ipRectilinear, support_params.base_angle, float(config.raft_first_layer_density.value * 0.01),
+             ExtrusionRole::erSupportMaterial, flow);
+    else {
+        fill(intersection_ex(inside, interface), support_params.contact_fill_pattern, support_params.interface_angle,
+             float(support_params.top_interface_density), ExtrusionRole::erSupportMaterialInterface, top_flow);
+        fill(diff_ex(inside, interface), support_params.base_fill_pattern, support_params.base_angle, float(support_params.support_density),
+             ExtrusionRole::erSupportMaterial, flow);
+    }
+}
+
 // Support layers, partially processed.
 struct SupportGeneratorLayerExtruded
 {

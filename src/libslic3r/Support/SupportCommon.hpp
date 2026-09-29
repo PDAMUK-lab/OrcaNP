@@ -46,6 +46,13 @@ void tree_supports_generate_paths(ExtrusionEntitiesPtr &dst, const Polygons &pol
 void fill_expolygons_with_sheath_generate_paths(
     ExtrusionEntitiesPtr &dst, const Polygons &polygons, Fill *filler, float density, ExtrusionRole role, const Flow &flow, const SupportParameters& support_params, bool with_sheath, bool no_sort);
 
+// Orca: a print surface of non-planar printing, printed as support is: `walls` loops round each
+// island of `area`, its `interface` part filled like the support's top interface and the rest like
+// its base, or on the first layer, like a raft's first layer.
+void generate_print_surface_support_paths(ExtrusionEntitiesPtr &dst, const ExPolygons &area, const ExPolygons &interface, int walls,
+                                          bool first_layer, float layer_height, const PrintObject &object,
+                                          const SupportParameters &support_params);
+
 // returns sorted layers
 SupportGeneratorLayersPtr generate_support_layers(
 	PrintObject							&object,

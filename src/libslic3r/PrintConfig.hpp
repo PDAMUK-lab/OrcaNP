@@ -1198,6 +1198,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<S4SurfaceSize>, s4_surface_size))
     ((ConfigOptionFloat,               s4_surface_diameter))
     ((ConfigOptionFloat,               s4_surface_height))
+    ((ConfigOptionBool,                s4_surface_as_support))
+    ((ConfigOptionInt,                 s4_surface_wall_loops))
+    ((ConfigOptionFloat,               s4_surface_layer_height))
     ((ConfigOptionEnum<SlicingMode>,   slicing_mode))
     ((ConfigOptionBool,                enable_support))
     // Automatic supports (generated based on support_threshold_angle).
@@ -1733,6 +1736,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                polar_reverse_rotation))
     ((ConfigOptionFloat,               polar_angle_step))
     ((ConfigOptionFloat,               polar_min_radius))
+    ((ConfigOptionFloat,               polar_radius_offset))
+    ((ConfigOptionFloat,               polar_radius_scale))
     ((ConfigOptionBool,                polar_inverse_time_feed))
     ((ConfigOptionFloat,               polar_max_rotation_speed))
     ((ConfigOptionFloat,               polar_max_tilt_speed))

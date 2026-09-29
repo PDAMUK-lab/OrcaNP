@@ -92,6 +92,8 @@ TEST_CASE("A machine pose converts back to the tool pose it came from", "[PolarK
     cfg.angle_sign        = GENERATE(1., -1.);
     cfg.tilt_pivot_length = GENERATE(0., 42.);
     cfg.tilt_sign         = GENERATE(1., -1.);
+    cfg.radius_offset     = GENERATE(0., 0.7);
+    cfg.radius_scale      = GENERATE(1., 1.02);
     const PolarKinematics kin(cfg);
 
     const std::vector<ToolPose> poses = { pose(130., 90., 5., 10.), pose(100., 120., 2., -25.), pose(60., 50., 0.2, 0.),
@@ -104,6 +106,19 @@ TEST_CASE("A machine pose converts back to the tool pose it came from", "[PolarK
         CHECK_THAT(back.tilt, WithinAbs(poses[i].tilt, 1e-9));
         prev = m;
     }
+}
+
+TEST_CASE("A calibrated radius axis is commanded where it puts the tip", "[PolarKinematics]")
+{
+    // The axis puts the tip 1.02 R + 0.7 mm from the rotation axis for a commanded R: a tip 20 mm
+    // out is commanded (20 - 0.7) / 1.02, on either side of the axis.
+    PolarKinematicsConfig cfg;
+    cfg.radius_offset = 0.7;
+    cfg.radius_scale  = 1.02;
+    const PolarKinematics kin(cfg);
+    CHECK_THAT(kin.to_machine(pose(20., 0., 1., 0.), nullptr).radius, WithinAbs((20. - 0.7) / 1.02, 1e-9));
+    const MachinePose across = kin.to_machine(pose(-20., 0., 1., 0.), nullptr);
+    CHECK_THAT(std::abs(across.radius * 1.02 + 0.7), WithinAbs(20., 1e-9));
 }
 
 TEST_CASE("Circling the rotation axis turns the angle axis continuously", "[PolarKinematics]")

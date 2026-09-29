@@ -123,6 +123,8 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "polar_reverse_rotation",
         "polar_angle_step",
         "polar_min_radius",
+        "polar_radius_offset",
+        "polar_radius_scale",
         "polar_inverse_time_feed",
         "polar_max_rotation_speed",
         "polar_max_tilt_speed",

@@ -1364,7 +1364,7 @@ static std::vector<std::string> s_Preset_print_options{
     "s4_enabled", "s4_max_overhang", "s4_smoothing", "s4_rotation_multiplier", "s4_max_rotation_near", "s4_max_rotation_far",
     "s4_passes", "s4_cell_size", "s4_graded_mesh", "s4_surface_cell_size", "s4_interior_cell_size", "s4_planar_height", "s4_hold_non_overhangs", "s4_layer_shape", "s4_surface_gap",
     "s4_surface_projection", "s4_surface_core", "s4_cone_angle", "s4_surface_size", "s4_surface_diameter",
-    "s4_surface_height",
+    "s4_surface_height", "s4_surface_as_support", "s4_surface_wall_loops", "s4_surface_layer_height",
     "s4_print_surface",
     "ironing_expansion",
 };
@@ -1468,6 +1468,7 @@ static std::vector<std::string> s_Preset_printer_options {
     "printhost_user", "printhost_password", "printhost_ssl_ignore_revoke", "thumbnails", "thumbnails_format",
     "use_relative_e_distances", "extruder_type", "use_firmware_retraction", "printer_notes",
     "polar_kinematics", "polar_tilt_axis", "polar_axis_names", "polar_reverse_rotation", "polar_angle_step", "polar_min_radius",
+    "polar_radius_offset", "polar_radius_scale",
     "polar_inverse_time_feed", "polar_max_rotation_speed", "polar_max_tilt_speed", "polar_tilt_pivot_length",
     "polar_tilt_min", "polar_tilt_max", "polar_tilt_threshold", "polar_reverse_tilt", "polar_signed_radius", "polar_radius_min",
     "polar_radius_max",

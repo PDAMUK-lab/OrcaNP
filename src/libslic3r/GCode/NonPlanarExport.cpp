@@ -111,6 +111,8 @@ NonPlanar::PolarKinematicsConfig polar_config(const PrintConfig &config)
     cfg.center            = rotation_axis(config);
     cfg.angle_sign        = config.polar_reverse_rotation.value ? -1. : 1.;
     cfg.min_radius        = config.polar_min_radius.value;
+    cfg.radius_offset     = config.polar_radius_offset.value;
+    cfg.radius_scale      = config.polar_radius_scale.value / 100.;
     cfg.max_angle_step    = config.polar_angle_step.value;
     cfg.max_angular_speed = config.polar_max_rotation_speed.value * 60.;
     cfg.max_tilt_speed    = config.polar_max_tilt_speed.value * 60.;
