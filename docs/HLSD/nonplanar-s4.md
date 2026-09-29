@@ -205,8 +205,9 @@ whose flat slices are chosen surfaces (`LayerShapes`):
     cylinder) does not surround the axis is refused: the core must stand on the bed to be
     printed first.
 
-    A generated core is sliced with the part and, by default (`s4_surface_as_support`), printed
-    as support is, since it is removed after printing: up to the surface's top the layers hold
+    A generated core is sliced with the part and always printed as support is, since it is
+    removed after printing (a modelled print surface part keeps its own part settings): up to
+    the surface's top the layers hold
     nothing else, so after the infill step, and again after the support step (whose settings it
     follows), their extrusions are rebuilt from their slices
     (`PrintObject::s4_print_surface_as_support()`, `generate_print_surface_support_paths()`):

@@ -1198,7 +1198,6 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<S4SurfaceSize>, s4_surface_size))
     ((ConfigOptionFloat,               s4_surface_diameter))
     ((ConfigOptionFloat,               s4_surface_height))
-    ((ConfigOptionBool,                s4_surface_as_support))
     ((ConfigOptionInt,                 s4_surface_wall_loops))
     ((ConfigOptionFloat,               s4_surface_layer_height))
     ((ConfigOptionEnum<SlicingMode>,   slicing_mode))

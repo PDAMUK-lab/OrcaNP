@@ -159,12 +159,16 @@ For **Pillar**, **Dome** and **Domed pillar**:
 | Height | Height of the pillar's straight side. A domed pillar adds half its diameter on top. | Custom size only; not shown for a dome. |
 
 A generated print surface (sphere, cylinder, pillar, dome, domed pillar) is there to hold the part
-while it prints and is removed afterwards, so by default it is printed as support is:
+while it prints and is removed afterwards, so it is always printed as support is: walls, the
+support's base pattern and spacing inside, and its top interface pattern where it faces the part,
+as many layers deep as the support's top interface layers. The pattern, spacing and interface
+settings are those of **Support** (Base pattern, Base pattern spacing, Top interface layers,
+Interface pattern, Top interface spacing), and the first layer is as dense as a raft's first layer.
+It shows as support in the preview and filament statistics.
 
 | Setting | What it is for | How to use it |
 | --- | --- | --- |
-| Print as support | Prints the surface with walls, the support's base pattern and spacing inside, and its top interface pattern where it faces the part, as many layers deep as the support's top interface layers. It shows as support in the preview and filament statistics. | On by default. The pattern, spacing and interface settings are those of **Support** (Base pattern, Base pattern spacing, Top interface layers, Interface pattern, Top interface spacing); the first layer is as dense as a raft's first layer. Off prints the surface solid, with the part's settings. |
-| Wall loops | Walls round the surface printed as support. | 1 by default; 2 for a sturdier pillar. |
+| Wall loops | Walls round the print surface. | 1 by default; 2 for a sturdier pillar. |
 | Print surface layer height | The surface's own layer height, up to its top, where the part's layers begin. | 0 uses the part's layer height. Thicker layers (0.28 to 0.3 mm with a 0.4 mm nozzle) print it faster. |
 
 Print surface parts you modelled are printed with their own part settings.

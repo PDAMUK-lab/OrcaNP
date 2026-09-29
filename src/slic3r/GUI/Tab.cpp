@@ -2779,7 +2779,6 @@ void TabPrint::build()
         optgroup->append_single_option_line("s4_surface_diameter");
         optgroup->append_single_option_line("s4_surface_height");
         optgroup->append_single_option_line("s4_surface_gap");
-        optgroup->append_single_option_line("s4_surface_as_support");
         optgroup->append_single_option_line("s4_surface_wall_loops");
         optgroup->append_single_option_line("s4_surface_layer_height");
         optgroup->append_single_option_line("s4_surface_projection");

@@ -5200,20 +5200,13 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(20));
 
-    def = this->add("s4_surface_as_support", coBool);
-    def->label    = L("Print as support");
-    def->category = L("Quality");
-    def->tooltip  = L("Print a generated print surface (sphere, cylinder, pillar, dome) as support is printed, to be removed "
-                      "afterwards: walls, the support's base pattern at its spacing inside, and its top interface pattern "
-                      "where the surface faces the part, as many layers deep as the support's top interface layers "
-                      "(Support settings). Off, it is printed as solid as the part.");
-    def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionBool(true));
-
     def = this->add("s4_surface_wall_loops", coInt);
     def->label    = L("Wall loops");
     def->category = L("Quality");
-    def->tooltip  = L("Walls round a generated print surface printed as support.");
+    def->tooltip  = L("A generated print surface (sphere, cylinder, pillar, dome, domed pillar) is removed after printing, "
+                      "so it is printed as support is: this many walls, the support's base pattern at its spacing inside, "
+                      "and its top interface pattern where the surface faces the part, as many layers deep as the "
+                      "support's top interface layers (Support settings).");
     def->min      = 0;
     def->max      = 10;
     def->mode     = comAdvanced;

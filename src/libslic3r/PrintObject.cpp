@@ -1005,11 +1005,11 @@ void PrintObject::generate_support_material()
 void PrintObject::s4_print_surface_as_support()
 {
     // A generated print surface (the only kind kept in S4Deformation::core) holds the part up while
-    // it prints and is removed afterwards, so it is printed as support is. The layers up to the
-    // surface's top hold nothing else: the part's layers start above it. Rebuilt from the layers'
+    // it prints and is removed afterwards, so it is always printed as support is. The layers up to
+    // the surface's top hold nothing else: the part's layers start above it. Rebuilt from the layers'
     // slices each time, so running it again, after the support settings change, gives the same.
     const S4Deformation *s4 = m_s4.get();
-    if (s4 == nullptr || s4->core.indices.empty() || ! m_config.s4_surface_as_support.value)
+    if (s4 == nullptr || s4->core.indices.empty())
         return;
     std::vector<Layer *> layers;
     for (Layer *layer : m_layers)
@@ -1300,7 +1300,6 @@ bool PrintObject::invalidate_state_by_config_options(
             }
         } else if (
                opt_key == "wall_loops"
-            || opt_key == "s4_surface_as_support"
             || opt_key == "s4_surface_wall_loops"
             || opt_key == "alternate_extra_wall"
             || opt_key == "top_one_wall_type"
