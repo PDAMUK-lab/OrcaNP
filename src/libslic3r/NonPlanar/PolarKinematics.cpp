@@ -161,8 +161,10 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
         m_stats.max_radius = std::max(m_stats.max_radius, m.radius);
         if (m.radius < c.min_travel_radius || m.radius > c.max_travel_radius)
             ++m_stats.radius_outside;
-        out << cmd << ' ' << c.angle_axis << GCodeWords::number(m.angle, 4) << ' ' << c.radius_axis << GCodeWords::number(m.radius, 4) << " Z"
-            << GCodeWords::number(m.z, 4);
+        out << cmd << ' ' << c.angle_axis << GCodeWords::number(m.angle, 4) << ' ' << c.radius_axis << GCodeWords::number(m.radius, 4);
+        // Before the G-code sets Z, the head stays at the height the start block left it at.
+        if (m_z_known)
+            out << " Z" << GCodeWords::number(m.z, 4);
         if (c.has_tilt_axis)
             out << ' ' << c.tilt_axis << GCodeWords::number(m.tilt, 3);
         if (seg_e != 0.) {
@@ -281,8 +283,10 @@ void PolarGCodeConverter::process_line(const std::string &raw, std::ostream &out
     const bool motion = cmd == "G0" || cmd == "G1";
     const bool arc    = cmd == "G2" || cmd == "G3";
     if (! motion && ! arc) {
-        if (cmd == "G28")
+        if (cmd == "G28") {
             m_have_machine = false;
+            m_z_known      = false;
+        }
         out << raw << '\n';
         return;
     }
@@ -297,6 +301,8 @@ void PolarGCodeConverter::process_line(const std::string &raw, std::ostream &out
         if (GCodeWords::find(line.code, "XYZ"[axis], v)) {
             target.tip[axis] = m_absolute_xyz ? v : target.tip[axis] + v;
             moves            = true;
+            if (axis == 2 && m_absolute_xyz)
+                m_z_known = true;
         }
     }
     if (c.has_tilt_axis && GCodeWords::find(line.code, c.tilt_axis, v)) {

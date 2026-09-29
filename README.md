@@ -34,9 +34,9 @@ The original OrcaSlicer README is in [README-OrcaSlicer.md](README-OrcaSlicer.md
 
 ## Getting started
 
-1. Add a printer. For a polar printer, pick **ThetaFirm Core R-Theta** (vendor: Custom). Any other
-   printer works too; see [Printers](#printers) for what changes on a printer whose nozzle does not
-   tilt.
+1. Add a printer. For a polar printer, pick **ThetaFirm Core R-Theta** (vendor: Custom), or
+   **Generic Polar Printer** (vendor: Custom) for one whose nozzle does not tilt. Any other printer
+   works too; see [Printers](#printers) for what changes on a printer whose nozzle does not tilt.
 2. Switch the settings view to **Advanced** (the switch at the top of the settings panel). The
    non-planar settings are hidden in Simple mode.
 3. In **Process > Quality > Non-planar (S4)**, turn on **Non-planar (S4)**, or pick the process
@@ -243,6 +243,15 @@ With S4 off, such a printer slices exactly as in OrcaSlicer.
 
 A polar printer turns the bed under a head that moves along one radius. OrcaNP slices in ordinary
 X and Y and converts the result to bed angle, radius, Z and nozzle tilt.
+
+Two presets come with OrcaNP (vendor: Custom). **ThetaFirm Core R-Theta** tilts the nozzle and
+prints non-planar layers by default. **Generic Polar Printer** (MyPolar 0.4 nozzle, process
+**0.20mm Standard @MyPolar**) is a plain polar printer: bed angle C, radius X from 0 to 100 mm on
+a 200 mm round bed, Z, no tilt, flat layers, RepRapFirmware G-code with inverse time feed. Start
+from it for your own polar printer and set the radius travel, axis letters and bed to match. Its
+firmware must run the axes as they are: if it converts Cartesian G-code itself (RepRapFirmware
+`M669 K7`, Klipper `kinematics: polar`), use a Cartesian printer preset with a round bed centred
+on the rotation axis instead.
 
 Choose **Polar** as the **Printer structure** (**Printer > Basic information > Advanced**). That
 converts the G-code to the printer's axes, with the rotation axis at the centre of the printable

@@ -348,6 +348,33 @@ TEST_CASE("The machine end block runs in units per minute and radius travel is c
     CHECK_THAT(converter.stats().max_radius, WithinAbs(20., 1e-9));
 }
 
+TEST_CASE("Moves before the G-code sets Z leave the head at the height the start block left it at", "[PolarKinematics]")
+{
+    // The first travel after the start block has no Z: writing the converter's initial Z 0 would
+    // drag the nozzle across the bed. From the first Z on, every move carries it.
+    PolarKinematicsConfig cfg;
+    cfg.has_tilt_axis = false;
+    std::istringstream  in("M83\nG28\nG1 Z50 F600\n; MACHINE_START_GCODE_END\nG1 X10 Y0 F12000\nG1 Z0.2\nG1 X20 Y0 E1 F600\n");
+    std::ostringstream  out;
+    PolarGCodeConverter converter(cfg);
+    converter.process(in, out);
+
+    std::istringstream       lines(out.str());
+    std::string              line;
+    std::vector<std::string> body;
+    bool                     in_body = false;
+    while (std::getline(lines, line)) {
+        if (line.find("MACHINE_START_GCODE_END") != std::string::npos)
+            in_body = true;
+        else if (in_body && line.rfind("G1 C", 0) == 0)
+            body.push_back(line);
+    }
+    REQUIRE(body.size() >= 3);
+    CHECK(body.front().find(" Z") == std::string::npos);
+    CHECK(body[1].find(" Z0.2") != std::string::npos);
+    CHECK(body.back().find(" Z0.2") != std::string::npos);
+}
+
 TEST_CASE("Each input line is recorded with its last output line and the machine pose after it", "[PolarKinematics]")
 {
     PolarKinematicsConfig cfg;

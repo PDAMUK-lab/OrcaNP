@@ -283,7 +283,9 @@ both the S4 transform and the polar conversion, delimited by Orca's `MACHINE_STA
 and `MACHINE_END_GCODE_START` tags. Orca writes the tags whenever polar kinematics or an S4
 object is in the print. Without them (G-code from another slicer), the S4 transform starts the
 body at the first layer marker (or the first extruding move) and ends it after the last
-extruding move.
+extruding move. The converter does not know where the start block left the head: the first body
+move goes straight to its target, and moves carry no Z until the body sets Z (after a `G28`,
+again), so a travel before the first layer change stays at the start block's height.
 
 ## Target machine
 

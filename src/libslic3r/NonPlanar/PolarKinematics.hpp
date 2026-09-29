@@ -170,6 +170,7 @@ private:
     double      m_feed             = 1500.;
     ToolPose    m_pose;
     bool        m_have_machine     = false;
+    bool        m_z_known          = false; // Z set since the start block or the last G28; until then moves leave it out
     MachinePose m_machine;
     int         m_feed_mode        = -1;  // -1 unknown, 0 G94, 1 G93
 };

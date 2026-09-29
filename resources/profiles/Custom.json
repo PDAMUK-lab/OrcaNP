@@ -1,6 +1,6 @@
 {
 	"name": "Custom Printer",
-	"version": "02.04.00.07",
+	"version": "02.04.00.08",
 	"force_update": "0",
 	"description": "My configurations",
 	"machine_model_list": [
@@ -11,6 +11,10 @@
 		{
 			"name": "Generic Marlin Printer",
 			"sub_path": "machine/MyMarlin.json"
+		},
+		{
+			"name": "Generic Polar Printer",
+			"sub_path": "machine/MyPolar.json"
 		},
 		{
 			"name": "Generic RRF Printer",
@@ -37,6 +41,10 @@
 		{
 			"name": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
 			"sub_path": "process/0.20mm Non-planar S4 @ThetaFirm Core R-Theta.json"
+		},
+		{
+			"name": "0.20mm Standard @MyPolar",
+			"sub_path": "process/0.20mm Standard @MyPolar.json"
 		},
 		{
 			"name": "fdm_process_klipper_common",
@@ -241,6 +249,10 @@
 		{
 			"name": "MyMarlin 0.4 nozzle",
 			"sub_path": "machine/MyMarlin 0.4 nozzle.json"
+		},
+		{
+			"name": "MyPolar 0.4 nozzle",
+			"sub_path": "machine/MyPolar 0.4 nozzle.json"
 		},
 		{
 			"name": "ThetaFirm Core R-Theta 0.4 nozzle",
