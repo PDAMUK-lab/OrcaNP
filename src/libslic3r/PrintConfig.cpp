@@ -5107,7 +5107,7 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Distance between the print surface and the first layer printed over it, all around, as the gap between "
                       "support and part, so the part comes off the surface. A generated pillar or dome lifts the part by it, and "
-                      "a generated sphere or cylinder is shrunk by it, so all of the part is printed; over print surface parts, "
+                      "a cavity sphere or cylinder is shrunk by it, so all of the part is printed; over print surface parts, "
                       "the part within this distance of them is not printed. 0 prints the part fused to the surface.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
@@ -5123,9 +5123,9 @@ void PrintConfigDef::init_fff_params()
                       "printed onto), or inside them round the rotation axis with a column down to the bed under them "
                       "(Surface layout Around the rotation axis: paint the inside, of a ring or bracelet for example), the "
                       "surface gap short of them, so the part's first layer is its painted faces. Size lifts the part onto it.\n"
-                      "Generated sphere: a sphere fitted inside the part, centred below its top by half its width, sized to "
+                      "Cavity sphere: a sphere fitted inside the part's cavity, centred below its top by half its width, sized to "
                       "the part's inner surface less the surface gap, so the first layer is the part's inner surface.\n"
-                      "Generated cylinder: the same with a cylinder around the rotation axis, up to the part's inner roof.\n"
+                      "Cavity cylinder: the same with a cylinder around the rotation axis, up to the part's inner roof.\n"
                       "Pillar: a cylinder under the part's base. Dome: a hemisphere under it. Domed pillar: a cylinder topped "
                       "by a hemisphere as wide. The part is printed on it, lifted the surface gap above it (a concave "
                       "underside nests on a dome), so the toolhead can lean under the part without reaching the bed.\n"
@@ -5138,8 +5138,8 @@ void PrintConfigDef::init_fff_params()
     def->enum_values.push_back("dome");
     def->enum_values.push_back("domed_pillar");
     def->enum_labels.push_back(L("Painted faces"));
-    def->enum_labels.push_back(L("Generated sphere"));
-    def->enum_labels.push_back(L("Generated cylinder"));
+    def->enum_labels.push_back(L("Cavity sphere"));
+    def->enum_labels.push_back(L("Cavity cylinder"));
     def->enum_labels.push_back(L("Pillar"));
     def->enum_labels.push_back(L("Dome"));
     def->enum_labels.push_back(L("Domed pillar"));

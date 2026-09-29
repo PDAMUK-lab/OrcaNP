@@ -316,7 +316,8 @@ Two groups of settings switch the pipeline on:
 - **Print surface** (`s4_surface_core`): what offset layers are offset from. Either the part's
   faces painted as print surface (painted with the *Paint-on print surface* gizmo, which works
   like the other painting gizmos; saved in the 3MF as `paint_print_surface`; a change re-slices
-  the object), or a generated sphere, cylinder, pillar, dome or domed pillar
+  the object), a sphere or cylinder fitted into the part's cavity, or a pillar, dome or domed
+  pillar generated under it
   (`s4_surface_size`, `s4_surface_diameter`, `s4_surface_height`). A lifted part is lifted only
   in slicing: the plater shows it on the bed, the preview where it prints. Orca's check for
   overhangs needing support is skipped for offset layers: they lie on the print surface, not on
