@@ -304,7 +304,7 @@ void GLGizmoPrintSurface::on_render_input_window(float x, float y, float bottom_
     render_tooltip_button(x, y);
 
     ImGui::SameLine();
-    m_imgui->disabled_begin(mo->is_print_surface_painted() == false);
+    m_imgui->disabled_begin(std::none_of(mo->volumes.begin(), mo->volumes.end(), [](const ModelVolume *mv) { return mv->is_print_surface_painted(); }));
     if (m_imgui->button(m_desc.at("remove_all"))) {
         Plater::TakeSnapshot snapshot(wxGetApp().plater(), _u8L("Reset selection"), UndoRedo::SnapshotType::GizmoAction);
         int                  idx = -1;
