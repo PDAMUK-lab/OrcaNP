@@ -1047,11 +1047,18 @@ void PrintObject::s4_print_surface_as_support()
                 region->fills.clear();
                 region->thin_fills.clear();
             }
-            if (holder != nullptr)
-                holder->fills.append(std::move(paths));
-            else
+            if (holder == nullptr) {
                 for (ExtrusionEntity *e : paths)
                     delete e;
+                continue;
+            }
+            // Fills are collections, one per kind of extrusion, as the rest of the pipeline expects.
+            ExtrusionEntityCollection base, interface_fill;
+            for (ExtrusionEntity *e : paths)
+                (e->role() == erSupportMaterialInterface ? interface_fill : base).entities.push_back(e);
+            for (ExtrusionEntityCollection *collection : { &base, &interface_fill })
+                if (! collection->entities.empty())
+                    holder->fills.entities.push_back(new ExtrusionEntityCollection(std::move(*collection)));
         }
     });
 }

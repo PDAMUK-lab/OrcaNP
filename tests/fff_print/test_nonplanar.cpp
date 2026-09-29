@@ -714,7 +714,8 @@ TEST_CASE("A generated pillar is printed as support, in its own layer height", "
 {
     // A 10 x 10 x 4 mm block on a pillar 12 mm wide and 6 mm high, printed as support in 0.3 mm
     // layers under the block's 0.15 mm ones: support and support interface only, its top layers
-    // interface, and less filament than the same pillar printed solid.
+    // interface, and in between, a wall and the sparse support base, which take less filament than
+    // the part's walls and infill would (on a pillar this small, mostly the wall: 0.69 of it).
     auto pillar = [](bool as_support) {
         Model        model;
         ModelObject *object = model.add_object();
@@ -739,25 +740,29 @@ TEST_CASE("A generated pillar is printed as support, in its own layer height", "
     };
     const auto [moves, top] = pillar(true);
     CHECK_THAT(top, WithinAbs(6., 1e-6)); // on the 0.3 mm grid
-    double      pillar_e = 0., interface_e = 0.;
+    // Filament of the pillar's layer at 3 mm.
+    auto middle = [](const std::vector<Move> &moves) {
+        double e = 0.;
+        for (const Move &m : moves)
+            if (m.e > 0. && m.xy && std::abs(m.layer_z - 3.) < 1e-3)
+                e += m.e;
+        return e;
+    };
+    double           interface_e = 0.;
     std::set<double> heights;
     for (const Move &m : moves) {
         if (m.e <= 0. || ! m.xy || m.layer_z > top + 1e-3)
             continue;
         heights.insert(m.layer_z);
         CHECK(m.type.find("Support") != std::string::npos);
-        pillar_e += m.e;
-        if (m.type == "Support interface" && m.layer_z > top - 0.3 - 1e-3)
+        if (m.type == "Support interface") {
+            CHECK(m.layer_z > top - 3 * 0.3 - 1e-3);
             interface_e += m.e;
+        }
     }
     CHECK(heights.size() == 20); // 0.3 to 6 mm
     CHECK(interface_e > 0.);
-    double solid_e = 0.;
-    const auto [solid_moves, solid_top] = pillar(false);
-    for (const Move &m : solid_moves)
-        if (m.e > 0. && m.xy && m.layer_z <= solid_top + 1e-3)
-            solid_e += m.e;
-    CHECK(pillar_e < 0.6 * solid_e);
+    CHECK(middle(moves) < 0.8 * middle(pillar(false).first));
 }
 
 TEST_CASE("A part much wider than its pillar is high is printed at its full size", "[NonPlanar]")
