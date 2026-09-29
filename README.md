@@ -325,8 +325,8 @@ The preview shows the part where and how it prints.
   **Turn bed** switch turns the bed and the print to the machine's angle at the current move, as
   the machine does.
 - The play button left of the moves slider runs through the print move by move and layer by
-  layer, from real time (1x) up to 1000 times the estimated print speed (click the speed to
-  change it).
+  layer, starting in real time (1x) and up to 1000 times the estimated print speed (click the
+  speed to change it).
 - A part on a generated pillar is shown on the pillar.
 
 ## Quality and speed
