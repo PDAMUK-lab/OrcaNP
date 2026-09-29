@@ -23,6 +23,8 @@ profiles `resources/profiles/<Vendor>.json`.
 - Win64 test pre-release: first line of `.github/test-release-win64` is the tag (`orcanp-s4-test-N`); notes live in
   `.github/workflows/test_release_win64.yml`. Pushing either file starts the run (~1 h). Never push unbuilt or
   untested code in the release commit; commit only `.github/` for it.
+- Release notes: names with `@` (process presets) go in code spans; GitHub reads `@name` as a user mention and
+  lists that user as a release contributor.
 - `docs/superpowers/` (plans, brainstorms) is gitignored: never commit it.
 
 ## Build and test (Linux container)
