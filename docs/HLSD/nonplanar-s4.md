@@ -318,6 +318,10 @@ Two groups of settings switch the pipeline on:
   (`s4_print_surface`, still read but not shown): on loading, the other part's faces within a
   millimetre of them are painted and they are removed (`convert_legacy_print_surface_parts()`),
   and the print surface "parts" reads as painted faces.
+  In developer mode a part can instead stand for a real surface placed on the bed
+  (`s4_placed_surface`, from the part's context menu, with a warning): its mesh is the core,
+  it is neither printed nor lifted onto, and its surface, sampled, is stamped into the travel
+  and clearance height fields (`S4ObjectMapping::obstacles`) so travels are lifted over it.
 - **Printer settings > Basic information > Advanced > Printer structure**: *Polar* is what makes
   a printer polar. `polar_kinematics`, which the pipeline reads, follows it and is not shown:
   the tab sets it when the structure changes, and loading a configuration makes the two agree
