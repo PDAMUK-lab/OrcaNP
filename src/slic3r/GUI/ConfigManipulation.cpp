@@ -11,6 +11,7 @@
 #include "MsgDialog.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/GCode/AdaptivePAProcessor.hpp"
+#include "libslic3r/GCode/NonPlanarExport.hpp"
 #include "Plater.hpp"
 
 #include <algorithm>
@@ -329,6 +330,29 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
         new_conf.set_key_value("layer_height", new ConfigOptionFloat(0.2));
         apply(config, &new_conf);
         is_msg_dlg_already_exist = false;
+    }
+
+    // Orca: Optimized S4 layers lean no further than the toolhead reaches: a larger maximum rotation is
+    // filled in with that limit, saying so and where the limit is changed. Per object, slicing says so.
+    if (is_global_config && config->opt_bool("s4_enabled") &&
+        config->opt_enum<S4LayerShape>("s4_layer_shape") == S4LayerShape::Optimized) {
+        const DynamicPrintConfig &printer = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+        const double              limit   = NonPlanarExport::s4_lean_limit(printer);
+        const double near_rotation = config->opt_float("s4_max_rotation_near"), far_rotation = config->opt_float("s4_max_rotation_far");
+        if (near_rotation > limit + EPSILON || far_rotation > limit + EPSILON) {
+            const wxString msg_text = wxString::Format(_L("Maximum rotation is limited to %s°, as far as the toolhead reaches, and has "
+                                                          "been filled in with it."),
+                                                       from_u8(float_to_string_decimal_point(limit, 1))) +
+                                      "\n\n" + from_u8(NonPlanarExport::s4_lean_limit_where(printer));
+            MessageDialog      dialog(m_msg_dlg_parent, msg_text, "", wxICON_WARNING | wxOK);
+            DynamicPrintConfig new_conf = *config;
+            is_msg_dlg_already_exist    = true;
+            dialog.ShowModal();
+            new_conf.set_key_value("s4_max_rotation_near", new ConfigOptionFloat(std::min(near_rotation, limit)));
+            new_conf.set_key_value("s4_max_rotation_far", new ConfigOptionFloat(std::min(far_rotation, limit)));
+            apply(config, &new_conf);
+            is_msg_dlg_already_exist = false;
+        }
     }
 
     //BBS: ironing_spacing shouldn't be too small or equal to zero

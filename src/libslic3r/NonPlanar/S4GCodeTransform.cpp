@@ -1174,7 +1174,8 @@ void Transform::pass_head_clearance()
     HeightField hf(lo, hi, m_cfg.height_field_res, m_cfg.nozzle_radius);
     stamp_obstacles(hf, m_mappers);
 
-    const double k        = std::tan(std::clamp(m_cfg.nozzle_cone_angle, 0., 1.5));
+    // 89.9 degrees: the clearance angle is at least 0.1 degree.
+    const double k        = std::tan(std::clamp(m_cfg.nozzle_cone_angle, 0., 1.5691));
     const double r0       = m_cfg.nozzle_tip_radius;
     const double len      = std::max(m_cfg.nozzle_length, 0.);
     const double big_r    = std::max(m_cfg.head_radius, r0 + k * len);

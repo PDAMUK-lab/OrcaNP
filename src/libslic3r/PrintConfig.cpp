@@ -8436,7 +8436,7 @@ void PrintConfigDef::init_fff_params()
                       "sloping more steeply than this reach into it, so on a printer that cannot tilt the nozzle, non-planar "
                       "(S4) layers lean no more than this.");
     def->sidetext = u8"°";	// degrees, don't need translation
-    def->min      = 5;
+    def->min      = 0.1; // a toolhead with a wide, flat underside clears only a few degrees
     def->max      = 90;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(50));

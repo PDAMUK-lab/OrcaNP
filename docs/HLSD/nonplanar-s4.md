@@ -47,8 +47,12 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    - Target rotation: how far the overhang exceeds `max_overhang`, times the direction and
      `rotation_multiplier`, bounded by a limit tapering from `max_rotation_near` next to the
      support to `max_rotation_far` for the cells farthest from it. Both limits are capped by
-     what the nozzle can follow: the tilt axis's reach on a printer that tilts it, and otherwise
-     the nozzle's clearance angle, since a vertical nozzle digs into a layer sloping more steeply.
+     what the nozzle can follow (`NonPlanarExport::s4_lean_limit()`): the tilt axis's reach on a
+     printer that tilts it, and otherwise the nozzle's clearance angle, since a vertical nozzle
+     digs into a layer sloping more steeply. The cap is never silent: the process settings fill
+     a larger limit in with it, with a message naming where the toolhead is changed
+     (`s4_lean_limit_where()`), and slicing warns when it caps a value (a per-object one, or
+     one set before the printer changed).
    - Rotation field: minimize `w * sum (r_i - r_j)^2` over face-adjacent cells plus
      `sum (r_i - t_i)^2` over cells with a target, within the limits. The Hessian is an
      M-matrix, so a primal-dual active set method converges; each of its steps is a sparse

@@ -2,6 +2,7 @@
 
 #include "../BoundingBox.hpp"
 #include "../Geometry.hpp"
+#include "../I18N.hpp"
 #include "../Print.hpp"
 #include "GCodeProcessor.hpp"
 
@@ -26,6 +27,26 @@ int marker_id(const Print &print, const PrintObject &object)
         ++id;
     }
     return id;
+}
+
+static bool tilts(const ConfigBase &printer_config)
+{
+    return printer_config.option<ConfigOptionBool>("polar_kinematics")->value && printer_config.option<ConfigOptionBool>("polar_tilt_axis")->value;
+}
+
+double s4_lean_limit(const ConfigBase &printer_config)
+{
+    auto value = [&printer_config](const char *key) { return printer_config.option<ConfigOptionFloat>(key)->value; };
+    return tilts(printer_config) ? std::min(-value("polar_tilt_min"), value("polar_tilt_max")) : value("nonplanar_nozzle_clearance_angle");
+}
+
+std::string s4_lean_limit_where(const ConfigBase &printer_config)
+{
+    return tilts(printer_config) ?
+               _u8L("To change it, change how far the nozzle tilts: Printer settings > Basic information > Polar kinematics "
+                    "(Minimum tilt, Maximum tilt).") :
+               _u8L("To change it, change the shape of the toolhead's boundary: Printer settings > Basic information > "
+                    "Non-planar toolhead (Nozzle clearance angle, Nozzle length, Toolhead radius).");
 }
 
 bool has_s4(const Print &print)

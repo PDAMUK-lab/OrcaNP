@@ -14,6 +14,7 @@
 
 namespace Slic3r {
 
+class ConfigBase;
 class Print;
 class PrintConfig;
 class PrintObject;
@@ -39,6 +40,14 @@ std::unique_ptr<S4Mappers> s4_mappers(const Print &print);
 
 NonPlanar::S4GCodeConfig         s4_gcode_config(const PrintConfig &config);
 NonPlanar::PolarKinematicsConfig polar_config(const PrintConfig &config);
+
+// How far S4 layers may lean, in degrees, as far as the printer's toolhead reaches: a tilting
+// nozzle (a polar printer's tilt axis) as far as it tilts to either side, a vertical one as
+// steep a slope as its clearance angle clears. The maximum rotation of Optimized layers is
+// limited to it, and filled in with it in the process settings, saying so and where to change it.
+double s4_lean_limit(const ConfigBase &printer_config);
+// Where the limit is changed: the tilt range, or the shape of the toolhead's boundary.
+std::string s4_lean_limit_where(const ConfigBase &printer_config);
 
 // The preview's toolhead: the nozzle and head the clearance check keeps off the printed part.
 void set_toolhead_preview(GCodeProcessorResult &result, const PrintConfig &config);

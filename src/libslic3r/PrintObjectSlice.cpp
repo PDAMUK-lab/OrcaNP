@@ -10,6 +10,7 @@
 #include "I18N.hpp"
 #include "LocalesUtils.hpp"
 #include "format.hpp"
+#include "GCode/NonPlanarExport.hpp"
 #include "Geometry.hpp"
 #include "Layer.hpp"
 #include "MultiMaterialSegmentation.hpp"
@@ -879,7 +880,7 @@ static double toolhead_clearance(const PrintConfig &config)
     const double lean = Geometry::deg2rad(std::clamp(std::max(-config.polar_tilt_min.value, config.polar_tilt_max.value), 0., 90.));
     const double tip  = 0.5 * config.nonplanar_nozzle_tip_diameter.value;
     const double len  = config.nonplanar_nozzle_length.value;
-    const double cone = tip + len * std::tan(std::clamp(Geometry::deg2rad(90. - config.nonplanar_nozzle_clearance_angle.value), 0., 1.5));
+    const double cone = tip + len * std::tan(std::clamp(Geometry::deg2rad(90. - config.nonplanar_nozzle_clearance_angle.value), 0., Geometry::deg2rad(89.9)));
     return std::max({ 0., tip * std::sin(lean), cone * std::sin(lean) - len * std::cos(lean),
                       config.nonplanar_head_radius.value * std::sin(lean) - len * std::cos(lean) });
 }
@@ -933,11 +934,15 @@ void PrintObject::deform_s4()
             params.warm_start            = NonPlanar::s4_solver_options().warm_start;
             params.multithreading        = NonPlanar::s4_solver_options().multithreading;
             // A tilting nozzle follows the layers, so they may lean no further than it can on either
-            // side; a vertical one no further than the slope its clearance angle clears.
+            // side; a vertical one no further than the slope its clearance angle clears. The process
+            // settings fill the maximum rotation in with this limit; here it is applied, and said so.
             const PrintConfig &pc    = m_print->config();
-            const double       reach = pc.polar_kinematics.value && pc.polar_tilt_axis.value ?
-                                           std::min(-pc.polar_tilt_min.value, pc.polar_tilt_max.value) :
-                                           pc.nonplanar_nozzle_clearance_angle.value;
+            const double       reach = NonPlanarExport::s4_lean_limit(pc);
+            if (params.max_rotation_near > reach + EPSILON || params.max_rotation_far > reach + EPSILON)
+                this->active_step_add_warning(
+                    PrintStateBase::WarningLevel::NON_CRITICAL,
+                    format(_u8L("Maximum rotation is limited to %1%°, as far as the toolhead reaches."),
+                           float_to_string_decimal_point(reach, 1)) + " " + NonPlanarExport::s4_lean_limit_where(pc));
             params.max_rotation_near = std::min(params.max_rotation_near, reach);
             params.max_rotation_far  = std::min(params.max_rotation_far, reach);
             s4->mesh = NonPlanar::tetrahedralize(shell.vertices, shell.triangles, tp);

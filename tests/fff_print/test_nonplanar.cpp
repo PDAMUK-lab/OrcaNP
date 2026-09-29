@@ -232,6 +232,25 @@ TEST_CASE("S4 layers lean no further than a nozzle that cannot tilt clears", "[N
     CHECK(steepest(body_moves(slice({ inverted_frustum() }, config))) < 8.);
 }
 
+TEST_CASE("A maximum rotation beyond the toolhead's reach is limited, and slicing says where to change it", "[NonPlanar]")
+{
+    // Maximum rotation 45 degrees on a vertical nozzle clearing 8: limited to 8, with a warning
+    // naming the toolhead settings; within the reach, no warning.
+    const bool beyond = GENERATE(true, false);
+    DynamicPrintConfig config = s4_config();
+    config.set_deserialize_strict({ { "nonplanar_nozzle_clearance_angle", 8. }, { "s4_max_rotation_near", beyond ? 45. : 8. },
+                                    { "s4_max_rotation_far", beyond ? 45. : 8. } });
+    Print print;
+    Test::init_and_process_print({ inverted_frustum() }, print, config);
+    const auto  state  = print.objects().front()->step_state_with_warnings(posSlice);
+    const bool  warned = std::any_of(state.warnings.begin(), state.warnings.end(), [](const PrintStateBase::Warning &w) {
+        return w.message.find("limited to 8.0") != std::string::npos && w.message.find("Nozzle clearance angle") != std::string::npos;
+    });
+    DYNAMIC_SECTION((beyond ? "beyond" : "within")) {
+        CHECK(warned == beyond);
+    }
+}
+
 namespace {
 
 // A T standing on the bed, 10 mm deep: a post 10 mm wide and 10 mm high under a slab 30 mm wide and
@@ -1199,6 +1218,14 @@ TEST_CASE("A placed print surface is printed onto, not printed, and kept clear o
     REQUIRE(printed > 0);
     CHECK(nearest_print >= inner - 0.05);
     CHECK(nearest_move >= placed_radius);
+}
+
+TEST_CASE("A toolhead clearing only a few degrees can be set", "[NonPlanar]")
+{
+    // A Voron Stealthburner-like head: 2.2 degrees from the nozzle's edge out to 65.5 mm across.
+    const ConfigOptionDef *def = print_config_def.get("nonplanar_nozzle_clearance_angle");
+    REQUIRE(def != nullptr);
+    CHECK(def->min <= 2.2);
 }
 
 TEST_CASE("A part short of resting on its placed print surface is refused", "[NonPlanar]")
