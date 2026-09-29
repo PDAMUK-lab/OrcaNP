@@ -601,7 +601,7 @@ void Transform::pass_junctions()
     // spaces. It becomes a straight line in the part from where the last print ended to where
     // the next one starts; the travel pass then lifts it over whatever is in the way.
     struct Ref { size_t record, move; };
-    struct Job { Ref from; std::vector<Ref> run; Ref to; };
+    struct Job { Ref from; std::vector<Ref> run; Ref to; bool along = false; };
     std::vector<Job>   jobs;
     std::vector<Ref>   run;
     std::optional<Ref> last_print;
@@ -616,18 +616,30 @@ void Transform::pass_junctions()
                 continue;
             }
             if (last_print && ! run.empty()) {
-                const S4Mapper *to    = m.mapped_by;
-                bool            mixed = at(*last_print).mapped_by != to || at(*last_print).support != m.support;
-                // A trimmed run retraces a turn the window leaves out: the window's edges are one
-                // place on the part, so it is a short hop there, not a travel along those paths.
-                for (const Ref &r : run)
-                    mixed |= at(r).mapped_by != to || at(r).object != m.object || at(r).support != m.support || at(r).trimmed;
-                if (mixed)
-                    jobs.push_back({ *last_print, run, { ri, mi } });
+                const S4Mapper *to      = m.mapped_by;
+                bool            mixed   = at(*last_print).mapped_by != to || at(*last_print).support != m.support;
+                bool            trimmed = false;
+                for (const Ref &r : run) {
+                    mixed |= at(r).mapped_by != to || at(r).object != m.object || at(r).support != m.support;
+                    trimmed |= at(r).trimmed;
+                }
+                // A run through a turn an unwrapped part's window leaves out would retrace it:
+                // it goes along the part to where printing resumes instead.
+                if (mixed || trimmed)
+                    jobs.push_back({ *last_print, run, { ri, mi }, ! mixed && to != nullptr });
             }
             run.clear();
             last_print = Ref { ri, mi };
         }
+
+    // The top of what is printed before each record, for travels that turn the nozzle.
+    std::vector<double> top_before(m_records.size() + 1, -std::numeric_limits<double>::infinity());
+    for (size_t ri = 0; ri < m_records.size(); ++ri) {
+        top_before[ri + 1] = top_before[ri];
+        for (const Move &m : m_records[ri].moves)
+            if (m.printing && m.e && *m.e > 0.)
+                top_before[ri + 1] = std::max(top_before[ri + 1], m.pos.z());
+    }
 
     // Back to front, so inserting moves does not shift the ones still to come.
     for (auto job = jobs.rbegin(); job != jobs.rend(); ++job) {
@@ -651,18 +663,60 @@ void Transform::pass_junctions()
         end.pos       = target;
         end.tilt      = tilt;
         end.mapped_by = to.mapped_by;
-        const int n = std::clamp(int(std::ceil((target - start).norm() / m_cfg.travel_seg_size)), 1, m_cfg.max_segments_per_move);
         std::vector<Move> path;
-        for (int k = 1; k < n; ++k) {
-            const double t = double(k) / n;
-            Move         m = make_move(start + (target - start) * t);
-            m.pos       = m.source;
+        if (job->along) {
+            // In the sliced frame the window's edges are one place on the part: from where the
+            // window was left, taken a turn round when that is nearer, straight to where printing
+            // resumes, each point placed on the part.
+            const S4ObjectMapping &om   = mapping(to.object);
+            const double           turn = om.keep_max_x - om.keep_min_x;
+            Eigen::Vector3d        a    = from.source;
+            const Eigen::Vector3d  b    = end.source;
+            if (std::isfinite(turn))
+                for (double shift : { -turn, turn })
+                    if ((b - (a + Eigen::Vector3d(shift, 0., 0.))).norm() < (b - a).norm())
+                        a.x() += shift;
+            const int n = std::clamp(int(std::ceil((b - a).norm() / m_cfg.travel_seg_size)), 1, m_cfg.max_segments_per_move);
+            for (int k = 1; k < n; ++k) {
+                bool                   loose;
+                Move                   m   = make_move(a + (b - a) * (double(k) / n));
+                const S4Mapper::Result res = place(om, to.support, m.source, loose);
+                m.pos       = res.point;
+                m.tilt      = shape_tilt(res.tilt);
+                m.mapped_by = to.mapped_by;
+                m.rapid     = end.rapid;
+                m.feed      = end.feed;
+                m.object    = end.object;
+                m.synthetic = true;
+                path.push_back(m);
+            }
+        }
+        auto add = [&](const Eigen::Vector3d &p, double t) {
+            Move m      = make_move(p);
             m.rapid     = end.rapid;
             m.feed      = end.feed;
-            m.tilt      = start_tilt + (tilt - start_tilt) * t;
+            m.tilt      = t;
             m.object    = end.object;
             m.synthetic = true;
             path.push_back(m);
+        };
+        if (! job->along && std::abs(tilt - start_tilt) > 15. * M_PI / 180.) {
+            // Turning the nozzle sweeps the head round its tip: up clear of everything printed so
+            // far, over to above where printing resumes, turn there and come down.
+            const double safe = std::max({ top_before[job->from.record + 1], start.z(), target.z() }) +
+                                std::max(m_cfg.head_radius, m_cfg.nozzle_length) + m_cfg.travel_clearance;
+            const Eigen::Vector3d up(start.x(), start.y(), safe), over(target.x(), target.y(), safe);
+            add(up, start_tilt);
+            const int n = std::clamp(int(std::ceil((over - up).norm() / m_cfg.travel_seg_size)), 1, m_cfg.max_segments_per_move);
+            for (int k = 1; k <= n; ++k)
+                add(up + (over - up) * (double(k) / n), start_tilt);
+            add(over, tilt);
+        } else {
+            const int n = job->along ? 0 : std::clamp(int(std::ceil((target - start).norm() / m_cfg.travel_seg_size)), 1, m_cfg.max_segments_per_move);
+            for (int k = 1; k < n; ++k) {
+                const double t = double(k) / n;
+                add(start + (target - start) * t, start_tilt + (tilt - start_tilt) * t);
+            }
         }
         std::vector<Move> &moves = m_records[last.record].moves;
         moves.insert(moves.begin() + last.move, path.begin(), path.end());
@@ -829,15 +883,25 @@ public:
         m_nx  = std::max(int(std::ceil(span.x() / m_res)) + 1, 1);
         m_ny  = std::max(int(std::ceil(span.y() / m_res)) + 1, 1);
         m_pad = std::max(int(std::lround(radius / m_res)), 1);
+        // A bead fills its own cell and the cells whose centres it covers: padded by whole cells, a
+        // nozzle leaning over the bead it has just laid would find it under its own body.
+        m_stamp_reach = radius;
         m_grid.assign(size_t(m_nx) * m_ny, -std::numeric_limits<double>::infinity());
+        m_low.assign(size_t(m_nx) * m_ny, std::numeric_limits<double>::infinity());
     }
     void stamp(const Eigen::Vector3d &p)
     {
         int i, j;
         cell(p, i, j);
-        for (int a = std::max(i - m_pad, 0); a <= std::min(i + m_pad, m_nx - 1); ++a)
-            for (int b = std::max(j - m_pad, 0); b <= std::min(j + m_pad, m_ny - 1); ++b)
+        const int n = int(std::ceil(m_stamp_reach / m_res));
+        for (int a = std::max(i - n, 0); a <= std::min(i + n, m_nx - 1); ++a)
+            for (int b = std::max(j - n, 0); b <= std::min(j + n, m_ny - 1); ++b) {
+                const Eigen::Vector2d centre = m_origin + Eigen::Vector2d(a + 0.5, b + 0.5) * m_res;
+                if ((centre - p.head<2>()).squaredNorm() >= m_stamp_reach * m_stamp_reach && (a != i || b != j))
+                    continue;
                 m_grid[size_t(a) * m_ny + b] = std::max(m_grid[size_t(a) * m_ny + b], p.z());
+                m_low[size_t(a) * m_ny + b]  = std::min(m_low[size_t(a) * m_ny + b], p.z());
+            }
     }
     // The whole bead, not just where it ended: the next layer must find support along it.
     void stamp_segment(const Eigen::Vector3d &p0, const Eigen::Vector3d &p1)
@@ -863,6 +927,14 @@ public:
                     return;
             }
     }
+    // The lowest material stamped in the cell of `c`, of a column whose material does not reach
+    // down to the bed (a part standing on its print surface, off the bed).
+    double bottom(const Eigen::Vector2d &c) const
+    {
+        int i, j;
+        cell(Eigen::Vector3d(c.x(), c.y(), 0.), i, j);
+        return m_low[size_t(i) * m_ny + j];
+    }
     double probe(const Eigen::Vector3d &p) const
     {
         int i, j;
@@ -883,7 +955,9 @@ private:
     double              m_res;
     Eigen::Vector2d     m_origin;
     int                 m_nx = 1, m_ny = 1, m_pad = 1;
+    double              m_stamp_reach = 0.;
     std::vector<double> m_grid;
+    std::vector<double> m_low;
 };
 
 void Transform::pass_travel_safety()
@@ -1107,6 +1181,9 @@ void Transform::pass_head_clearance()
             if (d.squaredNorm() <= ignore2)
                 return true;
             const double top = h - m_cfg.clearance_tolerance - tip.z(); // column top, relative to the tip
+            // Material over a gap (a part lifted onto its print surface) is solid down to its lowest
+            // bead only: the head may pass under it.
+            const double low = hf.bottom(c) - tip.z();
             const double s0  = d.x() * axis.x() + d.y() * axis.y();       // axis coordinate at the tip's height
             const double w2  = d.squaredNorm();
             // Along the column, z -> axis coordinate s = s0 + az z and squared distance from
@@ -1115,8 +1192,8 @@ void Transform::pass_head_clearance()
             const double cone_b = -2. * s0 * az - 2. * k * az * (r0 + k * s0);
             const double cone_c = w2 - s0 * s0 - (r0 + k * s0) * (r0 + k * s0);
             const double cyl_a = 1. - az * az, cyl_b = -2. * s0 * az, cyl_c = w2 - s0 * s0 - big_r * big_r;
-            hit = quadratic_reaches_zero(cone_a, cone_b, cone_c, -s0 / az, std::min((len - s0) / az, top)) ||
-                  quadratic_reaches_zero(cyl_a, cyl_b, cyl_c, (len - s0) / az, top);
+            hit = quadratic_reaches_zero(cone_a, cone_b, cone_c, std::max(-s0 / az, low), std::min((len - s0) / az, top)) ||
+                  quadratic_reaches_zero(cyl_a, cyl_b, cyl_c, std::max((len - s0) / az, low), top);
             return ! hit;
         });
         return hit;
@@ -1138,7 +1215,8 @@ void Transform::pass_head_clearance()
                     if (collides(m.pos, m_cfg.emit_tilt ? m.tilt : 0.)) {
                         if (m_report.head_collisions++ < 5) {
                             char buf[160];
-                            std::snprintf(buf, sizeof(buf), "layer %d at X%.2f Y%.2f Z%.2f", layer, m.pos.x(), m.pos.y(), m.pos.z());
+                            std::snprintf(buf, sizeof(buf), "layer %d at X%.2f Y%.2f Z%.2f (%s, tilt %.0f)", layer, m.pos.x(), m.pos.y(),
+                                          m.pos.z(), m.printing ? "printing" : "travel", m.tilt * 180. / M_PI);
                             m_report.head_collision_samples.emplace_back(buf);
                         }
                     }

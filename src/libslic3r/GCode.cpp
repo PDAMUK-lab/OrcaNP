@@ -2605,6 +2605,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
             if (report.tilt_limited > 0)
                 BOOST_LOG_TRIVIAL(warning) << "S4: " << report.tilt_limited << " points lean further than the tilt axis travel";
             if (report.head_collisions > 0) {
+                BOOST_LOG_TRIVIAL(warning) << "S4: the nozzle or toolhead may hit printed parts at " << report.head_collisions << " places";
                 std::string where;
                 for (const std::string &sample : report.head_collision_samples)
                     where += "\n" + sample;
