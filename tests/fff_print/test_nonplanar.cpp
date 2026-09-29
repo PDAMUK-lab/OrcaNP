@@ -991,7 +991,7 @@ TEST_CASE("Layers offset from painted faces start on them, the print surface und
     INFO(invalid.string);
     REQUIRE(invalid.string.empty());
     const std::vector<Move> moves = body_moves(Test::gcode(print));
-    const S4Deformation    *s4    = print.objects().front()->s4_deformation();
+    const auto             *s4    = print.objects().front()->s4_deformation();
     CHECK(s4->lift == 0.);
     const Vec3d centre(100., 100., 0.);
     size_t      core_points = 0, shell_points = 0;
