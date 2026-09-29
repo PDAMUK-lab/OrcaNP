@@ -37,6 +37,7 @@ struct Move
     bool                  synthetic = false;
     bool                  pure_e    = false; // retract / prime: E and F only
     bool                  dropped   = false;
+    bool                  trimmed   = false; // extrusion outside an unwrapped object's kept window
     std::string           axes;              // axis words the source line commanded
     int                   object    = -1;    // object marker the line is in, -1 outside
     bool                  support   = false; // after a ";TYPE:Support..." marker
@@ -374,6 +375,7 @@ void Transform::build_records()
                 if (mid < om.keep_min_x || mid >= om.keep_max_x) {
                     m.e.reset();
                     m.printing = false;
+                    m.trimmed  = true;
                     ++m_report.trimmed;
                 }
             }
@@ -616,8 +618,10 @@ void Transform::pass_junctions()
             if (last_print && ! run.empty()) {
                 const S4Mapper *to    = m.mapped_by;
                 bool            mixed = at(*last_print).mapped_by != to || at(*last_print).support != m.support;
+                // A trimmed run retraces a turn the window leaves out: the window's edges are one
+                // place on the part, so it is a short hop there, not a travel along those paths.
                 for (const Ref &r : run)
-                    mixed |= at(r).mapped_by != to || at(r).object != m.object || at(r).support != m.support;
+                    mixed |= at(r).mapped_by != to || at(r).object != m.object || at(r).support != m.support || at(r).trimmed;
                 if (mixed)
                     jobs.push_back({ *last_print, run, { ri, mi } });
             }
