@@ -3854,7 +3854,7 @@ bool convert_legacy_print_surface_parts(ModelObject &object)
         ModelVolume *v = object.volumes[i];
         if (! v->is_model_part())
             continue;
-        if (v->config.has("s4_print_surface") && v->config.opt_bool("s4_print_surface"))
+        if (v->config.has("s4_print_surface") && v->config.get().opt_bool("s4_print_surface"))
             surfaces.push_back(i);
         else if (part == nullptr)
             part = v;
@@ -3869,7 +3869,7 @@ bool convert_legacy_print_surface_parts(ModelObject &object)
             its_transform(its, object.volumes[i]->get_matrix());
             its_merge(core, its);
         }
-        const auto               tree  = AABBTreeIndirect::build_tree_over_indexed_triangle_set(core.vertices, core.indices);
+        const auto               tree  = AABBTreeIndirect::build_aabb_tree_over_indexed_triangle_set(core.vertices, core.indices);
         const indexed_triangle_set &its = part->mesh().its;
         const Transform3d        trafo = part->get_matrix();
         TriangleSelector         selector(part->mesh());
