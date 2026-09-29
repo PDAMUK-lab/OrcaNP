@@ -223,8 +223,7 @@ enum class S4LayerShape
 enum class S4SurfaceCore
 {
     Painted, // generated under or inside the part's faces painted as print surface
-    Sphere,
-    Cylinder,
+    Cavity,  // a sphere or a cylinder fitted into the part's cavity, whichever fills more of it
     // Under the part, which stands on them.
     Pillar,
     Dome, // a hemisphere

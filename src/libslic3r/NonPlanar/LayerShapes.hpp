@@ -113,6 +113,13 @@ std::vector<Eigen::Vector3d> deform_offset_around_axis(const std::vector<Eigen::
                                                        const Eigen::Vector2d &axis, double from_angle, double scale, double base_z,
                                                        double gap, double shift);
 
+// The share of a part, by volume, whose offset layers fold over each other: cells of `tets` that
+// the deformation to `deformed` turns inside out or flattens, among the cells reaching above
+// `above_z` (what is printed). Offset layers are one-to-one only where moving away from the
+// print surface along the layout (from the centre, or the axis) never comes nearer to it.
+double folded_share(const std::vector<Eigen::Vector3d> &points, const std::vector<std::array<int, 4>> &tets,
+                    const std::vector<Eigen::Vector3d> &deformed, double above_z);
+
 // The distances from a vertical axis at which a surface stands on the bed: the nearest and the
 // farthest point of its faces, edges and vertices within `tolerance` of its lowest point (nearest
 // 0 when such faces surround the axis).

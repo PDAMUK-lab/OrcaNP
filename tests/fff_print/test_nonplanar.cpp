@@ -933,7 +933,7 @@ TriangleMesh hollow_dome(double inner, double outer)
 
 } // namespace
 
-TEST_CASE("A generated sphere core puts the first layer on the part's inner surface", "[NonPlanar]")
+TEST_CASE("A cavity core in a dome is a sphere, and the first layer lies on the part's inner surface", "[NonPlanar]")
 {
     // Only the shell is modelled: the slicer fits a core into it, the gap short of its inner
     // surface, prints it first, and the shell's first layer lies on its inner surface.
@@ -944,7 +944,7 @@ TEST_CASE("A generated sphere core puts the first layer on the part's inner surf
     object->add_volume(hollow_dome(inner, outer));
     object->add_instance()->set_offset(Vec3d(100., 100., 0.));
 
-    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "sphere" },
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "cavity" },
                                               { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
                                               { "skirt_loops", 0 }, { "brim_type", "no_brim" },
                                               { "layer_change_gcode", "G92 E0" }, { "layer_height", 0.3 },
@@ -985,6 +985,54 @@ TEST_CASE("A generated sphere core puts the first layer on the part's inner surf
     CHECK(core_max <= core_radius + 0.35);
     // The shell's first layer is its modelled inner surface.
     CHECK(shell_min >= inner - 0.05);
+}
+
+TEST_CASE("A cavity core in a cup upside down is a cylinder, which fills more of it than a sphere", "[NonPlanar]")
+{
+    // Inner radius 15 up to a roof at 17 mm: a sphere fitted into it would be 11 mm wide at mid-height.
+    const double inner = 15., gap = 0.4;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "cup.stl";
+    object->add_volume(revolve({ { 0., 17. }, { inner, 17. }, { inner, 0. }, { 20., 0. }, { 20., 20. }, { 0., 20. } }));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+
+    DynamicPrintConfig config = config_with({ { "s4_enabled", true }, { "s4_layer_shape", "offset" }, { "s4_surface_core", "cavity" },
+                                              { "s4_surface_gap", gap }, { "use_relative_e_distances", true },
+                                              { "skirt_loops", 0 }, { "brim_type", "no_brim" },
+                                              { "layer_change_gcode", "G92 E0" }, { "layer_height", 0.3 },
+                                              { "initial_layer_print_height", 0.3 }, { "enable_support", false } });
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, config);
+    const StringObjectException invalid = print.validate();
+    INFO(invalid.string);
+    REQUIRE(invalid.string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+
+    BoundingBoxf first;
+    for (const Move &m : moves)
+        if (m.e > 0. && m.layer == 1)
+            first.merge(Vec2d(axis(m, 'X'), axis(m, 'Y')));
+    double widest = 0.; // the core at mid-height
+    for (const Move &m : moves)
+        if (m.e > 0. && std::abs(axis(m, 'Z') - 8.5) < 0.2)
+            widest = std::max(widest, (Vec2d(axis(m, 'X'), axis(m, 'Y')) - first.center()).norm());
+    CHECK(widest >= inner - gap - 0.5);
+}
+
+TEST_CASE("A print surface sphere or cylinder of an older project becomes a cavity core", "[NonPlanar]")
+{
+    for (const char *old : { "sphere", "cylinder" }) {
+        DYNAMIC_SECTION(old)
+        {
+            DynamicPrintConfig        config;
+            ConfigSubstitutionContext context(ForwardCompatibilitySubstitutionRule::Disable);
+            config.set_deserialize("s4_surface_core", old, context);
+            CHECK(config.opt_enum<S4SurfaceCore>("s4_surface_core") == S4SurfaceCore::Cavity);
+        }
+    }
 }
 
 namespace {

@@ -1040,22 +1040,34 @@ void PrintObject::deform_s4()
                     s4->core.indices.emplace_back(t[0], t[1], t[2]);
             } else {
                 // A core fitted into the part's cavity, the gap short of its inner surface, so the
-                // part's first layer is its inner surface.
+                // part's first layer is its inner surface: a sphere (a dome) or a cylinder about the
+                // axis (a cup upside down), whichever fills more of the cavity. Unwrapped around the
+                // axis (a sleeve, a ring), only the cylinder goes round it.
                 const NonPlanar::SurfaceDistance part_distance(shell.vertices, shell.triangles);
                 const double                     bottom = part_distance.bbox_min().z();
-                if (m_config.s4_surface_core.value == S4SurfaceCore::Sphere) {
-                    const NonPlanar::FittedCore fit = NonPlanar::fit_sphere_core(part_distance);
-                    if (fit.radius <= gap + 0.5)
-                        throw Slic3r::SlicingError(L("The part's cavity is too small for a print surface sphere."), this->id().id);
-                    // The core is printed first, from the bed: it cannot start in mid-air.
-                    if (fit.base.z() - (fit.radius - gap) > bottom + m_print->config().initial_layer_print_height.value)
-                        throw Slic3r::SlicingError(L("The sphere fitted into the part does not reach the bed, so it cannot be "
-                                                     "printed first as its print surface."), this->id().id);
-                    indexed_triangle_set sphere = its_make_sphere(fit.radius - gap, PI / 90.), lower;
-                    for (stl_vertex &v : sphere.vertices)
-                        v += fit.base.cast<float>();
-                    cut_mesh(sphere, float(bottom), &s4->core, &lower, true);
-                } else {
+                std::string                      reasons; // why the shapes do not fit
+                float                            best = 0.f;
+                if (m_config.s4_surface_projection.value == S4SurfaceProjection::Above) {
+                    try {
+                        const NonPlanar::FittedCore fit = NonPlanar::fit_sphere_core(part_distance);
+                        if (fit.radius <= gap + 0.5)
+                            reasons = L("The part's cavity is too small for a print surface sphere.");
+                        // The core is printed first, from the bed: it cannot start in mid-air.
+                        else if (fit.base.z() - (fit.radius - gap) > bottom + m_print->config().initial_layer_print_height.value)
+                            reasons = L("The sphere fitted into the part does not reach the bed, so it cannot be printed first as "
+                                        "its print surface.");
+                        else {
+                            indexed_triangle_set sphere = its_make_sphere(fit.radius - gap, PI / 90.), lower;
+                            for (stl_vertex &v : sphere.vertices)
+                                v += fit.base.cast<float>();
+                            cut_mesh(sphere, float(bottom), &s4->core, &lower, true);
+                            best = its_volume(s4->core);
+                        }
+                    } catch (const std::runtime_error &e) {
+                        reasons = e.what();
+                    }
+                }
+                try {
                     const NonPlanar::FittedCore fit = NonPlanar::fit_cylinder_core(shell.vertices, shell.triangles, part_distance,
                                                                                    s4->axis);
                     // Open to the top (a sleeve), the core is as tall as the part; under a roof it
@@ -1063,11 +1075,19 @@ void PrintObject::deform_s4()
                     const bool   roofed = fit.height < part_distance.bbox_max().z() - bottom - 1e-3;
                     const double height = roofed ? fit.height - gap : fit.height;
                     if (fit.radius <= gap + 0.5 || height <= 0.5)
-                        throw Slic3r::SlicingError(L("The part's cavity is too small for a print surface cylinder."), this->id().id);
-                    s4->core = its_make_cylinder(fit.radius - gap, height);
-                    for (stl_vertex &v : s4->core.vertices)
+                        throw std::runtime_error(L("The part's cavity is too small for a print surface cylinder."));
+                    indexed_triangle_set cylinder = its_make_cylinder(fit.radius - gap, height);
+                    for (stl_vertex &v : cylinder.vertices)
                         v += fit.base.cast<float>();
+                    if (const float volume = its_volume(cylinder); volume > best) {
+                        s4->core = std::move(cylinder);
+                        best     = volume;
+                    }
+                } catch (const std::runtime_error &e) {
+                    reasons += (reasons.empty() ? "" : "\n") + std::string(e.what());
                 }
+                if (best <= 0.f)
+                    throw Slic3r::SlicingError(reasons, this->id().id);
                 core = to_s4_mesh(s4->core);
             }
             auto lowest = [](const S4Mesh &m) {
@@ -1157,6 +1177,17 @@ void PrintObject::deform_s4()
                 s4->keep_min_x = s4->axis.x() + 0.5 * PI * scale;
                 s4->keep_max_x = s4->keep_min_x + turn;
             }
+            // Offset layers are one-to-one only for a part over its print surface: beside it, moving
+            // away from the surface can come nearer to it again, and the layers fold over each other
+            // (sliced, they cancel out into empty or garbled layers). Over a pillar they never fold.
+            if (! pillar && NonPlanar::folded_share(s4->mesh.points, s4->mesh.tets, s4->deformed, s4->surface_top) > 0.01)
+                throw Slic3r::SlicingError(
+                    format(_u8L("%1% cannot be printed in layers offset from its print surface: part of it is not over the "
+                                "print surface, and its layers there fold over each other. These layers suit parts printed "
+                                "over their print surface (domes, spheres, cups upside down, sleeves). Paint the faces all of "
+                                "the part is printed onto, or choose Print surface Pillar or another Layer shape."),
+                           this->model_object()->name),
+                    this->id().id);
             if (! placed.empty()) {
                 // The part's first layer lies the gap from the placed surface: a part farther from it
                 // would start in mid-air; what is nearer is not printed.

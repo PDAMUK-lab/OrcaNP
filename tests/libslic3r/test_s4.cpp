@@ -859,6 +859,77 @@ TEST_CASE("Each object is mapped through its own deformation, the rest printed a
         CHECK_THAT(pt.z(), WithinAbs(2.4, 1e-6));
 }
 
+namespace {
+
+// Heights of the moves between ";WIPE_START" and ";WIPE_END" in transformed G-code.
+std::vector<double> wipe_heights(const std::string &gcode)
+{
+    std::vector<double> out;
+    std::istringstream  in(gcode);
+    std::string         line;
+    double              z      = 0.;
+    bool                wiping = false;
+    while (std::getline(in, line)) {
+        wiping = line.rfind(";WIPE_START", 0) == 0 || (wiping && line.rfind(";WIPE_END", 0) != 0);
+        if (line.rfind("G1", 0) != 0)
+            continue;
+        const size_t at = line.find(" Z");
+        if (at != std::string::npos)
+            z = std::stod(line.substr(at + 2));
+        if (wiping && line.find(" X") != std::string::npos)
+            out.push_back(z);
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("The wipe that ends an object's printing is mapped as the object is", "[S4]")
+{
+    const TetMesh  mesh   = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper = raised_mapper(mesh);
+    S4MapperSet    set;
+    set.objects[7].mapper = &mapper;
+    // The last print's wipe comes after the object's end marker.
+    const std::string g = start_block + "; NONPLANAR_OBJECT 7\n" + square(2.4) + "; NONPLANAR_OBJECT_END\n" +
+                          "G1 E-0.5 F2100\n;WIPE_START\nG1 X2 Y-1 E-0.1 F3000\nG1 X3 Y-1 E-0.1\n;WIPE_END\n" + end_block;
+    std::istringstream in(g);
+    std::ostringstream out;
+    s4_transform_gcode(in, out, set, S4GCodeConfig());
+    const std::vector<double> heights = wipe_heights(out.str());
+    REQUIRE(! heights.empty());
+    for (double z : heights)
+        CHECK_THAT(z, WithinAbs(1.4, 1e-6));
+}
+
+TEST_CASE("A travel is lifted after the wipe, which stays on the print it retraces", "[S4]")
+{
+    const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
+    std::string    g = start_block;
+    for (double z : { 1., 2., 3. })
+        g += "G1 X2 Y-1.8 Z" + std::to_string(z) + " F3000\nG1 X2 Y1.8 E0.2 F1200\n";
+    g += "G1 E-0.5 F2100\n;WIPE_START\nG1 X2 Y1 E-0.1 F3000\n;WIPE_END\n";
+    g += "G1 X0.5 Y1.8 Z0.6 F6000\nG1 X0.5 Y-1.8\nG1 X3.5 Y-1.8\nG1 X3.5 Y1.8\nG1 E0.6 F2100\nG1 X2.5 Y1.8 E0.1 F1200\n";
+    S4GCodeReport     report;
+    const std::string out = transform(g, mapper, &report);
+    CHECK(report.lifts >= 1);
+    const std::vector<double> heights = wipe_heights(out);
+    REQUIRE(! heights.empty());
+    for (double z : heights)
+        CHECK_THAT(z, WithinAbs(3., 1e-6));
+}
+
+TEST_CASE("A line setting only the feed rate keeps the slicer's retraction for the travel after it", "[S4]")
+{
+    const TetMesh  mesh = voxel_mesh(cantilever_voxels(), 2.);
+    const S4Mapper mapper(mesh, mesh.points, Eigen::Vector2d::Zero());
+    const std::string g = start_block + square(0.2) + "G1 E-0.8 F2100\nG1 F6000\nG1 X15 Y-1 Z0.2\nG1 E0.8 F2100\nG1 X16 Y-1 E0.1 F1200\n";
+    S4GCodeReport report;
+    transform(g, mapper, &report);
+    CHECK(report.retractions_added == 0);
+}
+
 TEST_CASE("Extrusion outside an unwrapped object's window is left out", "[S4]")
 {
     const TetMesh  mesh   = voxel_mesh(cantilever_voxels(), 2.);
@@ -1081,6 +1152,29 @@ TEST_CASE("A cylinder core is fitted up to the roof of the part's cavity", "[S4]
     const SurfaceDistance tilted(slab.vertices, slab.triangles);
     CHECK_THROWS_WITH(fit_cylinder_core(slab.vertices, slab.triangles, tilted, Eigen::Vector2d(5., 5.)),
                       Catch::Matchers::ContainsSubstring("covers the rotation axis"));
+
+    // Nor has one open at a side below the roof: the core needs the part all the way round it.
+    std::vector<std::array<int, 3>> open_side;
+    for (const std::array<int, 3> &v : voxels)
+        if (! (v[0] == 4 && v[2] <= 3))
+            open_side.push_back(v);
+    const Surface         half = voxel_surface(open_side, 2.);
+    const SurfaceDistance half_part(half.vertices, half.triangles);
+    CHECK_THROWS_WITH(fit_cylinder_core(half.vertices, half.triangles, half_part, Eigen::Vector2d(5., 5.)),
+                      Catch::Matchers::ContainsSubstring("all the way round"));
+}
+
+TEST_CASE("Offset layers folding over each other are measured by the share of the part they fold in", "[S4]")
+{
+    const TetMesh                mesh = voxel_mesh(cantilever_voxels(), 2.);
+    std::vector<Eigen::Vector3d> mirrored;
+    for (const Eigen::Vector3d &p : mesh.points)
+        mirrored.emplace_back(p.x(), p.y(), -p.z());
+    const double below = -std::numeric_limits<double>::infinity();
+    CHECK_THAT(folded_share(mesh.points, mesh.tets, mesh.points, below), WithinAbs(0., 1e-12));
+    CHECK_THAT(folded_share(mesh.points, mesh.tets, mirrored, below), WithinAbs(1., 1e-12));
+    // Cells below the cut are not printed and do not count.
+    CHECK_THAT(folded_share(mesh.points, mesh.tets, mirrored, 0.), WithinAbs(0., 1e-12));
 }
 
 

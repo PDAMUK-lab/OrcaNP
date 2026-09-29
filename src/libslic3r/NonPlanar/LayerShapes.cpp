@@ -344,6 +344,30 @@ FittedCore fit_cylinder_core(const std::vector<Eigen::Vector3d> &vertices, const
     }
     if (! std::isfinite(r2) || r2 <= 0.)
         throw std::runtime_error("Print surface: the part has no cavity around the rotation axis to fit a cylinder into");
+    // The part must go all the way round the axis below the roof, as a cup or a sleeve does: seen
+    // from the axis, its faces there cover every direction.
+    constexpr int     bins = 360;
+    std::vector<char> seen(bins, 0);
+    for (const std::array<int, 3> &t : triangles) {
+        const Eigen::Vector3d &a = vertices[t[0]], &b = vertices[t[1]], &c = vertices[t[2]];
+        if (std::min({ a.z(), b.z(), c.z() }) >= roof)
+            continue;
+        std::array<double, 3> ang;
+        for (int k = 0; k < 3; ++k) {
+            const Eigen::Vector2d d = vertices[t[k]].head<2>() - axis;
+            ang[k]                  = wrap_2pi(std::atan2(d.y(), d.x()));
+        }
+        std::sort(ang.begin(), ang.end());
+        // The face spans the directions outside the widest gap between its corners' directions.
+        const std::array<double, 3> gap = { ang[1] - ang[0], ang[2] - ang[1], ang[0] + 2. * PI - ang[2] };
+        const int                   widest = int(std::max_element(gap.begin(), gap.end()) - gap.begin());
+        const double                from = ang[(widest + 1) % 3], span = 2. * PI - gap[widest];
+        for (int i = int(std::floor(from / (2. * PI) * bins)), n = int(std::ceil(span / (2. * PI) * bins)); n >= 0; ++i, --n)
+            seen[i % bins] = 1;
+    }
+    if (std::find(seen.begin(), seen.end(), 0) != seen.end())
+        throw std::runtime_error("Print surface: the part does not go all the way round the rotation axis; a cylinder core needs "
+                                 "the part around it, as a cup or a sleeve is");
     return { Eigen::Vector3d(axis.x(), axis.y(), lo.z()), std::sqrt(r2), roof - lo.z() };
 }
 
@@ -361,6 +385,24 @@ std::vector<Eigen::Vector3d> deform_offset_from_above(const std::vector<Eigen::V
                          base_z + surface.signed_distance(p) - gap);
     }
     return out;
+}
+
+double folded_share(const std::vector<Eigen::Vector3d> &points, const std::vector<std::array<int, 4>> &tets,
+                    const std::vector<Eigen::Vector3d> &deformed, double above_z)
+{
+    auto volume = [](const std::vector<Eigen::Vector3d> &p, const std::array<int, 4> &t) {
+        return (p[t[1]] - p[t[0]]).cross(p[t[2]] - p[t[0]]).dot(p[t[3]] - p[t[0]]);
+    };
+    double total = 0., folded = 0.;
+    for (const std::array<int, 4> &t : tets) {
+        if (std::max({ deformed[t[0]].z(), deformed[t[1]].z(), deformed[t[2]].z(), deformed[t[3]].z() }) <= above_z)
+            continue;
+        const double before = volume(points, t);
+        total += std::abs(before);
+        if (before * volume(deformed, t) <= 0.)
+            folded += std::abs(before);
+    }
+    return total > 0. ? folded / total : 0.;
 }
 
 std::vector<Eigen::Vector3d> deform_offset_pillar(const std::vector<Eigen::Vector3d> &points, const Eigen::Vector2d &axis, double radius,

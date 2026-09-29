@@ -202,10 +202,11 @@ whose flat slices are chosen surfaces (`LayerShapes`):
       the way round the axis are refused. The part is lifted as onto a pillar, by the automatic
       height (the toolhead leaning under it where its layers stand steep near the bed) or the
       custom one.
-    - A **sphere** centred below the part's top by half its width, out to the part's nearest
-      point.
-    - A **cylinder** about the rotation axis, from the bed to the roof of the part's cavity, out to
-      its nearest wall below the roof.
+    - Fitted into the part's **cavity**: a sphere centred below the part's top by half its width,
+      out to the part's nearest point, or a cylinder about the rotation axis, from the bed to the
+      roof of the part's cavity, out to its nearest wall below the roof, whichever fills more of
+      the cavity (a dome gets the sphere, a cup upside down the cylinder). Unwrapped around the
+      axis, only the cylinder goes round it.
 
     - A **pillar**, **dome** or **domed pillar** under the part's base (the middle of its faces
       on the bed): a cylinder, a hemisphere, or a cylinder topped by a hemisphere as wide. Its
@@ -219,8 +220,8 @@ whose flat slices are chosen surfaces (`LayerShapes`):
 
     The sphere and the cylinder are shrunk by the gap, so the part's first layer is its
     modelled inner surface. A cavity that does not reach the bed, is too small, or (for a
-    cylinder) does not surround the axis is refused: the core must stand on the bed to be
-    printed first.
+    cylinder) does not surround the axis (the part's faces below the roof, seen from the axis,
+    cover every direction) is refused: the core must stand on the bed to be printed first.
 
     A generated core is sliced with the part and always printed as support is, since it is
     removed after printing: up to
@@ -267,7 +268,11 @@ whose flat slices are chosen surfaces (`LayerShapes`):
   part standing on the axis at a point gets pure cones.
 
 These shapes have no optimization and no inversion repair: the offset map is injective where
-the core is star-shaped about the layout's centre (or axis), and the cone's is always.
+the core is star-shaped about the layout's centre (or axis), and the cone's is always. Where it
+is not (part of the part beside the core, where moving away from the centre comes nearer to the
+core again), the layers fold over each other and, sliced, cancel out into empty or garbled
+layers: slicing refuses a part more than 1 % of whose printed volume folds (`folded_share()`,
+cells the map turns inside out or flat). Over a pillar the vertical shear never folds.
 
 ## Frames and placement
 

@@ -41,6 +41,7 @@ struct Move
     std::string           axes;              // axis words the source line commanded
     int                   object    = -1;    // object marker the line is in, -1 outside
     bool                  support   = false; // after a ";TYPE:Support..." marker
+    bool                  wipe      = false; // between ";WIPE_START" and ";WIPE_END": retraces the last print
     const S4Mapper       *mapped_by = nullptr; // mapper that placed it, null when printed as sliced
 };
 
@@ -232,6 +233,8 @@ void Transform::build_records()
 
     int  object  = -1;
     bool support = false;
+    bool wiping  = false;
+    int  printed = -1; // object of the last print
     for (size_t i = 0; i < m_body.size(); ++i) {
         const std::string     &raw = m_body[i];
         const GCodeWords::Line l   = GCodeWords::split(raw);
@@ -244,7 +247,14 @@ void Transform::build_records()
             object = std::atoi(raw.c_str() + at + 17);
         if (raw.rfind(";TYPE:", 0) == 0)
             support = raw.compare(6, 7, "Support") == 0;
-        const S4ObjectMapping &om = mapping(object);
+        else if (raw.rfind(";WIPE_START", 0) == 0)
+            wiping = true;
+        else if (raw.rfind(";WIPE_END", 0) == 0)
+            wiping = false;
+        // A wipe retraces the last print, also after its object's end marker (the wipe that ends
+        // the print): it is mapped as that object is.
+        const int              owner = wiping && object < 0 ? printed : object;
+        const S4ObjectMapping &om    = mapping(owner);
         if (cmd == "G90")
             absolute = true;
         else if (cmd == "G91")
@@ -283,7 +293,7 @@ void Transform::build_records()
             m.e      = e;
             m.feed   = feed;
             m.pure_e  = true;
-            m.object  = object;
+            m.object  = owner;
             m.support = support;
             rec.moves.push_back(m);
             m_records.push_back(std::move(rec));
@@ -294,6 +304,8 @@ void Transform::build_records()
 
         const bool printing = e && *e > 0.;
         const double step   = printing ? m_cfg.seg_size : m_cfg.travel_seg_size;
+        if (printing && object >= 0)
+            printed = object;
 
         // Polyline of the move in sliced space: the straight line, or the arc linearized.
         std::vector<Eigen::Vector3d> path;
@@ -366,8 +378,9 @@ void Transform::build_records()
             m.feed     = feed;
             m.printing = printing;
             m.axes     = axes;
-            m.object   = object;
+            m.object   = owner;
             m.support  = support;
+            m.wipe     = wiping;
             if (e)
                 m.e = *e * (total > 0. ? lengths[k] / total : 1. / path.size());
             if (windowed) {
@@ -611,6 +624,11 @@ void Transform::pass_junctions()
             const Move &m = m_records[ri].moves[mi];
             if (m.pure_e)
                 continue;
+            if (m.wipe && run.empty()) {
+                // A wipe right after a print stays on it: the travel starts where it ends.
+                last_print = Ref { ri, mi };
+                continue;
+            }
             if (! m.printing) {
                 run.push_back({ ri, mi });
                 continue;
@@ -655,15 +673,27 @@ void Transform::pass_junctions()
             target                     = res.point;
             tilt                       = shape_tilt(res.tilt);
         }
+        double carried = 0.; // retraction on the moves replaced
         for (const Ref &r : job->run)
-            if (r.record != last.record || r.move != last.move)
+            if (r.record != last.record || r.move != last.move) {
                 at(r).dropped = true;
+                carried += at(r).e.value_or(0.);
+            }
         const Eigen::Vector3d start = from.pos;
         const double          start_tilt = from.tilt;
         end.pos       = target;
         end.tilt      = tilt;
         end.mapped_by = to.mapped_by;
         std::vector<Move> path;
+        if (carried != 0.) {
+            Move m      = make_move(start);
+            m.e         = carried;
+            m.feed      = m_retract_feed;
+            m.tilt      = start_tilt;
+            m.pure_e    = true;
+            m.synthetic = true;
+            path.push_back(m);
+        }
         if (job->along) {
             // In the sliced frame the window's edges are one place on the part: from where the
             // window was left, taken a turn round when that is nearer, straight to where printing
@@ -997,18 +1027,20 @@ void Transform::pass_travel_safety()
     HeightField hf(lo, hi, m_cfg.height_field_res, m_cfg.nozzle_radius);
     stamp_obstacles(hf, m_mappers);
 
-    std::vector<char> already(m_next_id, 0); // first travel move after a slicer retraction
+    std::vector<char> already(m_next_id, 0); // travel moves the slicer has retracted for
     {
-        std::optional<double> last_pure_e = m_start_retracted ? std::optional<double>(-1.) : std::nullopt;
+        bool retracted = m_start_retracted;
         for (const Record &r : m_records)
             for (const Move &m : r.moves) {
-                if (m.pure_e)
-                    last_pure_e = m.e;
-                else {
-                    if (last_pure_e && *last_pure_e < 0.)
-                        already[m.id] = 1;
-                    last_pure_e.reset();
-                }
+                if (m.pure_e) {
+                    if (m.e && *m.e != 0.) // a line setting only the feed rate changes nothing
+                        retracted = *m.e < 0.;
+                } else if (m.e && *m.e > 0.)
+                    retracted = false;
+                else if (m.wipe)
+                    retracted |= m.e && *m.e < 0.;
+                else
+                    already[m.id] = retracted;
             }
     }
 
@@ -1022,7 +1054,9 @@ void Transform::pass_travel_safety()
         return size_t(std::find_if(v.begin(), v.end(), [&ref](const Move &m) { return m.id == ref.id; }) - v.begin());
     };
 
-    std::optional<Eigen::Vector3d> anchor; // last printing position: where the nozzle is
+    std::optional<Eigen::Vector3d> anchor; // last printing position
+    std::optional<Eigen::Vector3d> nozzle; // where the nozzle is: after the last print or wipe
+    std::optional<Eigen::Vector3d> run_from; // where the nozzle is when the run starts
     auto flush = [&](std::vector<Ref> &run) {
         if (run.empty())
             return;
@@ -1063,7 +1097,7 @@ void Transform::pass_travel_safety()
             // it is trying to clear.
             const Move &first = find(run.front());
             Move        lift  = make_move(Eigen::Vector3d::Zero());
-            const Eigen::Vector3d at = anchor ? *anchor : first.pos;
+            const Eigen::Vector3d at = run_from ? *run_from : first.pos;
             lift.pos       = Eigen::Vector3d(at.x(), at.y(), target);
             lift.source    = first.source;
             lift.tilt      = first.tilt;
@@ -1130,9 +1164,18 @@ void Transform::pass_travel_safety()
                     hf.stamp_segment(*anchor, p.pos);
                 else
                     hf.stamp(p.pos);
-                anchor = p.pos;
-            } else
+                anchor = nozzle = p.pos;
+            } else if (m.wipe) {
+                // A wipe retraces the print it follows, on it: a lift comes after it.
+                flush(run);
+                run.clear();
+                nozzle = find({ ri, id }).pos; // flushing may have moved the move
+            } else {
+                if (run.empty())
+                    run_from = nozzle;
                 run.push_back({ ri, id });
+                nozzle = m.pos;
+            }
         }
     }
     flush(run);

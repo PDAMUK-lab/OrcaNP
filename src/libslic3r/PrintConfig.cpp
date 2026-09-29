@@ -332,8 +332,7 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(S4SurfaceSize)
 
 static t_config_enum_values s_keys_map_S4SurfaceCore{
     { "painted",  int(S4SurfaceCore::Painted) },
-    { "sphere",   int(S4SurfaceCore::Sphere) },
-    { "cylinder", int(S4SurfaceCore::Cylinder) },
+    { "cavity",   int(S4SurfaceCore::Cavity) },
     { "pillar",       int(S4SurfaceCore::Pillar) },
     { "dome",         int(S4SurfaceCore::Dome) },
     { "domed_pillar", int(S4SurfaceCore::DomedPillar) },
@@ -5107,7 +5106,7 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Distance between the print surface and the first layer printed over it, all around, as the gap between "
                       "support and part, so the part comes off the surface. A generated pillar or dome lifts the part by it, and "
-                      "a cavity sphere or cylinder is shrunk by it, so all of the part is printed; over print surface parts, "
+                      "a cavity core is shrunk by it, so all of the part is printed; over print surface parts, "
                       "the part within this distance of them is not printed. 0 prints the part fused to the surface.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
@@ -5123,23 +5122,23 @@ void PrintConfigDef::init_fff_params()
                       "printed onto), or inside them round the rotation axis with a column down to the bed under them "
                       "(Surface layout Around the rotation axis: paint the inside, of a ring or bracelet for example), the "
                       "surface gap short of them, so the part's first layer is its painted faces. Size lifts the part onto it.\n"
-                      "Cavity sphere: a sphere fitted inside the part's cavity, centred below its top by half its width, sized to "
-                      "the part's inner surface less the surface gap, so the first layer is the part's inner surface.\n"
-                      "Cavity cylinder: the same with a cylinder around the rotation axis, up to the part's inner roof.\n"
+                      "Cavity: a core fitted into the part's cavity, which must be open to the bed, sized to the part's inner "
+                      "surface less the surface gap, so the first layer is the part's inner surface: a sphere centred below "
+                      "the part's top by half its width (a dome), or a cylinder around the rotation axis up to the part's "
+                      "inner roof (a cup upside down), whichever fills more of the cavity. Laid out around the rotation axis "
+                      "(a sleeve, a ring), always the cylinder, and the part must go all the way round the axis.\n"
                       "Pillar: a cylinder under the part's base. Dome: a hemisphere under it. Domed pillar: a cylinder topped "
                       "by a hemisphere as wide. The part is printed on it, lifted the surface gap above it (a concave "
                       "underside nests on a dome), so the toolhead can lean under the part without reaching the bed.\n"
                       "A generated print surface is printed first, as support: it is removed after printing.");
     def->enum_keys_map = &ConfigOptionEnum<S4SurfaceCore>::get_enum_values();
     def->enum_values.push_back("painted");
-    def->enum_values.push_back("sphere");
-    def->enum_values.push_back("cylinder");
+    def->enum_values.push_back("cavity");
     def->enum_values.push_back("pillar");
     def->enum_values.push_back("dome");
     def->enum_values.push_back("domed_pillar");
     def->enum_labels.push_back(L("Painted faces"));
-    def->enum_labels.push_back(L("Cavity sphere"));
-    def->enum_labels.push_back(L("Cavity cylinder"));
+    def->enum_labels.push_back(L("Cavity"));
     def->enum_labels.push_back(L("Pillar"));
     def->enum_labels.push_back(L("Dome"));
     def->enum_labels.push_back(L("Domed pillar"));
@@ -9585,6 +9584,9 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
     // Orca: print surface parts gave way to painted print surface faces.
     if (opt_key == "s4_surface_core" && value == "parts")
         value = "painted";
+    // Orca: the generated sphere and cylinder became one core fitted into the part's cavity.
+    if (opt_key == "s4_surface_core" && (value == "sphere" || value == "cylinder"))
+        value = "cavity";
     //BBS: handle legacy options
     if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
         value = "Supertack Plate";
