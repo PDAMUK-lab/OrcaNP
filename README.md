@@ -81,7 +81,7 @@ All in **Process > Quality > Non-planar (S4)**.
 | Layer shape | Chooses how the layers curve: **Optimized (S4)** bends them where overhangs need it, **Offset from print surface** follows a surface under the part, **Conical** uses cones about the bed's rotation axis. | Use Optimized for overhangs. See [Layer shapes](#layer-shapes) for the other two. |
 | Planar up to height | Prints the bottom of the part with flat layers and starts bending above this height. Above it the layers ease from flat into curved over one surface cell (2 mm by default). | Leave it at 0 for most parts: the first layer is always printed flat on the bed. Use a few millimetres when the part stands on a flat base you want printed normally. Overhangs below this height are not corrected. |
 | Keep other areas planar | Holds the walls that do not overhang at no rotation, so the layers only curve near the overhangs. | Turn on when the bend spreads further through the part than you want. |
-| Maximum overhang | The steepest overhang, measured from vertical, that is left as it is. Steeper ones are rotated. | 30° to 45°. Lower corrects more of the part. |
+| Maximum overhang | The steepest overhang, measured from vertical, that is left as it is. Steeper ones are rotated. | 30° to 45°. Lower corrects more of the part. Before slicing, a warning says so when nothing on the part overhangs more than this: S4 would change nothing. |
 | Maximum rotation near the support | The largest rotation for the parts of an overhang closest to where it is held up. | 45° by default. Both rotation limits go no further than the toolhead reaches: the tilt axis travel on a printer that tilts the nozzle, otherwise the nozzle clearance angle (see [Toolhead clearance](#toolhead-clearance)). A larger value is filled in with that angle, with a message saying so and where to change the toolhead's boundary; slicing limits it the same way, with a warning. |
 | Maximum rotation far from the support | The largest rotation for the parts of an overhang farthest away. The limit tapers from the near value to this one. | Lower than the near value, so long overhangs stay gentle at their tips. |
 
@@ -227,7 +227,12 @@ only slope as far as the nozzle clears the part next to it, so S4 keeps the laye
 
 - set **Printer > Basic information > Non-planar toolhead** to your nozzle and toolhead (see
   [Toolhead clearance](#toolhead-clearance)). The defaults describe no particular toolhead, and
-  their 50° clearance angle is steeper than many hotends and fan ducts allow;
+  their 50° clearance angle is steeper than many hotends and fan ducts allow. A toolhead with a
+  wide, flat underside clears only a few degrees: one Voron 2.4 toolhead, for example, about 2.2°
+  from the nozzle's edge out to 65.5 mm across (Nozzle clearance angle 2.2°, Toolhead radius
+  32.75 mm, Nozzle length 1.24 mm). The angle goes down to 0.1°;
+- the process's **Maximum rotation** (near and far) is filled in with that angle when it is set
+  higher, with a message saying so; to lean the layers further, change the toolhead's settings;
 - keep **Check toolhead clearance** on and read its warning after slicing.
 
 With S4 off, such a printer slices exactly as in OrcaSlicer.
