@@ -3,6 +3,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/Layer.hpp"
 #include "libslic3r/NonPlanar/S4Deformation.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleMeshSlicer.hpp"
@@ -1161,8 +1162,8 @@ TEST_CASE("A print surface part of an older project becomes painted faces", "[No
 TEST_CASE("A placed print surface is printed onto, not printed, and kept clear of", "[NonPlanar]")
 {
     // A 20 mm dome set as placed print surface under a dome shell 20.4 mm inside: nothing is printed
-    // for the dome, not even as support; the shell is printed from its inside out, not lifted; and
-    // no move, travel included, goes into the dome.
+    // for the dome, not even as support; the shell is printed from its inside out, from the
+    // first layer on, not lifted; and no move, travel included, goes into the dome.
     const double placed_radius = 20., inner = 20.4, outer = 26.;
     Model        model;
     ModelObject *object = model.add_object();
@@ -1179,6 +1180,8 @@ TEST_CASE("A placed print surface is printed onto, not printed, and kept clear o
     REQUIRE(invalid.string.empty());
     const std::vector<Move> moves = body_moves(Test::gcode(print));
     CHECK_THAT(print.objects().front()->s4_deformation()->lift, WithinAbs(0., 1e-9));
+    // No empty layers under the shell: the G-code preview needs every layer to hold moves.
+    CHECK(! print.objects().front()->layers().front()->lslices.empty());
     const Vec3d centre(100., 100., 0.);
     size_t      printed = 0;
     double      nearest_print = 1e9, nearest_move = 1e9;
@@ -1196,6 +1199,43 @@ TEST_CASE("A placed print surface is printed onto, not printed, and kept clear o
     REQUIRE(printed > 0);
     CHECK(nearest_print >= inner - 0.05);
     CHECK(nearest_move >= placed_radius);
+}
+
+TEST_CASE("A part short of resting on its placed print surface is refused", "[NonPlanar]")
+{
+    // The shell is 2 mm from the placed dome, more than the 0.4 mm gap: its first layer would be in mid-air.
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->add_volume(hollow_dome(20.4, 26.));
+    object->add_volume(dome(18.4))->config.set_key_value("s4_placed_surface", new ConfigOptionBool(true));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, painted_config({ { "s4_surface_gap", 0.4 } }));
+    REQUIRE(print.validate().string.empty());
+    CHECK_THROWS_WITH(Test::gcode(print), Catch::Matchers::ContainsSubstring("does not rest on its placed print surface"));
+}
+
+TEST_CASE("A skirt or brim is refused with a placed print surface, not dropped", "[NonPlanar]")
+{
+    // Round the part's first layer, on the placed surface, either could run into it: the user turns them off.
+    const bool skirt = GENERATE(true, false);
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->add_volume(hollow_dome(20.4, 26.));
+    object->add_volume(dome(20.))->config.set_key_value("s4_placed_surface", new ConfigOptionBool(true));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    if (skirt)
+        print.apply(model, painted_config({ { "skirt_loops", 1 }, { "skirt_height", 1 } }));
+    else
+        print.apply(model, painted_config({ { "brim_type", "outer_only" }, { "brim_width", 5. } }));
+    DYNAMIC_SECTION((skirt ? "skirt" : "brim")) {
+        CHECK_THAT(print.validate().string, Catch::Matchers::ContainsSubstring(skirt ? "Skirt loops" : "Brim type"));
+    }
 }
 
 TEST_CASE("Placed print surface parts need layers offset from a print surface", "[NonPlanar]")

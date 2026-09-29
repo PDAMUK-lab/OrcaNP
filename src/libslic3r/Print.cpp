@@ -1803,6 +1803,12 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
                        "modifiers or negative volumes, placed once."), object, "s4_enabled" };
         if (placed > 0 && object->config().s4_layer_shape.value != S4LayerShape::Offset)
             return { L("Placed print surface parts need the layer shape \"Offset from print surface\"."), object, "s4_layer_shape" };
+        // A part printed onto a placed surface starts on the surface, not on the bed: a skirt or brim
+        // round its first layer could run into the surface. The user sets them off; they are not dropped.
+        if (placed > 0 && m_config.skirt_loops.value > 0 && m_config.skirt_height.value > 0)
+            return { L("A skirt could run into a placed print surface: set Skirt loops to 0."), nullptr, "skirt_loops" };
+        if (placed > 0 && object->has_brim())
+            return { L("A brim could run into a placed print surface: set the object's Brim type to No-brim."), object, "brim_type" };
         if (object->config().s4_layer_shape.value == S4LayerShape::Offset && placed == 0 &&
             object->config().s4_surface_core.value == S4SurfaceCore::Painted &&
             std::none_of(object->model_object()->volumes.begin(), object->model_object()->volumes.end(),

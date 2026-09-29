@@ -1075,13 +1075,17 @@ void PrintObject::deform_s4()
             const double floor_z = std::min(lowest(shell), lowest(core));
             // The print surface is printed first, from the bed: standing on the part, it would start in mid-air.
             if (lowest(core) > floor_z + 0.5 * first)
-                throw Slic3r::SlicingError(L("The print surface is printed first, so it must stand on the bed."), this->id().id);
+                throw Slic3r::SlicingError(placed.empty() ? L("The print surface is printed first, so it must stand on the bed.") :
+                                                            L("Placed print surface parts must stand on the bed, as the real surface does."),
+                                           this->id().id);
             // The surface's faces on the bed are not printed over.
             const NonPlanar::SurfaceDistance distance(core.vertices, core.triangles, floor_z);
             // The print surface's layers end on its own layer grid, if it has its own layer height.
             const double layer = m_config.s4_surface_layer_height.value > 0. ? m_config.s4_surface_layer_height.value : m_config.layer_height.value;
             const double top   = distance.bbox_max().z();
-            s4->surface_top    = top <= first ? first : first + std::ceil((top - first) / layer - 1e-6) * layer;
+            // Over a placed surface, which is not printed, the part's layers start on the first layer:
+            // empty layers under it would leave the G-code preview a single layer.
+            s4->surface_top    = ! placed.empty() ? 0. : top <= first ? first : first + std::ceil((top - first) / layer - 1e-6) * layer;
 
             if (m_config.s4_surface_projection.value == S4SurfaceProjection::Above) {
                 // Seen from a centre as far below the top as the surface is wide (a sphere's
@@ -1148,6 +1152,25 @@ void PrintObject::deform_s4()
                 s4->keep_min_x = s4->axis.x() + 0.5 * PI * scale;
                 s4->keep_max_x = s4->keep_min_x + turn;
             }
+            if (! placed.empty()) {
+                // The part's first layer lies the gap from the placed surface: a part farther from it
+                // would start in mid-air; what is nearer is not printed.
+                double low = std::numeric_limits<double>::infinity();
+                for (const Eigen::Vector3d &p : s4->deformed)
+                    low = std::min(low, p.z());
+                if (low > 0.5 * first)
+                    throw Slic3r::SlicingError(format(_u8L("%1% does not rest on its placed print surface: it is %2% mm farther "
+                                                           "from it than the surface gap."),
+                                                      this->model_object()->name, float_to_string_decimal_point(low, 2)),
+                                               this->id().id);
+                if (low < -0.5 * first)
+                    this->active_step_add_warning(
+                        PrintStateBase::WarningLevel::CRITICAL,
+                        format(_u8L("Part of %1% is nearer its placed print surface than the surface gap, by up to %2% mm, and "
+                                    "is not printed. To print onto the surface, model the part resting on it and set the "
+                                    "surface gap to 0."),
+                               this->model_object()->name, float_to_string_decimal_point(-low, 2)));
+            }
         }
     } catch (const std::runtime_error &e) {
         throw Slic3r::SlicingError(e.what(), this->id().id);
@@ -1200,7 +1223,7 @@ void PrintObject::slice()
     std::vector<coordf_t> layer_height_profile;
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);
     // Orca: a print surface's own layer height, up to its top, where the part's layers start.
-    if (m_s4 && std::isfinite(m_s4->surface_top) && m_config.s4_surface_layer_height.value > 0. &&
+    if (m_s4 && m_s4->surface_top > 0. && m_config.s4_surface_layer_height.value > 0. &&
         this->model_object()->layer_height_profile.empty()) {
         const double h = m_config.s4_surface_layer_height.value, top = m_s4->surface_top, rest = m_slicing_params.layer_height;
         layer_height_profile = { 0., h, top, h, top + 1e-4, rest, std::max(m_slicing_params.object_print_z_height(), top + 2e-4), rest };

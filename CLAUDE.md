@@ -5,6 +5,8 @@
 - Step-wise development; verify each step against the whole (build, suites, end-user GUI test) before the next.
 - Make safe at each step: commit + push. Keep a resume file (`<scratchpad>/resume/RESUME.md`) current so work
   resumes after usage limits. Test like the end user; release when ready.
+- Never lock the user in to a change a setting already lets them make (e.g. infill direction): no forced or silently
+  overridden settings; suggest the setting (docs, tooltips), or refuse an unsafe combination with a message naming it.
 
 ## Project
 OrcaNP: OrcaSlicer fork (C++17, selective C++20, wxWidgets, CMake) adding S4 non-planar slicing and polar

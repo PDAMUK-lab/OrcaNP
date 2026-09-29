@@ -322,6 +322,10 @@ Two groups of settings switch the pipeline on:
   (`s4_placed_surface`, from the part's context menu, with a warning): its mesh is the core,
   it is neither printed nor lifted onto, and its surface, sampled, is stamped into the travel
   and clearance height fields (`S4ObjectMapping::obstacles`) so travels are lifted over it.
+  The part's layers start on the first layer (`surface_top` 0): layers holding no moves would
+  leave the G-code preview (libvgcode, which numbers layers as the moves reach them) one layer.
+  A part farther from the surface than the gap is refused; a skirt or brim, which would go round
+  the first layer on the surface, is refused rather than dropped.
 - **Printer settings > Basic information > Advanced > Printer structure**: *Polar* is what makes
   a printer polar. `polar_kinematics`, which the pipeline reads, follows it and is not shown:
   the tab sets it when the structure changes, and loading a configuration makes the two agree
