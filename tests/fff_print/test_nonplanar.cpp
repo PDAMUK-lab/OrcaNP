@@ -974,8 +974,8 @@ bool is_support(const Move &m) { return m.type.find("Support") != std::string::n
 TEST_CASE("Layers offset from painted faces start on them, the print surface under them the gap away", "[NonPlanar]")
 {
     // A dome shell 20 mm inside and 26 mm outside, its inside painted: the print surface fills it,
-    // the gap short of it, as support; the shell is printed from its inside out, not lifted, as it
-    // stands on its unpainted rim.
+    // the gap short of it, as support, down to the bed under the shell lifted 2 mm (automatic, on a
+    // printer that does not tilt); the shell is printed from its inside out.
     const double inner = 20., outer = 26., gap = 0.4;
     Model        model;
     ModelObject *object = model.add_object();
@@ -992,8 +992,8 @@ TEST_CASE("Layers offset from painted faces start on them, the print surface und
     REQUIRE(invalid.string.empty());
     const std::vector<Move> moves = body_moves(Test::gcode(print));
     const auto             *s4    = print.objects().front()->s4_deformation();
-    CHECK_THAT(s4->lift, WithinAbs(0., 1e-9));
-    const Vec3d centre(100., 100., 0.);
+    CHECK_THAT(s4->lift, WithinAbs(2., 1e-9));
+    const Vec3d centre(100., 100., 2.);
     size_t      core_points = 0, shell_points = 0;
     double      core_max = 0., shell_min = 1e9, shell_max = 0.;
     for (const Move &m : moves) {
@@ -1003,7 +1003,8 @@ TEST_CASE("Layers offset from painted faces start on them, the print surface und
         if (m.layer_z <= s4->surface_top + 1e-3) {
             CHECK(is_support(m));
             ++core_points;
-            core_max = std::max(core_max, d);
+            if (axis(m, 'Z') > 2.) // over the column the shell is lifted by
+                core_max = std::max(core_max, d);
         } else {
             CHECK(! is_support(m));
             ++shell_points;

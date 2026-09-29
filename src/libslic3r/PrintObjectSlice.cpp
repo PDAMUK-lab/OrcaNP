@@ -968,27 +968,14 @@ void PrintObject::deform_s4()
                                                  "printed onto with the print surface painting tool, or choose a generated "
                                                  "print surface."), this->id().id);
                 its_transform(painted, this->trafo_centered() * part->get_matrix());
-                const bool   around = m_config.s4_surface_projection.value == S4SurfaceProjection::Axis;
-                const double first  = m_print->config().initial_layer_print_height.value;
-                double       bottom = std::numeric_limits<double>::infinity();
+                const bool around = m_config.s4_surface_projection.value == S4SurfaceProjection::Axis;
+                double     bottom = std::numeric_limits<double>::infinity();
                 for (const Eigen::Vector3d &v : shell.vertices)
                     bottom = std::min(bottom, v.z());
-                // Lifted for the toolhead to lean under the part, if it stands only on painted faces (laid
-                // out from above) or is printed round its painted inside.
-                auto standing_area = [&](const indexed_triangle_set &its) {
-                    double area = 0.;
-                    for (const stl_triangle_vertex_indices &t : its.indices) {
-                        const Vec3d a = its.vertices[t[0]].cast<double>(), b = its.vertices[t[1]].cast<double>(),
-                                    c = its.vertices[t[2]].cast<double>();
-                        if (std::max({ a.z(), b.z(), c.z() }) < bottom + 0.5 * first)
-                            area += 0.5 * std::abs((b - a).cross(c - a).z());
-                    }
-                    return area;
-                };
-                const indexed_triangle_set whole = volume_in_slicing_frame(*this, *part);
-                const bool on_painted = standing_area(painted) > 0.9 * standing_area(whole);
+                // Lifted, as onto a pillar, so the toolhead can lean under the part where its layers
+                // stand steep near the bed.
                 lift = m_config.s4_surface_size.value == S4SurfaceSize::Custom ? m_config.s4_surface_height.value :
-                       around || on_painted ? std::max(toolhead_clearance(m_print->config()), 2.) : 0.;
+                                                                                  std::max(toolhead_clearance(m_print->config()), 2.);
                 s4->lift = lift;
                 for (Eigen::Vector3d &v : shell.vertices)
                     v.z() += lift;

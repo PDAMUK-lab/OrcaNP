@@ -5175,8 +5175,7 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Size of the pillar or dome, or how far a part printed on painted faces is lifted.\n"
                       "Automatic: as wide as the part's base, and a pillar as high as the toolhead needs to lean as far as the "
-                      "tilt axis goes under the part without reaching the bed. A part on painted faces is lifted as high, if "
-                      "it stands only on painted faces or its painted inside is printed round the rotation axis.\n"
+                      "tilt axis goes under the part without reaching the bed. A part on painted faces is lifted as high.\n"
                       "Custom: the diameter and height set below.");
     def->enum_keys_map = &ConfigOptionEnum<S4SurfaceSize>::get_enum_values();
     def->enum_values.push_back("auto");

@@ -195,9 +195,9 @@ whose flat slices are chosen surfaces (`LayerShapes`):
       on the faces, find the painted faces facing the axis, the gap short of them along the
       face's normal; a ray that misses takes the nearest hit above or below it, the rings are
       capped at the top and continued down to the bed as a column, and faces that do not go all
-      the way round the axis are refused. The part is lifted as onto a pillar: automatically
-      when it stands only on painted faces (nine tenths of the area it stands on) or is printed
-      round the axis, or by the custom height.
+      the way round the axis are refused. The part is lifted as onto a pillar, by the automatic
+      height (the toolhead leaning under it where its layers stand steep near the bed) or the
+      custom one.
     - A **sphere** centred below the part's top by half its width, out to the part's nearest
       point.
     - A **cylinder** about the rotation axis, from the bed to the roof of the part's cavity, out to
