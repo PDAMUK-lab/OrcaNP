@@ -1149,9 +1149,11 @@ TEST_CASE("A print surface part of an older project becomes painted faces", "[No
     REQUIRE(object->volumes.front() == shell);
     indexed_triangle_set painted = shell->print_surface_facets.get_facets(*shell, EnforcerBlockerType::ENFORCER);
     REQUIRE(! painted.indices.empty());
-    its_transform(painted, shell->get_matrix()); // the object's frame, the domes' centre at its origin
+    // From the domes' centre, the middle of the shell's base.
+    const BoundingBoxf3 box = shell->mesh().bounding_box();
+    const Vec3f         centre(float(box.center().x()), float(box.center().y()), float(box.min.z()));
     for (const auto &t : painted.indices)
-        CHECK(((painted.vertices[t[0]] + painted.vertices[t[1]] + painted.vertices[t[2]]) / 3.f).norm() < 21.5f);
+        CHECK(((painted.vertices[t[0]] + painted.vertices[t[1]] + painted.vertices[t[2]]) / 3.f - centre).norm() < 21.5f);
     CHECK(! convert_legacy_print_surface_parts(*object));
 }
 

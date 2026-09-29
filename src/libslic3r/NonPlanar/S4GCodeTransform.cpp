@@ -329,8 +329,10 @@ void Transform::build_records()
         }
 
         // Extrusion outside the object's kept window is repeated inside it: split the path where
-        // it crosses the window's edges and print only the inside.
-        const bool windowed = printing && (std::isfinite(om.keep_min_x) || std::isfinite(om.keep_max_x));
+        // it crosses the window's edges and print only the inside. The print surface's layers are
+        // sliced in place, not unwrapped: all of them is printed.
+        const bool windowed = printing && (std::isfinite(om.keep_min_x) || std::isfinite(om.keep_max_x)) &&
+                              std::max(pos.z(), target.z()) > om.identity_below_z;
         if (windowed) {
             std::vector<Eigen::Vector3d> split;
             Eigen::Vector3d              a = pos;
