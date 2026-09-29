@@ -121,6 +121,22 @@ TEST_CASE("A calibrated radius axis is commanded where it puts the tip", "[Polar
     CHECK_THAT(std::abs(across.radius * 1.02 + 0.7), WithinAbs(20., 1e-9));
 }
 
+TEST_CASE("Two measured rings give the radius axis calibration", "[PolarKinematics]")
+{
+    // An axis that really puts the tip 1.015 R + 0.8 mm out, printed with an earlier calibration of
+    // 0.2 mm and 100 %: rings designed 20 and 40 mm in radius come out 1.015 (r - 0.2) + 0.8 mm.
+    auto printed = [](double r) { return 2. * (1.015 * (r - 0.2) + 0.8); };
+    const RadiusCalibration c = solve_radius_calibration(20., printed(20.), 40., printed(40.), 0.2, 1.);
+    CHECK_THAT(c.offset, WithinAbs(0.8, 1e-9));
+    CHECK_THAT(c.scale, WithinAbs(1.015, 1e-9));
+    // Printed with that, the rings come out as designed.
+    PolarKinematicsConfig cfg;
+    cfg.radius_offset = c.offset;
+    cfg.radius_scale  = c.scale;
+    const PolarKinematics kin(cfg);
+    CHECK_THAT(1.015 * kin.to_machine(pose(30., 0., 1., 0.), nullptr).radius + 0.8, WithinAbs(30., 1e-9));
+}
+
 TEST_CASE("Circling the rotation axis turns the angle axis continuously", "[PolarKinematics]")
 {
     PolarKinematicsConfig cfg;

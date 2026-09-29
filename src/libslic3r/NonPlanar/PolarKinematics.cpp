@@ -421,5 +421,14 @@ PolarGCodeConverter::Stats convert_gcode_to_polar(const std::string &src, const 
     return converter.stats();
 }
 
+RadiusCalibration solve_radius_calibration(double r1, double d1, double r2, double d2, double offset, double scale)
+{
+    // Printed radius a = A r + B for a designed one r; the axis then puts the tip scale * A * R +
+    // B + A * offset out for a commanded R (see PolarKinematicsConfig).
+    const double a = (0.5 * (d2 - d1)) / (r2 - r1);
+    const double b = 0.5 * d1 - a * r1;
+    return { b + a * offset, a * scale };
+}
+
 } // namespace NonPlanar
 } // namespace Slic3r

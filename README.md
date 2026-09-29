@@ -158,6 +158,17 @@ For **Pillar**, **Dome** and **Domed pillar**:
 | Diameter | Width of the pillar or dome. | Custom size only. |
 | Height | Height of the pillar's straight side. A domed pillar adds half its diameter on top. | Custom size only; not shown for a dome. |
 
+A generated print surface (sphere, cylinder, pillar, dome, domed pillar) is there to hold the part
+while it prints and is removed afterwards, so by default it is printed as support is:
+
+| Setting | What it is for | How to use it |
+| --- | --- | --- |
+| Print as support | Prints the surface with walls, the support's base pattern and spacing inside, and its top interface pattern where it faces the part, as many layers deep as the support's top interface layers. It shows as support in the preview and filament statistics. | On by default. The pattern, spacing and interface settings are those of **Support** (Base pattern, Base pattern spacing, Top interface layers, Interface pattern, Top interface spacing); the first layer is as dense as a raft's first layer. Off prints the surface solid, with the part's settings. |
+| Wall loops | Walls round the surface printed as support. | 1 by default; 2 for a sturdier pillar. |
+| Print surface layer height | The surface's own layer height, up to its top, where the part's layers begin. | 0 uses the part's layer height. Thicker layers (0.28 to 0.3 mm with a 0.4 mm nozzle) print it faster. |
+
+Print surface parts you modelled are printed with their own part settings.
+
 The plater shows the part on the bed; the preview shows it where it prints, on the pillar.
 
 A 30 mm lens with a concave underside, cut open in the preview: on a custom pillar 34 mm wide
@@ -242,6 +253,18 @@ information > Polar kinematics**, shown for polar printers:
 | Rotation axis dead zone | Near the axis only the radius moves (Developer mode). | 0.05 mm. |
 | Inverse time feed (G93) | Gives each move its duration, so the nozzle moves at the set speed over the part. | On unless your firmware lacks G93. |
 | Maximum bed rotation speed, Maximum tilt speed | Moves that would turn the bed or tilt the nozzle faster are slowed. | Set to your machine's limits. |
+| Radius offset, Radius scale | Correct a radius axis whose zero is not on the rotation axis, or whose steps per mm are off: a commanded radius R puts the nozzle scale x R + offset from the axis. | 0 mm and 100 % until measured with the polar alignment calibration below. |
+
+### Polar alignment
+
+**Calibration > Polar alignment** checks that the bed turns about the point the printer thinks it
+does. **Create rings** sets up two thin rings about the rotation axis (20 and 40 mm in radius by
+default). Print them, measure each ring's outer diameter with calipers, enter both and press
+**Apply to printer**: rings that come out too large mean the rotation axis is farther from the
+head's zero radius than assumed, too small, nearer; a difference that grows with the radius means
+the radius axis moves too far or not far enough per mm. The two rings give both, as the printer's
+Radius offset and Radius scale. Save the printer preset to keep them, and print the rings again to
+check.
 
 ### Toolhead clearance
 

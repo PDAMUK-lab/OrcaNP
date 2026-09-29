@@ -177,5 +177,17 @@ private:
 // Converts a whole G-code file in place of `dst`. Returns the conversion statistics.
 PolarGCodeConverter::Stats convert_gcode_to_polar(const std::string &src, const std::string &dst, const PolarKinematicsConfig &config);
 
+// The radius axis calibration from two rings printed about the rotation axis, their outer radii
+// r1 < r2 as designed and d1, d2 their outer diameters as measured, printed with the axis
+// calibrated as `offset` and `scale` (see PolarKinematicsConfig): the offset and scale that put
+// them where they were designed. A linear axis error leaves every ring's radius off by the same
+// linear function of the commanded one, which two rings pin down.
+struct RadiusCalibration
+{
+    double offset = 0.;
+    double scale  = 1.;
+};
+RadiusCalibration solve_radius_calibration(double r1, double d1, double r2, double d2, double offset, double scale);
+
 } // namespace NonPlanar
 } // namespace Slic3r

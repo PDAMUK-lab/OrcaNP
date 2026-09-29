@@ -152,6 +152,12 @@ except the mesher, which uses CGAL and is built into `libslic3r_cgal`.
    inverse time (G93) by default, with each segment's duration taken from the Cartesian feed and
    stretched to respect the angle and tilt speed limits; retractions switch to G94. An optional
    pivot length compensates for firmware that positions the tilt pivot rather than the tip.
+   The radius axis can be calibrated: a commanded radius R is taken to put the tip
+   `radius_scale` x R + `radius_offset` from the rotation axis, signed along the head's line,
+   and R is solved from that. Two rings printed about the axis measure both (Calibration >
+   Polar alignment): a linear axis error makes every printed radius the same linear function of
+   the designed one, so two radii pin it down (`solve_radius_calibration()`), taking account of
+   the calibration they were printed with.
    Machine tilt is kept within the axis travel (`min_tilt` .. `max_tilt`); poses beyond it are
    printed at the limit and counted. `tilt_sign` reverses the tilt axis for machines that count
    it positive toward the rotation axis. With `signed_radius` off the radius never goes negative:
@@ -195,9 +201,23 @@ whose flat slices are chosen surfaces (`LayerShapes`):
       reference machine.
 
     The sphere and the cylinder are shrunk by the gap, so the part's first layer is its
-    modelled inner surface. A generated core is sliced with the part (and printed with its
-    settings). A cavity that does not reach the bed, is too small, or (for a cylinder) does not
-    surround the axis is refused: the core must stand on the bed to be printed first.
+    modelled inner surface. A cavity that does not reach the bed, is too small, or (for a
+    cylinder) does not surround the axis is refused: the core must stand on the bed to be
+    printed first.
+
+    A generated core is sliced with the part and, by default (`s4_surface_as_support`), printed
+    as support is, since it is removed after printing: up to the surface's top the layers hold
+    nothing else, so after the infill step, and again after the support step (whose settings it
+    follows), their extrusions are rebuilt from their slices
+    (`PrintObject::s4_print_surface_as_support()`, `generate_print_surface_support_paths()`):
+    `s4_surface_wall_loops` walls, then the support's top interface pattern and spacing where
+    the next `support_interface_top_layers` layers of the core do not all cover it (so a dome's
+    sloping sides are interface where the part lies on them, and the core's top layers all
+    over), the support's base pattern and spacing elsewhere, and the first layer as dense as a
+    raft's. The extrusions are support and support interface. Rebuilding from the slices each
+    time keeps either step running again from undoing the other. The core can also have its own
+    layer height (`s4_surface_layer_height`): the surface's top is taken on that grid, and the
+    object's layer height profile steps from it to the part's layer height there.
   - The distance is exact (a uniform grid of the core's triangles, and a vertical ray for
     inside/outside). The core's faces on the bed close it but are not measured from: nothing is
     printed over them, and counting them would pull the layers meeting the bed into the core.
@@ -377,8 +397,9 @@ The pipeline hooks into the print steps as follows:
 
 `tests/libslic3r/test_polar_kinematics.cpp` and `tests/libslic3r/test_s4.cpp` cover the kinematics
 and the non-planar building blocks:
-- **Polar kinematics:** round trip (also with a reversed tilt and pivot compensation),
-  continuity and axis crossing, tilt and radius travel.
+- **Polar kinematics:** round trip (also with a reversed tilt, pivot compensation and a
+  calibrated radius axis), continuity and axis crossing, tilt and radius travel, and the radius
+  calibration solved from two measured rings.
 - **Polar G-code conversion:** path, extrusion, timing, machine blocks and their feed mode,
   arcs, and the record of each line's last machine line and pose.
 - **S4 deformation:** its guarantees (pinned base, planar base height, bed clearance, no
@@ -419,7 +440,8 @@ surface still overhanging, the layer tilt inside against a reference, and time.
   toolhead changes; a plate much wider than its pillar is printed flat over it and on layers
   no steeper than the cone angle beyond it; a plate much wider than its pillar is high takes as
   much filament as its
-  volume; a dome is a hemisphere.
+  volume; a dome is a hemisphere; a generated pillar is printed as support, its top layers
+  interface, in its own layer height and with less filament than printed solid.
 - support under a T stands on the bed and stops the top Z distance below the real wings, its
   columns in order and none of it inside the part; support painted under one wing is printed
   under that wing, as it is without S4, where without carrying the painting into the sliced
