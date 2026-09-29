@@ -5000,7 +5000,9 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Maximum rotation near the support");
     def->category = L("Quality");
     def->tooltip  = L("Largest rotation for the parts of an overhang closest to where it is supported. The limit tapers to the "
-                      "far value for the parts farthest away. Keep it within what the nozzle can reach without colliding.");
+                      "far value for the parts farthest away. It goes no further than the toolhead reaches: the tilt travel of a "
+                      "nozzle that tilts, otherwise the nozzle clearance angle (Printer settings > Basic information > Non-planar "
+                      "toolhead). A larger value is filled in with that angle.");
     def->sidetext = u8"°";	// degrees, don't need translation
     def->min      = 0;
     def->max      = 90;
@@ -5010,7 +5012,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("s4_max_rotation_far", coFloat);
     def->label    = L("Maximum rotation far from the support");
     def->category = L("Quality");
-    def->tooltip  = L("Largest rotation for the parts of an overhang farthest from where it is supported.");
+    def->tooltip  = L("Largest rotation for the parts of an overhang farthest from where it is supported. Like the near value, "
+                      "it goes no further than the toolhead reaches.");
     def->sidetext = u8"°";	// degrees, don't need translation
     def->min      = 0;
     def->max      = 90;
