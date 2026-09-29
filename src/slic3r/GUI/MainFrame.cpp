@@ -38,6 +38,7 @@
 #include "I18N.hpp"
 #include "GLCanvas3D.hpp"
 #include "Plater.hpp"
+#include "PolarCalibration.hpp"
 #ifdef SLIC3R_CAD
 #include "slic3r/GUI/CAD/DesignPanel.hpp"
 #include "slic3r/GUI/CAD/McpControl.hpp"
@@ -3497,6 +3498,10 @@ void MainFrame::init_menubar_as_editor()
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("VFA"), _L("VFA"),
         [this](wxCommandEvent&) { run_calibration(CalibKind::VFA); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
+    // Orca: polar printers
+    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Polar alignment"), _L("Polar alignment"),
+        [this](wxCommandEvent&) { PolarAlignmentDialog(this, m_plater).ShowModal(); }, "", nullptr,
+        [this]() {return m_plater->is_view3D_shown();; }, this);
 
     // help
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"), [](wxCommandEvent &)
@@ -3602,6 +3607,10 @@ void MainFrame::init_menubar_as_editor()
     // VFA
     append_menu_item(calib_menu, wxID_ANY, _L("VFA"), _L("VFA"),
         [this](wxCommandEvent&) { run_calibration(CalibKind::VFA); }, "", nullptr,
+        [this]() {return m_plater->is_view3D_shown();; }, this);
+    // Orca: polar printers
+    append_menu_item(calib_menu, wxID_ANY, _L("Polar alignment"), _L("Polar alignment"),
+        [this](wxCommandEvent&) { PolarAlignmentDialog(this, m_plater).ShowModal(); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
     // help
     append_menu_item(calib_menu, wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"),

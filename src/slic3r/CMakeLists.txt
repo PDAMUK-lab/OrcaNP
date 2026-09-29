@@ -67,6 +67,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/CrealityDiscoveryDialog.hpp
     GUI/calib_dlg.cpp
     GUI/calib_dlg.hpp
+    GUI/PolarCalibration.cpp
+    GUI/PolarCalibration.hpp
     GUI/Calibration.cpp
     GUI/Calibration.hpp
     GUI/CalibrationPanel.cpp
