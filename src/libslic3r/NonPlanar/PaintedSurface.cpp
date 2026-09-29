@@ -27,6 +27,7 @@ indexed_triangle_set keep_faces(const indexed_triangle_set &its, const std::vect
         if (keep[i])
             out.indices.push_back(its.indices[i]);
     its_merge_vertices(out);
+    its_compactify_vertices(out);
     return out;
 }
 
