@@ -1872,8 +1872,24 @@ wxMenu* MenuFactory::sla_object_menu()
     return &m_sla_object_menu;
 }
 
+void MenuFactory::append_menu_item_placed_surface(wxMenu* menu)
+{
+    const wxString name = _L("Placed print surface (not printed)");
+    const int      id   = menu->FindItem(name);
+    if (id != wxNOT_FOUND)
+        menu->Destroy(id);
+    if (wxGetApp().get_mode() != comDevelop)
+        return;
+    append_menu_check_item(menu, wxID_ANY, name,
+        _L("This part stands for a real surface placed on the bed: not printed, the object's other part is printed onto it."),
+        [](wxCommandEvent&) { obj_list()->toggle_placed_surface(); }, menu,
+        []() { return obj_list()->has_selected_parts(); },
+        []() { return obj_list()->selected_parts_are_placed_surface(); }, m_parent);
+}
+
 wxMenu* MenuFactory::part_menu()
 {
+    append_menu_item_placed_surface(&m_part_menu);
     append_menu_items_convert_unit(&m_part_menu);
     append_menu_item_change_filament(&m_part_menu);
     append_menu_item_per_object_settings(&m_part_menu);

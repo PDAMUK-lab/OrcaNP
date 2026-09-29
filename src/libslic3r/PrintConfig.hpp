@@ -1332,6 +1332,7 @@ PRINT_CONFIG_CLASS_DEFINE(
 
     ((ConfigOptionInts,  print_extruder_id))
     ((ConfigOptionBool,                 s4_print_surface))
+    ((ConfigOptionBool,                 s4_placed_surface))
     ((ConfigOptionStrings,  print_extruder_variant))
     ((ConfigOptionInt,                  bottom_shell_layers))
     ((ConfigOptionFloat,                bottom_shell_thickness))

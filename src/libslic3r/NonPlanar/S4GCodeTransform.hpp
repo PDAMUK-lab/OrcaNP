@@ -158,6 +158,9 @@ struct S4ObjectMapping
     // layer is sliced over more than a turn, and the rest repeats what is printed here.
     double keep_min_x = -std::numeric_limits<double>::infinity();
     double keep_max_x = std::numeric_limits<double>::infinity();
+    // Points over the surface of solid things on the bed that are not printed (a placed print
+    // surface): travels are lifted over them and the clearance check counts them.
+    std::vector<Eigen::Vector3d> obstacles;
 };
 
 // The mapping of each object, by the id in the G-code's object markers: the lines between

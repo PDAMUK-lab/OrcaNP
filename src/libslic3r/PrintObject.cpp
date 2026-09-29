@@ -1371,6 +1371,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "s4_surface_height"
             || opt_key == "s4_surface_layer_height"
             || opt_key == "s4_print_surface"
+            || opt_key == "s4_placed_surface"
             || opt_key == "slowdown_for_curled_perimeters"
             || opt_key == "make_overhang_printable"
             || opt_key == "make_overhang_printable_angle"

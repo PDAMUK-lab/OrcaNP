@@ -864,6 +864,11 @@ void append_tets(NonPlanar::TetMesh &mesh, std::vector<Eigen::Vector3d> &deforme
 
 } // namespace
 
+bool PrintObject::is_s4_placed_surface(const ModelVolume &volume)
+{
+    return volume.is_model_part() && volume.config.has("s4_placed_surface") && volume.config.get().opt_bool("s4_placed_surface");
+}
+
 // How high the part must stand for the toolhead to lean as far as the tilt axis goes under it
 // without reaching the bed: the lowest points of the nozzle's tip, the top of its cone and the
 // head's rim, leaning that far.
@@ -881,10 +886,13 @@ static double toolhead_clearance(const PrintConfig &config)
 
 void PrintObject::deform_s4()
 {
-    // Print::validate() guarantees one instance and one part.
-    const ModelVolume *part = nullptr;
+    // Print::validate() guarantees one instance and one part printed, besides placed print surface parts.
+    const ModelVolume                *part = nullptr;
+    std::vector<const ModelVolume *> placed;
     for (const ModelVolume *v : this->model_object()->volumes)
-        if (v->is_model_part() && part == nullptr)
+        if (is_s4_placed_surface(*v))
+            placed.push_back(v);
+        else if (v->is_model_part() && part == nullptr)
             part = v;
     const S4LayerShape shape = m_config.s4_layer_shape.value;
     if (part == nullptr || m_instances.size() != 1)
@@ -960,7 +968,18 @@ void PrintObject::deform_s4()
             const double gap  = m_config.s4_surface_gap.value;
             double       lift = 0.; // of the part, standing on a generated post
             std::optional<NonPlanar::Post> pillar; // a generated pillar, whose top is flat
-            if (m_config.s4_surface_core.value == S4SurfaceCore::Painted) {
+            if (! placed.empty()) {
+                // A real surface placed on the bed, where these parts are: the part is printed onto
+                // it, not lifted, and nothing is printed for it.
+                for (const ModelVolume *v : placed)
+                    its_merge(s4->placed, volume_in_slicing_frame(*this, *v));
+                core = to_s4_mesh(s4->placed);
+                this->active_step_add_warning(
+                    PrintStateBase::WarningLevel::CRITICAL,
+                    format(_u8L("%1% is printed onto placed print surface parts, which are not printed: the real surface must "
+                                "be on the bed exactly where they are, or the nozzle will hit it or print in the air."),
+                           this->model_object()->name));
+            } else if (m_config.s4_surface_core.value == S4SurfaceCore::Painted) {
                 // Under or inside the part's painted faces, the gap short of them, down to the bed.
                 indexed_triangle_set painted = part->print_surface_facets.get_facets_strict(*part, EnforcerBlockerType::ENFORCER);
                 if (painted.indices.empty())

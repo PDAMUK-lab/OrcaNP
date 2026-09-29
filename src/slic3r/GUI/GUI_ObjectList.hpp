@@ -468,6 +468,9 @@ public:
     void toggle_auto_drop();
     // Orca: parts set as the print surface that non-planar layers are offset from.
     bool has_selected_parts() const;
+    // Orca: parts standing for a real surface placed on the bed (developer mode).
+    bool selected_parts_are_placed_surface() const;
+    void toggle_placed_surface();
     void enable_layers_editing();
 
     //BBS: remove const qualifier

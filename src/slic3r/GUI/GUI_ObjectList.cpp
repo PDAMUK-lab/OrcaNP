@@ -6828,6 +6828,56 @@ bool ObjectList::has_selected_parts() const
     });
 }
 
+bool ObjectList::selected_parts_are_placed_surface() const
+{
+    wxDataViewItemArray sels;
+    GetSelections(sels);
+    bool any = false;
+    for (const wxDataViewItem& item : sels) {
+        if (m_objects_model->GetItemType(item) != itVolume || m_objects_model->GetVolumeType(item) != ModelVolumeType::MODEL_PART)
+            continue;
+        const ModelVolume* volume = (*m_objects)[m_objects_model->GetObjectIdByItem(item)]->volumes[m_objects_model->GetVolumeIdByItem(item)];
+        if (!PrintObject::is_s4_placed_surface(*volume))
+            return false;
+        any = true;
+    }
+    return any;
+}
+
+void ObjectList::toggle_placed_surface()
+{
+    const bool set = !selected_parts_are_placed_surface();
+    if (set) {
+        MessageDialog dlg(wxGetApp().plater(),
+            _L("A placed print surface stands for a real, solid object that you put on the bed before printing, exactly where "
+               "this part is. It is not printed: the object's other part is printed onto it, in non-planar layers offset from it.\n\n"
+               "If the real surface is missing, misplaced or shaped differently from this part, the nozzle will hit it or print "
+               "in the air, which can damage or destroy the printer.\n\nSet the selected parts as placed print surface?"),
+            _L("Placed print surface"), wxICON_WARNING | wxYES_NO | wxNO_DEFAULT);
+        if (dlg.ShowModal() != wxID_YES)
+            return;
+    }
+    take_snapshot(set ? _u8L("Set as placed print surface") : _u8L("Unset placed print surface"));
+    wxDataViewItemArray sels;
+    GetSelections(sels);
+    std::set<int> changed;
+    for (const wxDataViewItem& item : sels) {
+        if (m_objects_model->GetItemType(item) != itVolume || m_objects_model->GetVolumeType(item) != ModelVolumeType::MODEL_PART)
+            continue;
+        const int    obj_idx = m_objects_model->GetObjectIdByItem(item);
+        ModelVolume* volume  = (*m_objects)[obj_idx]->volumes[m_objects_model->GetVolumeIdByItem(item)];
+        if (set)
+            volume->config.set_key_value("s4_placed_surface", new ConfigOptionBool(true));
+        else
+            volume->config.erase("s4_placed_surface");
+        add_settings_item(item, &volume->config.get());
+        changed.insert(obj_idx);
+    }
+    for (int obj_idx : changed)
+        changed_object(obj_idx);
+    part_selection_changed();
+}
+
 void ObjectList::toggle_printable_state()
 {
     wxDataViewItemArray sels;

@@ -1365,7 +1365,7 @@ static std::vector<std::string> s_Preset_print_options{
     "s4_passes", "s4_cell_size", "s4_graded_mesh", "s4_surface_cell_size", "s4_interior_cell_size", "s4_planar_height", "s4_hold_non_overhangs", "s4_layer_shape", "s4_surface_gap",
     "s4_surface_projection", "s4_surface_core", "s4_cone_angle", "s4_surface_size", "s4_surface_diameter",
     "s4_surface_height", "s4_surface_wall_loops", "s4_surface_layer_height",
-    "s4_print_surface",
+    "s4_print_surface", "s4_placed_surface",
     "ironing_expansion",
 };
 

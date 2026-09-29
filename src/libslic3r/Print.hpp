@@ -389,6 +389,7 @@ public:
         indexed_triangle_set         surface;  // deformed boundary, sliced in place of the part
         ObjectID                     part_id;  // the model part it stands in for
         indexed_triangle_set         core;     // a generated print surface, sliced with the part
+        indexed_triangle_set         placed;   // placed print surface parts: not printed, in the nozzle's way
         Vec2d                        axis;     // the printer's rotation axis
         // Print surface parts are printed as sliced up to this height; the part is above it.
         double surface_top = -std::numeric_limits<double>::infinity();
@@ -405,7 +406,8 @@ public:
         double keep_max_x = std::numeric_limits<double>::infinity();
     };
     const S4Deformation*         s4_deformation() const { return m_s4.get(); }
-    // A part set to be the print surface that non-planar layers are offset from.
+    // Orca: a part standing for a real surface placed on the bed, not printed (s4_placed_surface).
+    static bool                  is_s4_placed_surface(const ModelVolume &volume);
 
     // BBS
     void generate_support_preview();

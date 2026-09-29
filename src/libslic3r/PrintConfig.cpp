@@ -5236,6 +5236,17 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
+    // Orca: a real surface placed on the bed, which the part is printed onto; developer mode only.
+    def = this->add("s4_placed_surface", coBool);
+    def->label    = L("Placed print surface (not printed)");
+    def->category = L("Quality");
+    def->tooltip  = L("Developer option. This part stands for a real, solid object that you place on the bed before printing, "
+                      "exactly where the part is: it is not printed, and the object's other part is printed onto it in layers "
+                      "offset from it (layer shape \"Offset from print surface\"). If the real surface is missing, misplaced "
+                      "or shaped differently, the nozzle hits it or prints in the air, which can damage or destroy the machine.");
+    def->mode     = comDevelop;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("s4_hold_non_overhangs", coBool);
     def->label    = L("Keep other areas planar");
     def->category = L("Quality");

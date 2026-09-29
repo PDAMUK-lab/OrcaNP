@@ -1158,6 +1158,60 @@ TEST_CASE("A print surface part of an older project becomes painted faces", "[No
     CHECK(! convert_legacy_print_surface_parts(*object));
 }
 
+TEST_CASE("A placed print surface is printed onto, not printed, and kept clear of", "[NonPlanar]")
+{
+    // A 20 mm dome set as placed print surface under a dome shell 20.4 mm inside: nothing is printed
+    // for the dome, not even as support; the shell is printed from its inside out, not lifted; and
+    // no move, travel included, goes into the dome.
+    const double placed_radius = 20., inner = 20.4, outer = 26.;
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->name        = "shell.stl";
+    object->add_volume(hollow_dome(inner, outer));
+    object->add_volume(dome(placed_radius))->config.set_key_value("s4_placed_surface", new ConfigOptionBool(true));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, painted_config({ { "s4_surface_gap", 0.4 } }));
+    const StringObjectException invalid = print.validate();
+    INFO(invalid.string);
+    REQUIRE(invalid.string.empty());
+    const std::vector<Move> moves = body_moves(Test::gcode(print));
+    CHECK_THAT(print.objects().front()->s4_deformation()->lift, WithinAbs(0., 1e-9));
+    const Vec3d centre(100., 100., 0.);
+    size_t      printed = 0;
+    double      nearest_print = 1e9, nearest_move = 1e9;
+    for (const Move &m : moves) {
+        if (! m.xy)
+            continue;
+        const double d = (Vec3d(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z')) - centre).norm();
+        nearest_move   = std::min(nearest_move, d);
+        if (m.e > 0.) {
+            CHECK(! is_support(m));
+            ++printed;
+            nearest_print = std::min(nearest_print, d);
+        }
+    }
+    REQUIRE(printed > 0);
+    CHECK(nearest_print >= inner - 0.05);
+    CHECK(nearest_move >= placed_radius);
+}
+
+TEST_CASE("Placed print surface parts need layers offset from a print surface", "[NonPlanar]")
+{
+    Model        model;
+    ModelObject *object = model.add_object();
+    object->add_volume(hollow_dome(20.4, 26.));
+    object->add_volume(dome(20.))->config.set_key_value("s4_placed_surface", new ConfigOptionBool(true));
+    object->add_instance()->set_offset(Vec3d(100., 100., 0.));
+    Print print;
+    for (ModelObject *mo : model.objects)
+        print.auto_assign_extruders(mo);
+    print.apply(model, painted_config({ { "s4_layer_shape", "optimized" } }));
+    CHECK_THAT(print.validate().string, Catch::Matchers::ContainsSubstring("Placed print surface parts need"));
+}
+
 TEST_CASE("A polar printer is chosen by its structure, and older presets load as one", "[NonPlanar]")
 {
     // The structure Polar turns the conversion on.

@@ -1789,17 +1789,21 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     for (const PrintObject *object : m_objects) {
         if (! object->config().s4_enabled.value)
             continue;
-        size_t parts = 0, others = 0;
+        size_t parts = 0, placed = 0, others = 0;
         for (const ModelVolume *v : object->model_object()->volumes) {
-            if (v->is_model_part())
+            if (PrintObject::is_s4_placed_surface(*v))
+                ++placed;
+            else if (v->is_model_part())
                 ++parts;
             else if (v->is_modifier() || v->is_negative_volume())
                 ++others;
         }
         if (parts != 1 || others != 0 || object->instances().size() != 1)
-            return { L("Non-planar (S4) printing supports objects with one part, without modifiers or negative volumes, "
-                       "placed once."), object, "s4_enabled" };
-        if (object->config().s4_layer_shape.value == S4LayerShape::Offset &&
+            return { L("Non-planar (S4) printing supports objects with one part (besides placed print surface parts), without "
+                       "modifiers or negative volumes, placed once."), object, "s4_enabled" };
+        if (placed > 0 && object->config().s4_layer_shape.value != S4LayerShape::Offset)
+            return { L("Placed print surface parts need the layer shape \"Offset from print surface\"."), object, "s4_layer_shape" };
+        if (object->config().s4_layer_shape.value == S4LayerShape::Offset && placed == 0 &&
             object->config().s4_surface_core.value == S4SurfaceCore::Painted &&
             std::none_of(object->model_object()->volumes.begin(), object->model_object()->volumes.end(),
                          [](const ModelVolume *v) { return v->is_model_part() && v->is_print_surface_painted(); }))
@@ -1813,7 +1817,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         // The optimized shape only turns overhangs: a part without them is bent and bent back for nothing.
         if (object->config().s4_layer_shape.value == S4LayerShape::Optimized)
             for (const ModelVolume *v : object->model_object()->volumes)
-                if (v->is_model_part()) {
+                if (v->is_model_part() && ! PrintObject::is_s4_placed_surface(*v)) {
                     indexed_triangle_set its = v->mesh().its;
                     its_transform(its, object->trafo_centered() * v->get_matrix(), true);
                     std::vector<Eigen::Vector3d>    vertices;

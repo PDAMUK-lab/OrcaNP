@@ -960,6 +960,23 @@ private:
     std::vector<double> m_low;
 };
 
+// Solid things on the bed that are not printed, stamped as printed material.
+void stamp_obstacles(HeightField &hf, const S4MapperSet &mappers)
+{
+    for (const auto &[id, m] : mappers.objects)
+        for (const Eigen::Vector3d &p : m.obstacles)
+            hf.stamp(p);
+}
+
+void extend_to_obstacles(Eigen::Vector2d &lo, Eigen::Vector2d &hi, const S4MapperSet &mappers)
+{
+    for (const auto &[id, m] : mappers.objects)
+        for (const Eigen::Vector3d &p : m.obstacles) {
+            lo = lo.cwiseMin(p.head<2>());
+            hi = hi.cwiseMax(p.head<2>());
+        }
+}
+
 void Transform::pass_travel_safety()
 {
     // A travel is lifted when it would plough through material already printed along its path
@@ -974,9 +991,11 @@ void Transform::pass_travel_safety()
                 lo = lo.cwiseMin(m.pos.head<2>());
                 hi = hi.cwiseMax(m.pos.head<2>());
             }
+    extend_to_obstacles(lo, hi, m_mappers);
     if (lo.x() > hi.x())
         return;
     HeightField hf(lo, hi, m_cfg.height_field_res, m_cfg.nozzle_radius);
+    stamp_obstacles(hf, m_mappers);
 
     std::vector<char> already(m_next_id, 0); // first travel move after a slicer retraction
     {
@@ -1149,9 +1168,11 @@ void Transform::pass_head_clearance()
                 lo = lo.cwiseMin(m.pos.head<2>());
                 hi = hi.cwiseMax(m.pos.head<2>());
             }
+    extend_to_obstacles(lo, hi, m_mappers);
     if (lo.x() > hi.x())
         return;
     HeightField hf(lo, hi, m_cfg.height_field_res, m_cfg.nozzle_radius);
+    stamp_obstacles(hf, m_mappers);
 
     const double k        = std::tan(std::clamp(m_cfg.nozzle_cone_angle, 0., 1.5));
     const double r0       = m_cfg.nozzle_tip_radius;

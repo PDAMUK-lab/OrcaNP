@@ -62,6 +62,16 @@ std::unique_ptr<S4Mappers> s4_mappers(const Print &print)
         m.blend_top_z      = m.flat_top_z + s4->blend;
         m.keep_min_x       = s4->keep_min_x + offset.x();
         m.keep_max_x       = s4->keep_max_x + offset.x();
+        // A placed print surface is not printed but is in the nozzle's way: its surface, sampled
+        // about half a millimetre apart.
+        for (const stl_triangle_vertex_indices &t : s4->placed.indices) {
+            const Eigen::Vector3d a = s4->placed.vertices[t[0]].cast<double>(), b = s4->placed.vertices[t[1]].cast<double>(),
+                                  c = s4->placed.vertices[t[2]].cast<double>();
+            const int n = std::clamp(int(std::ceil(std::max({ (b - a).norm(), (c - b).norm(), (a - c).norm() }) / 0.5)), 1, 200);
+            for (int i = 0; i <= n; ++i)
+                for (int j = 0; i + j <= n; ++j)
+                    m.obstacles.push_back(a + (b - a) * (double(i) / n) + (c - a) * (double(j) / n) + offset);
+        }
         // Support is mapped in columns between the part's surfaces. Layers offset from a print
         // surface have overhangs that say nothing about the part's, so theirs is left as it was.
         if (! object->support_layers().empty() && object->config().s4_layer_shape.value != S4LayerShape::Offset) {
