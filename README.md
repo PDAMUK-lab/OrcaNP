@@ -245,9 +245,9 @@ A polar printer turns the bed under a head that moves along one radius. OrcaNP s
 X and Y and converts the result to bed angle, radius, Z and nozzle tilt.
 
 Two presets come with OrcaNP (vendor: Custom). **ThetaFirm Core R-Theta** tilts the nozzle and
-prints non-planar layers by default. **Generic Polar Printer** (MyPolar 0.4 nozzle, process
-**0.20mm Standard @MyPolar**) is a plain polar printer: bed angle C, radius X from 0 to 100 mm on
-a 200 mm round bed, Z, no tilt, flat layers, RepRapFirmware G-code with inverse time feed. Start
+prints non-planar layers by default. **Generic Polar Printer** (process **0.20mm Standard @Generic
+Polar Printer**) is a plain polar printer: bed angle C, radius X from 0 to 100 mm on a 200 mm round
+bed, Z, no tilt, flat layers, RepRapFirmware G-code with inverse time feed. Start
 from it for your own polar printer and set the radius travel, axis letters and bed to match. Its
 firmware must run the axes as they are: if it converts Cartesian G-code itself (RepRapFirmware
 `M669 K7`, Klipper `kinematics: polar`), use a Cartesian printer preset with a round bed centred

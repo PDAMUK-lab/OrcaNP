@@ -1,9 +1,10 @@
 {
 	"type": "machine",
-	"name": "MyPolar 0.4 nozzle",
+	"name": "Generic Polar Printer 0.4 nozzle",
+	"renamed_from": "MyPolar 0.4 nozzle",
 	"inherits": "fdm_machine_common",
 	"from": "system",
-	"setting_id": "ZyUv7vOKhn2zeIQQ",
+	"setting_id": "pO8mD2pmtQoje16c",
 	"instantiation": "true",
 	"printer_model": "Generic Polar Printer",
 	"printer_variant": "0.4",
@@ -94,7 +95,7 @@
 	"polar_signed_radius": "0",
 	"polar_radius_min": "0",
 	"polar_radius_max": "100",
-	"default_print_profile": "0.20mm Standard @MyPolar",
+	"default_print_profile": "0.20mm Standard @Generic Polar Printer",
 	"default_filament_profile": [
 		"Generic PLA @System"
 	],
