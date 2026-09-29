@@ -12,7 +12,9 @@
 #include "Widgets/LabeledStaticBox.hpp"
 #include "Widgets/TextInput.hpp"
 
+#include "libslic3r/AppConfig.hpp"
 #include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/NonPlanar/PolarKinematics.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -69,6 +71,14 @@ TextInput *add_row(wxWindow *parent, wxSizer *sizer, const wxString &label, cons
 
 bool read(TextInput *in, double &value) { return in->GetTextCtrl()->GetValue().ToDouble(&value); }
 
+// The rings last created, kept in the app config: the dialog is opened again to enter their
+// measurements after they are printed.
+wxString remembered(const std::string &key, const char *fallback)
+{
+    const std::string value = wxGetApp().app_config->get(key);
+    return value.empty() ? wxString(fallback) : wxString::FromUTF8(value);
+}
+
 int widest(wxWindow *parent, const std::vector<wxString> &labels)
 {
     int width = 0;
@@ -92,7 +102,8 @@ PolarAlignmentDialog::PolarAlignmentDialog(wxWindow *parent, Plater *plater)
                                    _L("Prints two thin rings about the bed's rotation axis. Measure each ring's outer diameter with "
                                       "calipers and enter it below: if the rings come out too large, the rotation axis is farther "
                                       "from the head's zero radius than the printer assumes, and too small, nearer. The printer's "
-                                      "radius offset and scale are corrected from the two."));
+                                      "radius offset and scale are corrected from the two. Create the rings, print them, then "
+                                      "open this again to enter what you measured."));
     intro->Wrap(FromDIP(420));
     v_sizer->Add(intro, 0, wxALL, FromDIP(10));
 
@@ -103,9 +114,9 @@ PolarAlignmentDialog::PolarAlignmentDialog(wxWindow *parent, Plater *plater)
 
     auto *rings_box   = new LabeledStaticBox(this, _L("Rings"));
     auto *rings_sizer = new wxStaticBoxSizer(rings_box, wxVERTICAL);
-    m_inner           = add_row(this, rings_sizer, inner_str, "20", label_width);
-    m_outer           = add_row(this, rings_sizer, outer_str, "40", label_width);
-    m_height          = add_row(this, rings_sizer, height_str, "3", label_width);
+    m_inner           = add_row(this, rings_sizer, inner_str, remembered("polar_alignment_inner_radius", "20"), label_width);
+    m_outer           = add_row(this, rings_sizer, outer_str, remembered("polar_alignment_outer_radius", "40"), label_width);
+    m_height          = add_row(this, rings_sizer, height_str, remembered("polar_alignment_height", "3"), label_width);
     auto *create      = new DialogButtons(this, { "OK" });
     create->GetOK()->SetLabel(_L("Create rings"));
     rings_sizer->Add(create, 0, wxEXPAND);
@@ -154,7 +165,14 @@ void PolarAlignmentDialog::on_create(wxCommandEvent &)
     double r1, r2, height;
     if (! read_rings(r1, r2, height))
         return;
-    m_plater->new_project(false, false, _L("Polar alignment"));
+    AppConfig *app_config = wxGetApp().app_config;
+    app_config->set("polar_alignment_inner_radius", float_to_string_decimal_point(r1));
+    app_config->set("polar_alignment_outer_radius", float_to_string_decimal_point(r2));
+    app_config->set("polar_alignment_height", float_to_string_decimal_point(height));
+    // Closed, so the rings can be sliced and printed; opened again to enter their measurements.
+    EndModal(wxID_OK);
+    if (m_plater->new_project(false, false, _L("Polar alignment")) == wxID_CANCEL)
+        return;
     wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
 
     // Walls two lines thick: one loop each side, the outer one's edge where the ring was designed.
@@ -185,9 +203,6 @@ void PolarAlignmentDialog::on_create(wxCommandEvent &)
     m_plater->changed_objects({ 0 });
     wxGetApp().get_tab(Preset::TYPE_PRINT)->update_dirty();
     wxGetApp().get_tab(Preset::TYPE_PRINT)->update_ui_from_settings();
-    m_result->SetLabel(_L("Slice and print the rings, then measure them."));
-    Layout();
-    Fit();
 }
 
 void PolarAlignmentDialog::on_apply(wxCommandEvent &)
@@ -218,6 +233,7 @@ void PolarAlignmentDialog::on_apply(wxCommandEvent &)
     tab->update_dirty();
     m_result->SetLabel(wxString::Format(_L("Radius offset %.3f mm, radius scale %.3f %%. Save the printer preset to keep them."),
                                         c.offset, 100. * c.scale));
+    m_result->Wrap(FromDIP(420));
     Layout();
     Fit();
 }

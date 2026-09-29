@@ -259,7 +259,8 @@ information > Polar kinematics**, shown for polar printers:
 
 **Calibration > Polar alignment** checks that the bed turns about the point the printer thinks it
 does. **Create rings** sets up two thin rings about the rotation axis (20 and 40 mm in radius by
-default). Print them, measure each ring's outer diameter with calipers, enter both and press
+default) as a new project and closes. Print them, open **Polar alignment** again (it remembers the
+ring sizes), measure each ring's outer diameter with calipers, enter both and press
 **Apply to printer**: rings that come out too large mean the rotation axis is farther from the
 head's zero radius than assumed, too small, nearer; a difference that grows with the radius means
 the radius axis moves too far or not far enough per mm. The two rings give both, as the printer's
