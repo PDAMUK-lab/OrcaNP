@@ -222,6 +222,41 @@ double steepest(const std::vector<Move> &moves)
 
 } // namespace
 
+TEST_CASE("No move before the first extrusion takes the nozzle below the first layer", "[NonPlanar]")
+{
+    // The first travel after the start G-code has no Z in the sliced G-code: the head stays at the
+    // height the start G-code left it. Mapped back into the part, it must not gain a Z of 0.
+    const bool polar = GENERATE(false, true);
+    DynamicPrintConfig config = s4_config();
+    if (polar)
+        config.set_deserialize_strict({ { "printer_structure", "polar" }, { "polar_kinematics", true } });
+    const std::string gcode = slice({ inverted_frustum() }, config);
+    const double      first = config.opt_float("initial_layer_print_height");
+    std::istringstream in(gcode);
+    std::string        line;
+    bool               body = false;
+    size_t             before = 0;
+    while (std::getline(in, line)) {
+        if (line.find("MACHINE_START_GCODE_END") != std::string::npos) {
+            body = true;
+            continue;
+        }
+        if (! body || ! (line.rfind("G1 ", 0) == 0 || line.rfind("G0 ", 0) == 0))
+            continue;
+        const std::string code = line.substr(0, line.find(';'));
+        const size_t      e    = code.find(" E");
+        if (e != std::string::npos && std::stod(code.substr(e + 2)) > 0.)
+            break;
+        ++before;
+        if (const size_t z = code.find(" Z"); z != std::string::npos) {
+            DYNAMIC_SECTION((polar ? "polar " : "cartesian ") << before) {
+                CHECK(std::stod(code.substr(z + 2)) >= first - 1e-6);
+            }
+        }
+    }
+    CHECK(before > 0);
+}
+
 TEST_CASE("S4 layers lean no further than a nozzle that cannot tilt clears", "[NonPlanar]")
 {
     // The frustum's 45 degree overhang turns its layers steeper than 12 degrees; a vertical nozzle

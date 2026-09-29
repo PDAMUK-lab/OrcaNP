@@ -253,6 +253,13 @@ firmware must run the axes as they are: if it converts Cartesian G-code itself (
 `M669 K7`, Klipper `kinematics: polar`), use a Cartesian printer preset with a round bed centred
 on the rotation axis instead.
 
+The ThetaFirm preset is written for RepRapFirmware. On Kalico with ThetaFirm's `core_rtheta`
+plugin, which reads the same machine G-code (bed angle C, signed radius X, Z, tilt B, `G93`/`G94`,
+tilt pivot compensated by the slicer), set **G-code flavor** to **Klipper** and start the print in
+4-axis mode: put `THETA_MODE MODE=4AXIS` at the top of the machine start G-code, or replace the
+start G-code with ThetaFirm's `PRINT_START MODE=4AXIS HOTEND=[nozzle_temperature_initial_layer]`.
+In polar mode Kalico rejects the C axis, so a print started in it stops at its first move.
+
 Choose **Polar** as the **Printer structure** (**Printer > Basic information > Advanced**). That
 converts the G-code to the printer's axes, with the rotation axis at the centre of the printable
 area; the start and end G-code are copied as written. Printer presets from before this setting

@@ -1256,13 +1256,18 @@ void Transform::pass_head_clearance()
 std::vector<std::string> Transform::emit()
 {
     // Modal output: an axis word is written when its value changes, or when the source line
-    // commanded it, so a Z-only source move stays Z-only.
+    // commanded it, so a Z-only source move stays Z-only. Until the source sets Z (again after a
+    // G28) the head is at whatever height the start G-code left it: moves leave Z out, as the
+    // source did, instead of taking the nozzle down to the unset 0.
     std::vector<std::string>       out;
     std::optional<Eigen::Vector3d> pos;
     std::optional<double>          feed, tilt_deg;
     double                         e_rounding = 0.;
+    bool                           z_known    = false;
     for (const Record &r : m_records) {
         if (! r.motion || r.verbatim) {
+            if (GCodeWords::command(GCodeWords::split(r.raw).code) == "G28")
+                z_known = false;
             out.push_back(r.raw);
             continue;
         }
@@ -1274,8 +1279,12 @@ std::vector<std::string> Transform::emit()
             std::string line = m.rapid && ! m.e ? "G0" : "G1";
             const size_t bare = line.size();
             if (! m.pure_e) {
+                if (m.axes.find('Z') != std::string::npos)
+                    z_known = true;
                 for (int k = 0; k < 3; ++k) {
                     const double v = m.pos[k];
+                    if (k == 2 && ! z_known)
+                        continue;
                     if (! pos || std::abs(v - (*pos)[k]) > 0.5e-4 || m.axes.find("XYZ"[k]) != std::string::npos)
                         line += std::string(" ") + "XYZ"[k] + GCodeWords::number(v, 4);
                 }
