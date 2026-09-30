@@ -89,6 +89,13 @@
 namespace Slic3r {
 namespace GUI {
 
+// Orca: polar alignment calibrates a polar printer's radius axis; other printers have none.
+static bool polar_printer_selected()
+{
+    const auto *opt = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionBool>("polar_kinematics");
+    return opt != nullptr && opt->value;
+}
+
 wxDEFINE_EVENT(EVT_SELECT_TAB, wxCommandEvent);
 wxDEFINE_EVENT(EVT_HTTP_ERROR, wxCommandEvent);
 wxDEFINE_EVENT(EVT_USER_LOGIN, wxCommandEvent);
@@ -3501,7 +3508,7 @@ void MainFrame::init_menubar_as_editor()
     // Orca: polar printers
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Polar alignment"), _L("Polar alignment"),
         [this](wxCommandEvent&) { PolarAlignmentDialog(this, m_plater).ShowModal(); }, "", nullptr,
-        [this]() {return m_plater->is_view3D_shown();; }, this);
+        [this]() { return m_plater->is_view3D_shown() && polar_printer_selected(); }, this);
 
     // help
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"), [](wxCommandEvent &)
@@ -3611,7 +3618,7 @@ void MainFrame::init_menubar_as_editor()
     // Orca: polar printers
     append_menu_item(calib_menu, wxID_ANY, _L("Polar alignment"), _L("Polar alignment"),
         [this](wxCommandEvent&) { PolarAlignmentDialog(this, m_plater).ShowModal(); }, "", nullptr,
-        [this]() {return m_plater->is_view3D_shown();; }, this);
+        [this]() { return m_plater->is_view3D_shown() && polar_printer_selected(); }, this);
     // help
     append_menu_item(calib_menu, wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"),
         [](wxCommandEvent&) { wxLaunchDefaultBrowser("https://www.orcaslicer.com/wiki/calibration_guide", wxBROWSER_NEW_WINDOW); }, "", nullptr,

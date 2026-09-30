@@ -16004,6 +16004,17 @@ bool Plater::add_model(bool imperial_units, std::string fname)
     return loaded;
 }
 
+// Orca: calibration prints read their results off flat layers (bands by height, flat tops), so
+// their objects are printed planar when the process prints non-planar; the object's settings show it.
+static void calibration_objects_planar(Model &model)
+{
+    const auto *s4 = wxGetApp().preset_bundle->prints.get_edited_preset().config.option<ConfigOptionBool>("s4_enabled");
+    if (s4 == nullptr || !s4->value)
+        return;
+    for (ModelObject *object : model.objects)
+        object->config.set_key_value("s4_enabled", new ConfigOptionBool(false));
+}
+
 void Plater::calib_pa(const Calib_Params& params)
 {
     const auto calib_pa_name = wxString::Format(L"Pressure Advance Test");
@@ -16027,6 +16038,7 @@ void Plater::calib_pa(const Calib_Params& params)
             break;
         default: break;
     }
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(params);
 }
 
@@ -16512,6 +16524,7 @@ void Plater::calib_flowrate(bool is_linear, int pass, InfillPattern pattern) {
 
     // ORCA: pass the pattern
     adjust_settings_for_flowrate_calib(model().objects, is_linear, pass, pattern);
+    calibration_objects_planar(model());
     wxGetApp().get_tab(Preset::TYPE_PRINTER)->reload_config();
     auto printer_config = &wxGetApp().preset_bundle->printers.get_edited_preset().config;
     printer_config->set_key_value("resonance_avoidance", new ConfigOptionBool{false});
@@ -16602,6 +16615,7 @@ void Plater::calib_temp(const Calib_Params& params) {
     wxGetApp().get_tab(Preset::TYPE_PRINT)->reload_config();
     wxGetApp().get_tab(Preset::TYPE_FILAMENT)->reload_config();
 
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(params);
 }
 
@@ -16681,6 +16695,7 @@ void Plater::calib_max_vol_speed(const Calib_Params& params)
     new_params.start = params.start / mm3_per_mm;
     new_params.step  = params.step / mm3_per_mm;
 
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(new_params);
 }
 
@@ -16743,6 +16758,7 @@ void Plater::calib_retraction(const Calib_Params& params)
         cut_horizontal(0, 0, height, ModelObjectCutAttribute::KeepLower);
     }
 
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(params);
 }
 
@@ -16826,6 +16842,7 @@ void Plater::calib_VFA(const Calib_Params& params)
     // it does not require it, but keep it consistent with the geometry.
     Calib_Params calib_params = params;
     calib_params.vfa_layer_height = params.nozzle_based_resize ? layer_height : 0.0;
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(calib_params);
 }
 
@@ -16892,6 +16909,7 @@ void Plater::calib_input_shaping_freq(const Calib_Params& params)
     wxGetApp().get_tab(Preset::TYPE_PRINT)->update_ui_from_settings();
     wxGetApp().get_tab(Preset::TYPE_FILAMENT)->update_ui_from_settings();
 
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(params);
 }
 
@@ -16957,6 +16975,7 @@ void Plater::calib_input_shaping_damp(const Calib_Params& params)
     wxGetApp().get_tab(Preset::TYPE_PRINT)->update_ui_from_settings();
     wxGetApp().get_tab(Preset::TYPE_FILAMENT)->update_ui_from_settings();
 
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(params);
 }
 
@@ -17026,6 +17045,7 @@ void Plater::Calib_Cornering(const Calib_Params& params)
     wxGetApp().get_tab(Preset::TYPE_PRINT)->update_ui_from_settings();
     wxGetApp().get_tab(Preset::TYPE_FILAMENT)->update_ui_from_settings();
 
+    calibration_objects_planar(model());
     p->background_process.fff_print()->set_calib_params(params);
 }
 

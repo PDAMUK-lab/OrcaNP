@@ -106,6 +106,9 @@ These happen on their own and have no settings:
   degrees goes up clear of everything printed so far, over, turns there and comes down.
 - **Seams and joins:** moves that cross between parts mapped differently are joined by a straight
   move through the part.
+- **Calibration prints:** the Calibration menu's test prints are read off flat layers (bands by
+  height, flat tops), so with non-planar printing on in the process their objects are printed
+  planar: Non-planar (S4) is turned off in each object's settings, where it can be turned back on.
 - **Support:** support is generated on the bent part, then printed in columns from the bed, or
   the part below, up to the real underside of the overhang it holds, keeping the support's top
   and bottom Z distances. Support that would stand beside the part above the overhang it
@@ -291,7 +294,7 @@ information > Polar kinematics**, shown for polar printers:
 ### Polar alignment
 
 **Calibration > Polar alignment** checks that the bed turns about the point the printer thinks it
-does. **Create rings** sets up two thin rings about the rotation axis (20 and 40 mm in radius by
+does. It is available with a polar printer selected. **Create rings** sets up two thin rings about the rotation axis (20 and 40 mm in radius by
 default) as a new project and closes. Print them, open **Polar alignment** again (it remembers the
 ring sizes), measure each ring's outer diameter with calipers, enter both and press
 **Apply to printer**: rings that come out too large mean the rotation axis is farther from the
