@@ -4,8 +4,8 @@ OrcaNP is a fork of [OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer) that 
 printing. It can:
 
 - bend the layers of a part so that overhangs print without support (S4);
-- print a part in layers that follow a surface under it: a dome, a sphere, a cylinder, a pillar,
-  or another part of the model;
+- print a part in layers that follow a surface under or inside it: its own painted faces, a core
+  fitted into its cavity, a pillar or a dome;
 - drive polar printers, which turn the bed under a nozzle that moves along one radius and can
   tilt, such as the Core R-Theta.
 
@@ -101,7 +101,9 @@ These happen on their own and have no settings:
   above it ease into the curved ones over the next couple of millimetres, each one above the last.
 - **Flow:** where a layer is squashed or stretched by the bend, the extrusion is scaled so the wall
   keeps its width.
-- **Travels:** a travel that would pass through printed material is lifted over it and retracted.
+- **Travels:** a travel that would pass through printed material is lifted over it and retracted,
+  after the wipe, which stays on the path it retraces. A travel that turns the nozzle more than 15
+  degrees goes up clear of everything printed so far, over, turns there and comes down.
 - **Seams and joins:** moves that cross between parts mapped differently are joined by a straight
   move through the part.
 - **Support:** support is generated on the bent part, then printed in columns from the bed, or
