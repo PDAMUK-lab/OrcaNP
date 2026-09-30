@@ -1,0 +1,11 @@
+{
+    "from": "User",
+    "inherits": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
+    "is_custom_defined": "0",
+    "name": "T3 offset sphere",
+    "print_settings_id": "T3 offset sphere",
+    "wall_generator": "classic",
+    "version": "2.4.0.6",
+    "s4_layer_shape": "offset",
+    "s4_surface_core": "sphere"
+}

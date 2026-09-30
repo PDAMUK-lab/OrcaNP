@@ -1,0 +1,21 @@
+{
+ "type": "process",
+ "initial_layer_print_height": "0.2",
+ "enable_support": "0",
+ "wall_loops": "2",
+ "sparse_infill_density": "15%",
+ "from": "User",
+ "name": "Q auto",
+ "layer_height": "0.2",
+ "wall_generator": "classic",
+ "s4_enabled": "1",
+ "s4_planar_height": "0.2",
+ "s4_hold_non_overhangs": "0",
+ "s4_max_overhang": "30",
+ "s4_max_rotation_near": "45",
+ "s4_max_rotation_far": "20",
+ "s4_smoothing": "20",
+ "s4_rotation_multiplier": "2",
+ "s4_passes": "1",
+ "s4_cell_size": "0"
+}

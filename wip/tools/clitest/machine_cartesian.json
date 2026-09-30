@@ -1,0 +1,11 @@
+{
+    "type": "machine",
+    "from": "User",
+    "name": "Test cartesian printer",
+    "printable_area": ["0x0", "200x0", "200x200", "0x200"],
+    "printable_height": "100",
+    "use_relative_e_distances": "1",
+    "machine_start_gcode": "G28 ; home\nM83",
+    "machine_end_gcode": "G1 Z50 F600 ; lift\nM84",
+    "layer_change_gcode": "G92 E0"
+}

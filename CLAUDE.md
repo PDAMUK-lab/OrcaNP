@@ -1,5 +1,8 @@
 # CLAUDE.md — permanent memory (condensed; replaces @AGENTS.md, whose rules are all below)
 
+**Work in progress: read `wip/HANDOFF.md` first and continue from it.** (Delete `wip/` and this line
+before the next release.)
+
 ## Standing rules (user, always)
 - Semi-autonomous: keep user-facing messages short. End a work session with a quicklog (brief log of what was done).
 - Step-wise development; verify each step against the whole (build, suites, end-user GUI test) before the next.

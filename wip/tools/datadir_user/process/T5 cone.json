@@ -1,0 +1,10 @@
+{
+    "from": "User",
+    "inherits": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
+    "is_custom_defined": "0",
+    "name": "T5 cone",
+    "print_settings_id": "T5 cone",
+    "wall_generator": "classic",
+    "version": "2.4.0.6",
+    "s4_layer_shape": "cone"
+}

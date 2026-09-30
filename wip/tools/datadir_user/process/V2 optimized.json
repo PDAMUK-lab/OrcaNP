@@ -1,0 +1,12 @@
+{
+    "from": "User",
+    "inherits": "0.20mm Standard @Voron",
+    "is_custom_defined": "0",
+    "name": "V2 optimized",
+    "print_settings_id": "V2 optimized",
+    "version": "2.3.0.0",
+    "s4_enabled": "1",
+    "s4_layer_shape": "optimized",
+    "s4_max_rotation_near": "45",
+    "s4_max_rotation_far": "20"
+}

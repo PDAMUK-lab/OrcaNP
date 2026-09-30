@@ -1,0 +1,9 @@
+{
+    "from": "User",
+    "inherits": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
+    "is_custom_defined": "0",
+    "name": "T1 S4 optimized",
+    "print_settings_id": "T1 S4 optimized",
+    "wall_generator": "classic",
+    "version": "2.4.0.6"
+}

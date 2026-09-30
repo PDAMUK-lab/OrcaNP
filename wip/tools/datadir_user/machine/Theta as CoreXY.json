@@ -1,0 +1,9 @@
+{
+    "from": "User",
+    "inherits": "ThetaFirm Core R-Theta 0.4 nozzle",
+    "is_custom_defined": "0",
+    "name": "Theta as CoreXY",
+    "printer_structure": "corexy",
+    "polar_kinematics": "0",
+    "version": "2.5.0.0"
+}

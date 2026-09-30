@@ -1,0 +1,17 @@
+{
+ "type": "process",
+ "initial_layer_print_height": "0.2",
+ "enable_support": "0",
+ "wall_loops": "2",
+ "sparse_infill_density": "15%",
+ "from": "User",
+ "name": "T stick",
+ "layer_height": "0.2",
+ "wall_generator": "classic",
+ "s4_enabled": "1",
+ "s4_layer_shape": "offset",
+ "s4_surface_core": "pillar",
+ "s4_surface_size": "custom",
+ "s4_surface_diameter": "8",
+ "s4_surface_height": "20"
+}

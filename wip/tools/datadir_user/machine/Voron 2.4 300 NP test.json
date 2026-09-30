@@ -1,0 +1,12 @@
+{
+    "name": "Voron 2.4 300 NP test",
+    "inherits": "Voron 2.4 300 0.4 nozzle",
+    "from": "User",
+    "version": "2.3.0.0",
+    "nonplanar_nozzle_clearance_angle": "2.2",
+    "nonplanar_head_radius": "32.75",
+    "nonplanar_nozzle_length": "1.24",
+    "nonplanar_clearance_check": "1",
+    "use_relative_e_distances": "1",
+    "layer_change_gcode": "G92 E0"
+}

@@ -1,0 +1,10 @@
+{
+    "from": "User",
+    "inherits": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
+    "is_custom_defined": "0",
+    "name": "T6 polar only",
+    "print_settings_id": "T6 polar only",
+    "wall_generator": "classic",
+    "version": "2.4.0.6",
+    "s4_enabled": "0"
+}
