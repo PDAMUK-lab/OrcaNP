@@ -355,6 +355,8 @@ set(lisbslic3r_sources
     NonPlanar/S4GCodeTransform.hpp
     NonPlanar/S4Mapping.cpp
     NonPlanar/S4Mapping.hpp
+    NonPlanar/ToolheadClearance.cpp
+    NonPlanar/ToolheadClearance.hpp
     NormalUtils.cpp
     NormalUtils.hpp
     NSVGUtils.cpp
