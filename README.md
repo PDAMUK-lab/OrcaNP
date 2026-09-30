@@ -34,13 +34,13 @@ The original OrcaSlicer README is in [README-OrcaSlicer.md](README-OrcaSlicer.md
 
 ## Getting started
 
-1. Add a printer. For a polar printer, pick **ThetaFirm Core R-Theta** (vendor: Custom), or
+1. Add a printer. For a polar printer, pick **Core R-Theta** (vendor: Custom), or
    **Generic Polar Printer** (vendor: Custom) for one whose nozzle does not tilt. Any other printer
    works too; see [Printers](#printers) for what changes on a printer whose nozzle does not tilt.
 2. Switch the settings view to **Advanced** (the switch at the top of the settings panel). The
    non-planar settings are hidden in Simple mode.
 3. In **Process > Quality > Non-planar (S4)**, turn on **Non-planar (S4)**, or pick the process
-   preset **0.20mm Non-planar S4 @ThetaFirm Core R-Theta**.
+   preset **0.20mm Non-planar S4 @Core R-Theta**.
 4. Set **Quality > Wall generator** to **Classic**. Arachne's variable-width walls are fine on flat
    layers but are not tuned for curved ones.
 5. Slice, then check the preview and the warnings. The first slice of a large part can take a
@@ -254,7 +254,7 @@ With S4 off, such a printer slices exactly as in OrcaSlicer.
 A polar printer turns the bed under a head that moves along one radius. OrcaNP slices in ordinary
 X and Y and converts the result to bed angle, radius, Z and nozzle tilt.
 
-Two presets come with OrcaNP (vendor: Custom). **ThetaFirm Core R-Theta** tilts the nozzle and
+Two presets come with OrcaNP (vendor: Custom). **Core R-Theta** tilts the nozzle and
 prints non-planar layers by default. **Generic Polar Printer** (process **0.20mm Standard @Generic
 Polar Printer**) is a plain polar printer: bed angle C, radius X from 0 to 100 mm on a 200 mm round
 bed, Z, no tilt, flat layers, RepRapFirmware G-code with inverse time feed. Start
@@ -263,12 +263,13 @@ firmware must run the axes as they are: if it converts Cartesian G-code itself (
 `M669 K7`, Klipper `kinematics: polar`), use a Cartesian printer preset with a round bed centred
 on the rotation axis instead.
 
-The ThetaFirm preset is written for RepRapFirmware. On Kalico with ThetaFirm's `core_rtheta`
-plugin, which reads the same machine G-code (bed angle C, signed radius X, Z, tilt B, `G93`/`G94`,
-tilt pivot compensated by the slicer), set **G-code flavor** to **Klipper** and start the print in
-4-axis mode: put `THETA_MODE MODE=4AXIS` at the top of the machine start G-code, or replace the
-start G-code with ThetaFirm's `PRINT_START MODE=4AXIS HOTEND=[nozzle_temperature_initial_layer]`.
-In polar mode Kalico rejects the C axis, so a print started in it stops at its first move.
+The Core R-Theta preset is written for RepRapFirmware. On Kalico with the Core R-Theta's
+`core_rtheta` plugin, which reads the same machine G-code (bed angle C, signed radius X, Z, tilt
+B, `G93`/`G94`, tilt pivot compensated by the slicer), set **G-code flavor** to **Klipper** and
+start the print in 4-axis mode: put `THETA_MODE MODE=4AXIS` at the top of the machine start
+G-code, or replace the start G-code with the plugin's
+`PRINT_START MODE=4AXIS HOTEND=[nozzle_temperature_initial_layer]`. In polar mode Kalico rejects
+the C axis, so a print started in it stops at its first move.
 
 Choose **Polar** as the **Printer structure** (**Printer > Basic information > Advanced**). That
 converts the G-code to the printer's axes, with the rotation axis at the centre of the printable

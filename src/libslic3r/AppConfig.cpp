@@ -11,6 +11,7 @@
 #include "nlohmann/json.hpp"
 
 #include <algorithm>
+#include <map>
 #include <utility>
 #include <vector>
 #include <stdexcept>
@@ -46,6 +47,18 @@ static const std::string PROFILE_UPDATE_URL = "https://check-version.orcaslicer.
 constexpr const char* CONFIG_ORCA_UPDATER_URL = "orca_updater_url";
 
 static const std::string MODELS_STR = "models";
+
+// Orca: printer models renamed in their bundle. A model is installed by its name, and a
+// machine_model record has no renamed_from, so an installed old name is kept under the new one;
+// otherwise the model's printers would drop out of the printer list.
+static std::string current_printer_model(const std::string &vendor, const std::string &model)
+{
+    static const std::map<std::pair<std::string, std::string>, std::string> renamed = {
+        { { "Custom", "ThetaFirm Core R-Theta" }, "Core R-Theta" },
+    };
+    const auto it = renamed.find({ vendor, model });
+    return it == renamed.end() ? model : it->second;
+}
 
 const std::string AppConfig::SECTION_FILAMENTS = "filaments";
 const std::string AppConfig::SECTION_MATERIALS = "sla_materials";
@@ -826,7 +839,7 @@ std::string AppConfig::load()
                     // This is a vendor section listing enabled model / variants
                     const auto vendor_name = j_model["vendor"].get<std::string>();
                     auto& vendor = m_vendors[vendor_name];
-                    const auto model_name = j_model["model"].get<std::string>();
+                    const auto model_name = current_printer_model(vendor_name, j_model["model"].get<std::string>());
                     std::vector<std::string> variants;
                     if (!unescape_strings_cstyle(j_model["nozzle_diameter"], variants)) { continue; }
                     for (const auto& variant : variants) {
@@ -1246,7 +1259,7 @@ std::string AppConfig::load()
             auto& vendor = m_vendors[vendor_name];
             for (const auto& kvp : section.second) {
                 if (!boost::starts_with(kvp.first, MODEL_PREFIX)) { continue; }
-                const auto model_name = kvp.first.substr(MODEL_PREFIX.size());
+                const auto model_name = current_printer_model(vendor_name, kvp.first.substr(MODEL_PREFIX.size()));
                 std::vector<std::string> variants;
                 if (!unescape_strings_cstyle(kvp.second.data(), variants)) { continue; }
                 for (const auto& variant : variants) {

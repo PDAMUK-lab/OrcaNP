@@ -295,10 +295,10 @@ stays at the start block's height, as it does in planar G-code.
 
 ## Target machine
 
-The reference machine is Joshua Bird's Core R-Theta 4-axis printer running the ThetaFirm
-RepRapFirmware configuration (https://github.com/PDAMUK/ThetaFirm) in 4-axis mode. It moves the
+The reference machine is Joshua Bird's Core R-Theta 4-axis printer running its RepRapFirmware
+configuration (https://github.com/PDAMUK/ThetaFirm) in 4-axis mode. It moves the
 bed angle C (continuous), the radius X and the tilt B through a mixing matrix (`M669 K0`) and
-takes inverse time feed. That gives the "ThetaFirm Core R-Theta" printer profile its settings:
+takes inverse time feed. That gives the "Core R-Theta" printer profile its settings:
 - axis letters CXB and G93;
 - the bed angle counting with the polar angle;
 - a reversed tilt axis (B0 points straight down; a nozzle leaning outward is negative B);

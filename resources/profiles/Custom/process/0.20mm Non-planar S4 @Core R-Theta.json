@@ -1,9 +1,10 @@
 {
 	"type": "process",
-	"name": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
+	"name": "0.20mm Non-planar S4 @Core R-Theta",
+	"renamed_from": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
 	"inherits": "fdm_process_common",
 	"from": "system",
-	"setting_id": "OVPaEjHbarrDnXC0",
+	"setting_id": "OTquM12NgCKohB4h",
 	"instantiation": "true",
 	"layer_height": "0.2",
 	"bottom_shell_layers": "3",
@@ -11,6 +12,6 @@
 	"enable_support": "0",
 	"s4_enabled": "1",
 	"compatible_printers": [
-		"ThetaFirm Core R-Theta 0.4 nozzle"
+		"Core R-Theta 0.4 nozzle"
 	]
 }

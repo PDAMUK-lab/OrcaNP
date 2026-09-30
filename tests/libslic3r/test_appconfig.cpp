@@ -2,6 +2,10 @@
 
 #include "libslic3r/AppConfig.hpp"
 
+#include "test_utils.hpp"
+
+#include <boost/nowide/fstream.hpp>
+
 using namespace Slic3r;
 
 TEST_CASE("AppConfig network version helpers", "[AppConfig]") {
@@ -80,4 +84,22 @@ TEST_CASE("AppConfig Speed Dial recent count defaults, clamps and parses", "[App
         config.set(SETTING_SPEED_DIAL_RECENT_COUNT, "abc");
         REQUIRE(config.get_speed_dial_recent_count() == SPEED_DIAL_RECENT_COUNT_DEFAULT);
     }
+}
+
+TEST_CASE("An installed printer model renamed in its bundle stays installed under its new name", "[AppConfig]") {
+    // The Custom bundle's ThetaFirm Core R-Theta is now Core R-Theta: a config that installed the
+    // old model keeps it installed, so its printers stay in the printer list.
+    ScopedTemporaryFile file(".conf");
+    {
+        boost::nowide::ofstream out(file.string());
+        out << R"({"models":[{"vendor":"Custom","model":"ThetaFirm Core R-Theta","nozzle_diameter":"0.4"},)"
+            << R"({"vendor":"Custom","model":"Generic Klipper Printer","nozzle_diameter":"0.4"}]})";
+    }
+    AppConfig config;
+    config.set_loading_path(file.string());
+    REQUIRE(config.load().empty());
+    CHECK(config.get_variant("Custom", "Core R-Theta", "0.4"));
+    CHECK_FALSE(config.get_variant("Custom", "ThetaFirm Core R-Theta", "0.4"));
+    // Other models keep their names.
+    CHECK(config.get_variant("Custom", "Generic Klipper Printer", "0.4"));
 }

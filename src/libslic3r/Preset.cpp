@@ -3799,9 +3799,15 @@ bool PresetCollection::select_preset_by_name(const std::string &name_w_suffix, b
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": %1%, try to select by name %2%, force %3%")%Preset::get_type_string(m_type) %name_w_suffix %force;
     std::string name = Preset::remove_suffix_modified(name_w_suffix);
-    const std::string normalized_name = this->canonical_preset_name(name);
+    std::string normalized_name = this->canonical_preset_name(name);
     // 1) Try to find the preset by its name.
     auto it = this->find_preset_internal(normalized_name);
+    // Orca: a system preset renamed since the name was saved (renamed_from) is found by its new name.
+    if (it == m_presets.end() || it->name != normalized_name)
+        if (const std::string *renamed = this->get_preset_name_renamed(normalized_name)) {
+            normalized_name = *renamed;
+            it              = this->find_preset_internal(normalized_name);
+        }
     size_t idx = 0;
     if (it != m_presets.end() && it->name == normalized_name && it->is_visible)
         // Preset found by its name and it is visible.
@@ -3836,9 +3842,15 @@ bool PresetCollection::select_preset_by_name_strict(const std::string &name)
 {
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": %1%, try to select by name %2%")%Preset::get_type_string(m_type) %name;
-    const std::string canonical_name = this->canonical_preset_name(name);
+    std::string canonical_name = this->canonical_preset_name(name);
     // 1) Try to find the preset by its name.
     auto it = this->find_preset_internal(canonical_name);
+    // Orca: a system preset renamed since the name was saved (renamed_from) is found by its new name.
+    if (it == m_presets.end() || it->name != canonical_name)
+        if (const std::string *renamed = this->get_preset_name_renamed(canonical_name)) {
+            canonical_name = *renamed;
+            it             = this->find_preset_internal(canonical_name);
+        }
 
     size_t idx = (size_t)-1;
     if (it != m_presets.end() && it->name == canonical_name && it->is_visible)

@@ -102,6 +102,7 @@ struct RenameTestCollection : public PresetCollection
                            static_cast<const PrintRegionConfig &>(FullPrintConfig::defaults()))
     {}
     using PresetCollection::update_map_system_profile_renamed;
+    using PresetCollection::select_preset_by_name_strict;
 };
 
 } // namespace
@@ -317,6 +318,32 @@ TEST_CASE("find_preset resolves a preset renamed more than once", "[Preset][Rena
     Preset &child = add_inmemory_preset(coll, "Child Process", "Original Process");
     REQUIRE(coll.get_preset_parent(child) != nullptr);
     CHECK(coll.get_preset_parent(child)->name == "New Process");
+}
+
+TEST_CASE("Selecting a preset by a former name selects the renamed preset", "[Preset][Rename]")
+{
+    // A selection saved before a system preset was renamed (the app config's printer or process)
+    // selects the preset it became, not the first visible one.
+    RenameTestCollection coll;
+    add_inmemory_preset(coll, "Other Process");
+    add_inmemory_preset(coll, "New Process");
+    set_renamed_from(coll, "New Process", { "Old Process" });
+    coll.update_map_system_profile_renamed();
+
+    SECTION("select_preset_by_name")
+    {
+        coll.select_preset_by_name("Old Process", true);
+        CHECK(coll.get_selected_preset_name() == "New Process");
+    }
+    SECTION("select_preset_by_name_strict")
+    {
+        REQUIRE(coll.select_preset_by_name_strict("Old Process"));
+        CHECK(coll.get_selected_preset_name() == "New Process");
+    }
+    SECTION("an unknown name is still not selected strictly")
+    {
+        CHECK_FALSE(coll.select_preset_by_name_strict("Unknown Process"));
+    }
 }
 
 TEST_CASE("find_preset2 auto-matches removed Generic vendor profiles to the library", "[Preset][Rename]")

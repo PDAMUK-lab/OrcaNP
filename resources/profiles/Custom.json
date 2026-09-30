@@ -1,9 +1,13 @@
 {
 	"name": "Custom Printer",
-	"version": "02.04.00.09",
+	"version": "02.04.00.10",
 	"force_update": "0",
 	"description": "My configurations",
 	"machine_model_list": [
+		{
+			"name": "Core R-Theta",
+			"sub_path": "machine/Core R-Theta.json"
+		},
 		{
 			"name": "Generic Klipper Printer",
 			"sub_path": "machine/MyKlipper.json"
@@ -27,10 +31,6 @@
 		{
 			"name": "Generic ToolChanger Printer",
 			"sub_path": "machine/MyToolChanger.json"
-		},
-		{
-			"name": "ThetaFirm Core R-Theta",
-			"sub_path": "machine/ThetaFirm Core R-Theta.json"
 		}
 	],
 	"process_list": [
@@ -39,8 +39,8 @@
 			"sub_path": "process/fdm_process_common.json"
 		},
 		{
-			"name": "0.20mm Non-planar S4 @ThetaFirm Core R-Theta",
-			"sub_path": "process/0.20mm Non-planar S4 @ThetaFirm Core R-Theta.json"
+			"name": "0.20mm Non-planar S4 @Core R-Theta",
+			"sub_path": "process/0.20mm Non-planar S4 @Core R-Theta.json"
 		},
 		{
 			"name": "0.20mm Standard @Generic Polar Printer",
@@ -247,16 +247,16 @@
 			"sub_path": "machine/fdm_machine_common.json"
 		},
 		{
+			"name": "Core R-Theta 0.4 nozzle",
+			"sub_path": "machine/Core R-Theta 0.4 nozzle.json"
+		},
+		{
 			"name": "Generic Polar Printer 0.4 nozzle",
 			"sub_path": "machine/Generic Polar Printer 0.4 nozzle.json"
 		},
 		{
 			"name": "MyMarlin 0.4 nozzle",
 			"sub_path": "machine/MyMarlin 0.4 nozzle.json"
-		},
-		{
-			"name": "ThetaFirm Core R-Theta 0.4 nozzle",
-			"sub_path": "machine/ThetaFirm Core R-Theta 0.4 nozzle.json"
 		},
 		{
 			"name": "fdm_klipper_common",

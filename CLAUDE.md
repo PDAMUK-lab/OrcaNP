@@ -10,7 +10,7 @@
 
 ## Project
 OrcaNP: OrcaSlicer fork (C++17, selective C++20, wxWidgets, CMake) adding S4 non-planar slicing and polar
-printers (ThetaFirm Core R-Theta). Non-planar code: `src/libslic3r/NonPlanar/` (S4Deformation, Tetrahedralize,
+printers (Core R-Theta). Non-planar code: `src/libslic3r/NonPlanar/` (S4Deformation, Tetrahedralize,
 LayerShapes, PaintedSurface, S4Mapping, S4GCodeTransform, PolarKinematics), `PrintObjectSlice.cpp` (`deform_s4`),
 `GCode/NonPlanarExport`, tests `tests/fff_print/test_nonplanar.cpp` (`[NonPlanar]`), design `docs/HLSD/nonplanar-s4.md`,
 user docs `README.md`. Key upstream entry points: `src/OrcaSlicer.cpp` (startup), `src/libslic3r/Print.cpp` (pipeline),
@@ -44,7 +44,7 @@ profiles `resources/profiles/<Vendor>.json`.
   `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ... --datadir <dir>`; kill with
   `pgrep -f "^/home/user/OrcaNP/build/src/Release/orca-slicer"` (unanchored `pkill -f` kills its own shell).
   Dropdowns do not render under Xvfb: set values through presets/config. XTest key for '.' is `period`.
-- Test printers: ThetaFirm Core R-Theta (polar); "Klipper Voron Designs V2.4r2 300mm" (Printer presets tab) for
+- Test printers: Core R-Theta (polar); "Klipper Voron Designs V2.4r2 300mm" (Printer presets tab) for
   Z-only non-planar, toolhead 2.2° all-round clearance from the nozzle edge out to 65.5 mm wide, 126 mm high.
 
 ## Documentation
