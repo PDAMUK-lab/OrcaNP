@@ -350,7 +350,18 @@ Two groups of settings switch the pipeline on:
 - **Printer settings > Basic information > Non-planar toolhead** (`nonplanar_*`): the clearance
   check and what it models. The nozzle tip's flat diameter and the angle of absolute clearance
   (rising from the tip's face, 0 degrees flat) define the nozzle cone. The nozzle length, where
-  the toolhead's radius takes over, and that radius complete it.
+  the toolhead's radius takes over, and that radius complete it. **Calibration > Toolhead
+  clearance** (`NonPlanar/ToolheadClearance`, `GUI/ToolheadCalibration`) measures them with
+  printed gauges: feeler blades give the gap under the toolhead's outer edge over its distance
+  from the nozzle, for flat undersides whose angle is too shallow to read, and angle wedges give
+  the steepest slope that reaches the nozzle tip, for steep ones. The fit is the tightest side's
+  angle (the shallowest rise from the tip's edge to a reading), rounded down, with the cone out to
+  the toolhead's reach, so the modelled underside stays below every reading. As the gauges measure
+  a few points per side, a fin test checks the settings all round: thin radial fins 0.3 mm under
+  the modelled underside, and taller beyond its reach, into whose middle the nozzle is lowered by
+  hand; a fin it touches shows where the settings are too generous. The nozzle is lowered by hand,
+  not by the print's G-code, so the check needs no printer-specific motion (polar, inverse time
+  feed) and the user controls it.
 
 Most printer settings only affect G-code export. The tilt travel also bounds the S4 deformation:
 with a tilting nozzle the S4 rotation limits are capped at the travel both sides of vertical
@@ -437,6 +448,10 @@ and the non-planar building blocks:
 - **Polar kinematics:** round trip (also with a reversed tilt, pivot compensation and a
   calibrated radius axis), continuity and axis crossing, tilt and radius travel, and the radius
   calibration solved from two measured rings.
+- **Toolhead clearance calibration** (`test_toolhead_clearance.cpp`): the modelled underside and
+  reach, fits that keep it under every reading and refuse impossible ones, the gauges (closed,
+  laid out within the bed, blade thickness, wedge slope, labels), and the fin test's fins under
+  the model by the margin; `test_nonplanar.cpp` checks the sliced fin test's layers stay under it.
 - **Polar G-code conversion:** path, extrusion, timing, machine blocks and their feed mode,
   arcs, and the record of each line's last machine line and pose.
 - **S4 deformation:** its guarantees (pinned base, planar base height, bed clearance, no

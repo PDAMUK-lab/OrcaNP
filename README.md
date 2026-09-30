@@ -235,11 +235,12 @@ only slope as far as the nozzle clears the part next to it, so S4 keeps the laye
 **Nozzle clearance angle**. Before slicing:
 
 - set **Printer > Basic information > Non-planar toolhead** to your nozzle and toolhead (see
-  [Toolhead clearance](#toolhead-clearance)). The defaults describe no particular toolhead, and
-  their 50° clearance angle is steeper than many hotends and fan ducts allow. A toolhead with a
-  wide, flat underside clears only a few degrees: one Voron 2.4 toolhead, for example, about 2.2°
-  from the nozzle's edge out to 65.5 mm across (Nozzle clearance angle 2.2°, Toolhead radius
-  32.75 mm, Nozzle length 1.24 mm). The angle goes down to 0.1°;
+  [Toolhead clearance](#toolhead-clearance); **Calibration > Toolhead clearance** measures it).
+  The defaults describe no particular toolhead, and their 50° clearance angle is steeper than many
+  hotends and fan ducts allow. A toolhead with a wide, flat underside clears only a few degrees:
+  one Voron 2.4 toolhead, for example, about 2.2° from the nozzle's edge out to 65.5 mm across
+  (Nozzle clearance angle 2.2°, Toolhead radius 32.75 mm, Nozzle length 1.24 mm). The angle goes
+  down to 0.1°;
 - the process's **Maximum rotation** (near and far) is filled in with that angle when it is set
   higher, with a message saying so; to lean the layers further, change the toolhead's settings;
 - keep **Check toolhead clearance** on and read its warning after slicing.
@@ -315,9 +316,54 @@ enough.
 | --- | --- | --- |
 | Check toolhead clearance | Warns where the nozzle or the toolhead would hit printed material or the bed. | Leave on. |
 | Nozzle tip diameter | The flat face at the nozzle tip. | Measure it; about 0.8 to 1 mm for a common brass nozzle. |
-| Nozzle clearance angle | The angle, from the tip's face, of the cone the nozzle and hotend stay above. A vertical nozzle can print a surface only as steep as this, so on a printer that cannot tilt the nozzle, S4 layers lean no more than this. | Measure it from a side photo of the nozzle: the angle from the tip's face to a line touching the heater block or fan duct. |
-| Nozzle length | How far up the cone goes before the toolhead's radius takes over. | The height of the nozzle and heater block below the widest part of the toolhead. |
-| Toolhead radius | The toolhead above the nozzle, as a cylinder. | Half the width of the heater block, fan duct or carriage, whichever is widest. |
+| Nozzle clearance angle | The angle, from the tip's face, of the cone the nozzle and hotend stay above. A vertical nozzle can print a surface only as steep as this, so on a printer that cannot tilt the nozzle, S4 layers lean no more than this. | Measure it with **Calibration > Toolhead clearance** (below). |
+| Nozzle length | How far up the cone goes before the toolhead's radius takes over. | Set by the calibration: the cone reaches out to the toolhead's radius. |
+| Toolhead radius | The toolhead above the nozzle, as a cylinder. | Set by the calibration from the toolhead reach: half the width of the heater block, fan duct or carriage, whichever is widest. |
+
+#### Measuring it: Calibration > Toolhead clearance
+
+![Calibration, Toolhead clearance](docs/images/nonplanar/calibration-toolhead.png)
+
+**Calibration > Toolhead clearance** measures these settings with printed gauges and checks them
+with a printed test. Measure with the feeler blades (1) or the angle wedges (2), whichever suits the
+toolhead, then check with the fin test (3). Each test sets up its print as a new project (planar,
+without a brim, in 0.2 mm layers, 0.1 mm for nozzles under 0.3 mm, so the gauges' heights print
+true); print it and open the dialog again, which remembers what you entered and the tab you used.
+**Toolhead reach** is how far the toolhead reaches sideways from the nozzle's centre at its widest,
+at any height: half its width for a nozzle in the middle. It becomes the Toolhead radius.
+
+1. **Feeler blades**, for a toolhead with a wide, nearly flat underside close to the nozzle tip,
+   such as the fan ducts of most Cartesian printers. Its clearance angle is a few degrees, too
+   shallow to judge by eye, so it is measured as a gap over a distance. **Create blades** sets up 16
+   blades, 0.2 to 6 mm thick, each numbered with its thickness. With the printer cold, lower the
+   nozzle until it just touches the bed. On each side (front, back, left, right), slide blades under
+   the outer edge of the toolhead's underside: the thickest that slides under is the gap. Measure the
+   distance from the nozzle's centre to that edge. **Apply to printer** sets the clearance angle to
+   the shallowest rise from the tip's edge to a gap, rounded down, and the cone out to the toolhead
+   reach or the farthest edge measured.
+2. **Angle wedges**, for a nozzle standing well below the toolhead, such as a long nozzle or a
+   tilting toolhead like the Core R-Theta's. Its clearance angle is steep and is read directly.
+   **Create wedges** sets up wedges from 5° to 75° in 5° steps, each numbered with its angle, long
+   enough to reach the toolhead reach (up to 30 mm high). With the printer cold and the nozzle
+   touching the bed, slide a wedge along the bed, thin edge first, straight at the nozzle until the
+   edge touches it: if the toolhead touches the slope first, the wedge is too steep for that side.
+   Enter the steepest wedge that reaches the nozzle on each side and the toolhead reach; **Apply to
+   printer** takes the tightest side.
+3. **Fin test**, to check the settings, after either of the above and after changing them by hand.
+   The blades and wedges measure a few points on each side; the fin test checks the whole toolhead
+   all round, including any part lower than the points measured (a cooling nozzle between two sides,
+   say). **Create fin test** sets up a plate with twelve thin fins whose tops stay 0.3 mm below the
+   toolhead the printer's settings describe, and which rise 3 mm above the nozzle length beyond the
+   toolhead radius. Leave the print on the bed and let the printer cool. Move the nozzle over the
+   plate's centre (the centre of the bed, or the rotation axis on a polar printer) and lower it
+   slowly until it touches the plate. A fin the toolhead touches or knocks over shows the side where
+   the settings are too generous: measure again, or lower the clearance angle or raise the toolhead
+   radius, and repeat. If it touches none, the settings are safe. Take the plate off the bed before
+   homing the printer: homing may lower the nozzle onto it.
+
+Apply changes the printer preset: save it to keep the settings. The settings describe the toolhead
+the same all round, so the tightest side sets them; a toolhead clearer at the back than at the
+front is modelled by its front.
 
 ## Preview
 
