@@ -227,10 +227,13 @@ ToolheadClearanceDialog::ToolheadClearanceDialog(wxWindow *parent, Plater *plate
     wedges->GetSizer()->Add(apply_wedges, 0, wxEXPAND);
 
     wxPanel *fins = page(_L("3. Fin test"));
+    // Where the printer puts the nozzle over the plate's centre: G-code positions are the bed's
+    // less the extruder offset.
+    const Vec2d    nozzle = BoundingBoxf(printable_area()).center() -
+                         printer_config().option<ConfigOptionPoints>("extruder_offset")->get_at(0);
     const wxString centre = printer_config().opt_bool("polar_kinematics") ?
-        _L("the bed's rotation axis") :
-        wxString::Format(_L("X %s mm, Y %s mm"), number(BoundingBoxf(printable_area()).center().x(), 1),
-                         number(BoundingBoxf(printable_area()).center().y(), 1));
+                                _L("the bed's rotation axis") :
+                                wxString::Format(_L("X %s mm, Y %s mm"), number(nozzle.x(), 1), number(nozzle.y(), 1));
     fins->GetSizer()->Add(make_text(fins,
                                     wxString::Format(_L("Checks the printer's toolhead settings. The blades and wedges measure a few "
                                                         "points on each side; the fin test checks the whole toolhead all round, "
