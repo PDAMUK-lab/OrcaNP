@@ -68,7 +68,7 @@ indexed_triangle_set feeler_blades(const std::vector<double> &thicknesses, doubl
 // Wedge angles, degrees.
 std::vector<double> wedge_angles();
 // A wedge per angle: a slope rising from a thin edge at the angle, long enough to reach `reach`
-// (up to 35 mm high), and a tab numbered with the angle.
+// (up to 30 mm high), and a tab numbered with the angle.
 indexed_triangle_set angle_wedges(const std::vector<double> &angles, double reach, double max_width);
 
 // The fin test for the toolhead settings `t`: a plate `fin_test_plate` thick with twelve radial

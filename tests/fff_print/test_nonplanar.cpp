@@ -5,6 +5,7 @@
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/NonPlanar/S4Deformation.hpp"
+#include "libslic3r/NonPlanar/ToolheadClearance.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleMeshSlicer.hpp"
 
@@ -16,6 +17,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <tuple>
 
 #include "test_helpers.hpp"
 #include "test_utils.hpp"
@@ -1404,4 +1406,37 @@ TEST_CASE("A polar printer is chosen by its structure, and older presets load as
     other.handle_legacy_composite();
     CHECK_FALSE(other.opt_bool("polar_kinematics"));
     CHECK(other.option<ConfigOptionEnum<PrinterStructure>>("printer_structure")->value == psCoreXY);
+}
+
+TEST_CASE("The printed fin test stays below the modelled toolhead, and rises beyond its reach", "[NonPlanar][ToolheadClearance]")
+{
+    // A steep toolhead (45 degrees, 10 mm long, 12 mm radius) and a flat-bottomed one (2.2 degrees
+    // out to 32.75 mm), their fin tests sliced in 0.2 mm layers from the first on.
+    NonPlanar::ToolheadClearance t;
+    t.tip_diameter = 0.8;
+    std::tie(t.angle, t.length, t.radius) = GENERATE(std::make_tuple(45., 10., 12.), std::make_tuple(2.2, 1.24, 32.75));
+    constexpr double layer = 0.2;
+    Print            print;
+    Test::init_and_process_print({ TriangleMesh(NonPlanar::fin_test(t, 1.)) }, print,
+                                 config_with({ { "layer_height", layer }, { "initial_layer_print_height", layer }, { "enable_support", false } }));
+    const PrintObject &object = *print.objects().front();
+    REQUIRE(! object.layers().empty());
+    // The plate's centre, where the nozzle is lowered onto its top.
+    const Vec2d centre = unscaled(get_extents(object.layers().front()->lslices).center());
+    const double plate = NonPlanar::fin_test_plate;
+    double       top   = 0.;
+    for (const Layer *l : object.layers()) {
+        top = std::max(top, l->print_z);
+        if (l->print_z <= plate + EPSILON)
+            continue;
+        // A layer is printed where the model reaches its middle: at most half a layer above the fins' tops.
+        for (const ExPolygon &ex : l->lslices)
+            for (const Point &p : ex.contour.points) {
+                const double d = (unscaled(p) - centre).norm();
+                if (d <= t.reach())
+                    CHECK(l->print_z <= plate + t.underside(d) - NonPlanar::fin_test_margin + 0.5 * layer + 1e-3);
+            }
+    }
+    // Beyond the reach the fins stand 3 mm above the nozzle length.
+    CHECK(top >= plate + std::min(t.length + 3., 30.) - 0.5 * layer - 1e-3);
 }

@@ -39,6 +39,7 @@
 #include "GLCanvas3D.hpp"
 #include "Plater.hpp"
 #include "PolarCalibration.hpp"
+#include "ToolheadCalibration.hpp"
 #ifdef SLIC3R_CAD
 #include "slic3r/GUI/CAD/DesignPanel.hpp"
 #include "slic3r/GUI/CAD/McpControl.hpp"
@@ -3509,6 +3510,10 @@ void MainFrame::init_menubar_as_editor()
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Polar alignment"), _L("Polar alignment"),
         [this](wxCommandEvent&) { PolarAlignmentDialog(this, m_plater).ShowModal(); }, "", nullptr,
         [this]() { return m_plater->is_view3D_shown() && polar_printer_selected(); }, this);
+    // Orca: non-planar printing
+    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Toolhead clearance"), _L("Toolhead clearance"),
+        [this](wxCommandEvent&) { ToolheadClearanceDialog(this, m_plater).ShowModal(); }, "", nullptr,
+        [this]() { return m_plater->is_view3D_shown(); }, this);
 
     // help
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"), [](wxCommandEvent &)
@@ -3619,6 +3624,10 @@ void MainFrame::init_menubar_as_editor()
     append_menu_item(calib_menu, wxID_ANY, _L("Polar alignment"), _L("Polar alignment"),
         [this](wxCommandEvent&) { PolarAlignmentDialog(this, m_plater).ShowModal(); }, "", nullptr,
         [this]() { return m_plater->is_view3D_shown() && polar_printer_selected(); }, this);
+    // Orca: non-planar printing
+    append_menu_item(calib_menu, wxID_ANY, _L("Toolhead clearance"), _L("Toolhead clearance"),
+        [this](wxCommandEvent&) { ToolheadClearanceDialog(this, m_plater).ShowModal(); }, "", nullptr,
+        [this]() { return m_plater->is_view3D_shown(); }, this);
     // help
     append_menu_item(calib_menu, wxID_ANY, _L("Calibration Guide"), _L("Calibration Guide"),
         [](wxCommandEvent&) { wxLaunchDefaultBrowser("https://www.orcaslicer.com/wiki/calibration_guide", wxBROWSER_NEW_WINDOW); }, "", nullptr,

@@ -69,6 +69,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/calib_dlg.hpp
     GUI/PolarCalibration.cpp
     GUI/PolarCalibration.hpp
+    GUI/ToolheadCalibration.cpp
+    GUI/ToolheadCalibration.hpp
     GUI/Calibration.cpp
     GUI/Calibration.hpp
     GUI/CalibrationPanel.cpp

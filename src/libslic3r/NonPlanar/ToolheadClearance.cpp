@@ -200,9 +200,9 @@ std::vector<double> wedge_angles()
 
 indexed_triangle_set angle_wedges(const std::vector<double> &angles, double reach, double max_width)
 {
-    // A slope 16 mm wide, from its thin edge out past the reach or up to 35 mm, and a 14 x 10 mm tab
+    // A slope 12 mm wide, from its thin edge out past the reach or up to 30 mm, and a 14 x 10 mm tab
     // behind it numbered with the angle.
-    constexpr double width = 16., max_height = 35., tab_length = 14., tab_width = 10., tab = 1.2, digits = 5., relief = 0.6;
+    constexpr double width = 12., max_height = 30., tab_length = 14., tab_width = 10., tab = 1.2, digits = 5., relief = 0.6;
     std::vector<indexed_triangle_set> pieces;
     for (double a : angles) {
         const double k = tan_deg(a);
