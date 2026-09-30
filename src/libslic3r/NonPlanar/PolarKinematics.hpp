@@ -63,6 +63,16 @@ struct PolarKinematicsConfig
     // radius_offset from the rotation axis (along the head's line, signed), so R is solved from that.
     double radius_offset = 0.;
     double radius_scale  = 1.;
+    // The commanded tilt (degrees) the nozzle stands vertical at: added to every commanded tilt.
+    double tilt_offset = 0.;
+    // Play in the bed's drive (degrees of angle-axis travel): the angle is commanded half of it
+    // further in the direction the bed last turned, so a change of direction takes the play up.
+    double rotation_backlash = 0.;
+    // The bed's height under the tip, mm per mm from the rotation axis: toward +X and +Y of the
+    // part frame, and outward all round. The tip is raised by as much.
+    double bed_tilt_x = 0.;
+    double bed_tilt_y = 0.;
+    double bed_cone   = 0.;
     char angle_axis  = 'C';
     char radius_axis = 'X';
     char tilt_axis   = 'B';
@@ -109,6 +119,10 @@ public:
         MachinePose pose;
     };
     std::vector<Waypoint> interpolate(const ToolPose &from, const MachinePose &from_machine, const ToolPose &to) const;
+
+    // How much higher than at the rotation axis the bed is under a point `from_axis` of the part
+    // frame, relative to the axis (bed_tilt_x, bed_tilt_y, bed_cone).
+    double bed_height(const Eigen::Vector2d &from_axis) const;
 
 private:
     PolarKinematicsConfig m_config;
@@ -173,6 +187,8 @@ private:
     bool        m_z_known          = false; // Z set since the start block or the last G28; until then moves leave it out
     MachinePose m_machine;
     int         m_feed_mode        = -1;  // -1 unknown, 0 G94, 1 G93
+    int         m_turn_dir         = 0;   // the way the angle axis last turned: +1, -1, or 0 before it has
+    double      m_angle_written    = 0.;  // the angle last written, with the backlash taken up
 };
 
 // Converts a whole G-code file in place of `dst`. Returns the conversion statistics.

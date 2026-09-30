@@ -8306,7 +8306,7 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Radius offset");
     def->tooltip  = L("How much farther from the head's zero radius the bed's rotation axis really is: a ring printed "
                       "about it comes out this much larger in radius than commanded. Subtracted from every commanded "
-                      "radius. Measure it with Calibration > Polar alignment.");
+                      "radius. Measure it with Calibration > Polar calibration, Radius.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
@@ -8315,7 +8315,7 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Radius scale");
     def->tooltip  = L("Radius the machine moves per commanded radius, in percent: a ring printed about the rotation axis "
                       "comes out this much larger than commanded beyond the offset. Commanded radii are divided by it. "
-                      "Measure it with Calibration > Polar alignment.");
+                      "Measure it with Calibration > Polar calibration, Radius.");
     def->sidetext = u8"%";
     def->min      = 50;
     def->max      = 150;
@@ -8331,7 +8331,8 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("polar_max_rotation_speed", coFloat);
     def->label    = L("Maximum bed rotation speed");
-    def->tooltip  = L("Moves that would turn the bed faster than this are slowed down (inverse time feed only).");
+    def->tooltip  = L("Moves that would turn the bed faster than this are slowed down (inverse time feed only). Measure it "
+                      "with Calibration > Polar calibration, Rotation speed.");
     def->sidetext = L("°/s");
     def->min      = 1;
     def->mode     = comAdvanced;
@@ -8348,7 +8349,7 @@ void PrintConfigDef::init_fff_params()
     def = this->add("polar_tilt_pivot_length", coFloat);
     def->label    = L("Tilt pivot distance");
     def->tooltip  = L("Distance from the nozzle tip to the tilt pivot, when the firmware positions the pivot rather than the "
-                      "tip. 0 when the firmware compensates.");
+                      "tip. 0 when the firmware compensates. Measure it with Calibration > Polar calibration, Tilt pivot.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->mode     = comAdvanced;
@@ -8414,6 +8415,97 @@ void PrintConfigDef::init_fff_params()
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(1000));
+
+    def = this->add("polar_tilt_offset", coFloat);
+    def->label    = L("Tilt offset");
+    def->tooltip  = L("The tilt the nozzle stands vertical at: added to every commanded tilt. Measure it with Calibration > "
+                      "Polar calibration, Tilt pivot.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = -10;
+    def->max      = 10;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("polar_rotation_backlash", coFloat);
+    def->label    = L("Bed rotation backlash");
+    def->tooltip  = L("Play in the bed's drive: how far its motor turns, after the bed changes direction, before the bed "
+                      "follows. The bed is turned this much further whenever it changes direction. 0 when the firmware "
+                      "compensates (RepRapFirmware M425). Measure it with Calibration > Polar calibration, Backlash.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = 0;
+    def->max      = 5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("polar_bed_tilt_x", coFloat);
+    def->label    = L("Bed tilt X");
+    def->tooltip  = L("How much higher the bed is 100 mm from the rotation axis toward +X of the plate than at the axis, for a "
+                      "bed not square to its rotation axis. The nozzle is raised by as much wherever it prints, so the first "
+                      "layer is as thick all round. Measure it with Calibration > Polar calibration, Bed level.");
+    def->sidetext = L("mm/100 mm");
+    def->min      = -5;
+    def->max      = 5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("polar_bed_tilt_y", coFloat);
+    def->label    = L("Bed tilt Y");
+    def->tooltip  = L("How much higher the bed is 100 mm from the rotation axis toward +Y of the plate than at the axis, for a "
+                      "bed not square to its rotation axis. The nozzle is raised by as much wherever it prints, so the first "
+                      "layer is as thick all round. Measure it with Calibration > Polar calibration, Bed level.");
+    def->sidetext = L("mm/100 mm");
+    def->min      = -5;
+    def->max      = 5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("polar_bed_cone", coFloat);
+    def->label    = L("Bed rise outward");
+    def->tooltip  = L("How much higher the bed is, under the nozzle, 100 mm out from the rotation axis than at it, all round: "
+                      "a radius axis not parallel to the bed, or a domed bed (negative for a dished one). The nozzle is raised "
+                      "by as much wherever it prints. Measure it with Calibration > Polar calibration, Bed level.");
+    def->sidetext = L("mm/100 mm");
+    def->min      = -5;
+    def->max      = 5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("skew_xy", coFloat);
+    def->label    = L("XY skew");
+    def->tooltip  = L("How far the Y axis leans from square to the X axis, toward +X when positive: without compensation, "
+                      "a square printed on the bed has the corner at its lowest X and Y this much under 90°. The print's "
+                      "moves are sheared back by it; the machine start and end G-code are not. 0 when the firmware "
+                      "compensates (Klipper SET_SKEW, Marlin M852, RepRapFirmware M556). Measure it with Calibration > "
+                      "Dimensions.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = -5;
+    def->max      = 5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("skew_xz", coFloat);
+    def->label    = L("XZ skew");
+    def->tooltip  = L("How far the Z axis leans from square to the X axis, toward +X when positive: without compensation, a "
+                      "square standing upright along X has the corner at its lowest X and Z this much under 90°. The print's "
+                      "moves are sheared back by it; the machine start and end G-code are not. 0 when the firmware "
+                      "compensates. Measure it with Calibration > Dimensions.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = -5;
+    def->max      = 5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("skew_yz", coFloat);
+    def->label    = L("YZ skew");
+    def->tooltip  = L("How far the Z axis leans from square to the Y axis, toward +Y when positive: without compensation, a "
+                      "square standing upright along Y has the corner at its lowest Y and Z this much under 90°. The print's "
+                      "moves are sheared back by it; the machine start and end G-code are not. 0 when the firmware "
+                      "compensates. Measure it with Calibration > Dimensions.");
+    def->sidetext = u8"°";	// degrees, don't need translation
+    def->min      = -5;
+    def->max      = 5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
 
     def = this->add("nonplanar_clearance_check", coBool);
     def->label    = L("Check toolhead clearance");

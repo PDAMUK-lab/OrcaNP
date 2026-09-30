@@ -2,6 +2,7 @@
 
 #include "libslic3r/NonPlanar/PolarKinematics.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -94,6 +95,12 @@ TEST_CASE("A machine pose converts back to the tool pose it came from", "[PolarK
     cfg.tilt_sign         = GENERATE(1., -1.);
     cfg.radius_offset     = GENERATE(0., 0.7);
     cfg.radius_scale      = GENERATE(1., 1.02);
+    cfg.tilt_offset       = GENERATE(0., 1.5);
+    // A bed 0.2 mm higher per 100 mm toward +X, 0.1 lower toward +Y and 0.05 higher outward.
+    const double bed      = GENERATE(0., 1.);
+    cfg.bed_tilt_x        = 0.002 * bed;
+    cfg.bed_tilt_y        = -0.001 * bed;
+    cfg.bed_cone          = 0.0005 * bed;
     const PolarKinematics kin(cfg);
 
     const std::vector<ToolPose> poses = { pose(130., 90., 5., 10.), pose(100., 120., 2., -25.), pose(60., 50., 0.2, 0.),
@@ -119,6 +126,65 @@ TEST_CASE("A calibrated radius axis is commanded where it puts the tip", "[Polar
     CHECK_THAT(kin.to_machine(pose(20., 0., 1., 0.), nullptr).radius, WithinAbs((20. - 0.7) / 1.02, 1e-9));
     const MachinePose across = kin.to_machine(pose(-20., 0., 1., 0.), nullptr);
     CHECK_THAT(std::abs(across.radius * 1.02 + 0.7), WithinAbs(20., 1e-9));
+}
+
+TEST_CASE("A tilt offset is added to every commanded tilt", "[PolarKinematics]")
+{
+    PolarKinematicsConfig cfg;
+    cfg.tilt_offset = 1.5;
+    cfg.tilt_sign   = GENERATE(1., -1.);
+    const PolarKinematics kin(cfg);
+    // Leaning 10 degrees outward is commanded 10 degrees the machine's way, plus the offset.
+    CHECK_THAT(kin.to_machine(pose(30., 0., 1., 10.), nullptr).tilt, WithinAbs(10. * cfg.tilt_sign + 1.5, 1e-9));
+    CHECK_THAT(kin.to_machine(pose(30., 0., 1., 0.), nullptr).tilt, WithinAbs(1.5, 1e-9));
+}
+
+TEST_CASE("The tip is raised as high as the bed is under it", "[PolarKinematics]")
+{
+    PolarKinematicsConfig cfg;
+    cfg.center     = Eigen::Vector2d(100., 100.);
+    cfg.bed_tilt_x = 0.002;
+    cfg.bed_tilt_y = -0.001;
+    cfg.bed_cone   = 0.0005;
+    const PolarKinematics kin(cfg);
+    // 30 mm toward +X and 40 toward +Y of the axis: 0.06 - 0.04 + 0.025 mm higher.
+    CHECK_THAT(kin.to_machine(pose(130., 140., 1., 0.), nullptr).z, WithinAbs(1. + 0.06 - 0.04 + 0.025, 1e-9));
+    CHECK_THAT(kin.to_machine(pose(100., 100., 1., 0.), nullptr).z, WithinAbs(1., 1e-9));
+}
+
+TEST_CASE("The bed's play is taken up whenever it changes direction", "[PolarKinematics]")
+{
+    // Round the axis a quarter turn one way and back, printing.
+    const std::string cartesian = "M83\n"
+                                  "; MACHINE_START_GCODE_END\n"
+                                  "G1 X30 Y0 Z0.2 F6000\n"
+                                  "G1 X0 Y30 E3 F1200\n"
+                                  "G1 X30 Y0 E3\n"
+                                  "G1 X0 Y30 E3\n";
+    auto convert = [&](double backlash) {
+        PolarKinematicsConfig cfg;
+        cfg.rotation_backlash = backlash;
+        std::istringstream  in(cartesian);
+        std::ostringstream  out;
+        PolarGCodeConverter converter(cfg);
+        converter.process(in, out);
+        std::vector<double> angles;
+        std::istringstream  lines(out.str());
+        for (std::string line; std::getline(lines, line);)
+            if (line.rfind("G1 C", 0) == 0)
+                angles.emplace_back(word(line, 'C', 0.));
+        return angles;
+    };
+    const double              play    = 0.4;
+    const std::vector<double> nominal = convert(0.), commanded = convert(play);
+    REQUIRE(nominal.size() == commanded.size());
+    REQUIRE(nominal.size() > 10);
+    // A bed with that play in its drive follows the commands to the angles meant.
+    double bed = commanded.front();
+    for (size_t i = 0; i < commanded.size(); ++ i) {
+        bed = std::clamp(bed, commanded[i] - 0.5 * play, commanded[i] + 0.5 * play);
+        DYNAMIC_SECTION("move " << i) { CHECK_THAT(bed, WithinAbs(nominal[i], 1e-6)); }
+    }
 }
 
 TEST_CASE("Two measured rings give the radius axis calibration", "[PolarKinematics]")

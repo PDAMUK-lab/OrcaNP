@@ -80,21 +80,28 @@ MachinePose PolarKinematics::to_machine(const ToolPose &pose, const MachinePose 
     tilt           = limited;
     m.angle  = rad2deg(phi) * c.angle_sign;
     m.radius = (radius + c.tilt_pivot_length * std::sin(tilt) - c.radius_offset) / c.radius_scale;
-    m.z      = pose.tip.z() + c.tilt_pivot_length * (std::cos(tilt) - 1.);
-    m.tilt   = rad2deg(tilt) * c.tilt_sign;
+    m.z      = pose.tip.z() + c.tilt_pivot_length * (std::cos(tilt) - 1.) + bed_height(d);
+    m.tilt   = rad2deg(tilt) * c.tilt_sign + c.tilt_offset;
     return m;
+}
+
+double PolarKinematics::bed_height(const Eigen::Vector2d &from_axis) const
+{
+    const PolarKinematicsConfig &c = m_config;
+    return c.bed_tilt_x * from_axis.x() + c.bed_tilt_y * from_axis.y() + c.bed_cone * from_axis.norm();
 }
 
 ToolPose PolarKinematics::to_tool(const MachinePose &m) const
 {
     const PolarKinematicsConfig &c = m_config;
     const double phi    = deg2rad(m.angle / c.angle_sign);
-    const double tilt   = deg2rad(m.tilt * c.tilt_sign);
+    const double tilt   = deg2rad((m.tilt - c.tilt_offset) * c.tilt_sign);
     const double radius = m.radius * c.radius_scale + c.radius_offset - c.tilt_pivot_length * std::sin(tilt);
 
     ToolPose pose;
-    pose.tip.head<2>() = c.center + radius * Eigen::Vector2d(std::cos(phi), std::sin(phi));
-    pose.tip.z()       = m.z - c.tilt_pivot_length * (std::cos(tilt) - 1.);
+    const Eigen::Vector2d from_axis = radius * Eigen::Vector2d(std::cos(phi), std::sin(phi));
+    pose.tip.head<2>() = c.center + from_axis;
+    pose.tip.z()       = m.z - c.tilt_pivot_length * (std::cos(tilt) - 1.) - bed_height(from_axis);
     pose.tilt          = radius < 0. ? -tilt : tilt;
     return pose;
 }
@@ -156,12 +163,21 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
     const char                  *cmd = rapid ? "G0" : "G1";
     ++m_stats.cartesian_moves;
 
-    auto write_pose = [&](const MachinePose &m, double seg_e, double seg_feed, bool with_comment) {
+    // The angle to command for `m`: half the backlash further in the way the bed turns, so that
+    // a change of direction takes the play up before the bed moves on.
+    auto commanded_angle = [&](const MachinePose &m) {
+        const double turn = m.angle - m_machine.angle;
+        if (std::abs(turn) > 1e-9)
+            m_turn_dir = turn > 0. ? 1 : -1;
+        return m.angle + 0.5 * c.rotation_backlash * m_turn_dir;
+    };
+    auto write_pose = [&](const MachinePose &m, double angle, double seg_e, double seg_feed, bool with_comment) {
         m_stats.min_radius = std::min(m_stats.min_radius, m.radius);
         m_stats.max_radius = std::max(m_stats.max_radius, m.radius);
         if (m.radius < c.min_travel_radius || m.radius > c.max_travel_radius)
             ++m_stats.radius_outside;
-        out << cmd << ' ' << c.angle_axis << GCodeWords::number(m.angle, 4) << ' ' << c.radius_axis << GCodeWords::number(m.radius, 4);
+        m_angle_written = angle;
+        out << cmd << ' ' << c.angle_axis << GCodeWords::number(angle, 4) << ' ' << c.radius_axis << GCodeWords::number(m.radius, 4);
         // Before the G-code sets Z, the head stays at the height the start block left it at.
         if (m_z_known)
             out << " Z" << GCodeWords::number(m.z, 4);
@@ -195,7 +211,9 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
         m_stats.tilt_limited += m.tilt_limited;
         set_feed_mode(false, out);
         m_e += e;
-        write_pose(m, e, feed, true);
+        // Which way the play lies is not known until the bed turns.
+        m_turn_dir = 0;
+        write_pose(m, m.angle, e, feed, true);
         m_pose         = to;
         m_machine      = m;
         m_have_machine = true;
@@ -210,9 +228,10 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
         const PolarKinematics::Waypoint &w     = waypoints[i];
         const double                     dt    = w.t - t_prev;
         const double                     seg_e = e * dt + pending_e;
+        const double                     angle = commanded_angle(w.pose);
         // Duration from the Cartesian feed, stretched when an axis would exceed its limit.
         double minutes = feed > 0. ? length * dt / feed : 0.;
-        minutes = std::max(minutes, std::abs(w.pose.angle - m_machine.angle) / c.max_angular_speed);
+        minutes = std::max(minutes, std::abs(angle - m_angle_written) / c.max_angular_speed);
         minutes = std::max(minutes, std::abs(w.pose.tilt - m_machine.tilt) / c.max_tilt_speed);
         t_prev  = w.t;
         if (minutes <= 0.) {
@@ -224,7 +243,7 @@ void PolarGCodeConverter::emit_move(const ToolPose &to, double e, double feed, b
         set_feed_mode(c.inverse_time_feed, out);
         m_e += seg_e;
         m_stats.total_angle += std::abs(w.pose.angle - m_machine.angle);
-        write_pose(w.pose, seg_e, c.inverse_time_feed ? 1. / minutes : feed, i + 1 == waypoints.size());
+        write_pose(w.pose, angle, seg_e, c.inverse_time_feed ? 1. / minutes : feed, i + 1 == waypoints.size());
         m_machine = w.pose;
     }
     if (pending_e != 0.) {

@@ -26,7 +26,11 @@ enum class CalibMode : int {
     Calib_Retraction_tower,
     Calib_Input_shaping_freq,
     Calib_Input_shaping_damp,
-    Calib_Cornering
+    Calib_Cornering,
+    // Orca: polar printer tests printed from G-code written for them (Calibration > Polar calibration).
+    Calib_Polar_Backlash,
+    Calib_Polar_Tilt,
+    Calib_Polar_Speed
 };
 
 enum class CalibState { Start = 0, Preset, Calibration, CoarseSave, FineCalibration, Save, Finish };

@@ -171,6 +171,12 @@ NonPlanar::PolarKinematicsConfig polar_config(const PrintConfig &config)
     cfg.signed_radius     = config.polar_signed_radius.value;
     cfg.min_travel_radius = config.polar_radius_min.value;
     cfg.max_travel_radius = config.polar_radius_max.value;
+    cfg.tilt_offset       = config.polar_tilt_offset.value;
+    cfg.rotation_backlash = config.polar_rotation_backlash.value;
+    // Per 100 mm in the settings.
+    cfg.bed_tilt_x        = config.polar_bed_tilt_x.value / 100.;
+    cfg.bed_tilt_y        = config.polar_bed_tilt_y.value / 100.;
+    cfg.bed_cone          = config.polar_bed_cone.value / 100.;
     if (config.polar_axis_names.value.size() == 3) {
         cfg.angle_axis  = config.polar_axis_names.value[0];
         cfg.radius_axis = config.polar_axis_names.value[1];
