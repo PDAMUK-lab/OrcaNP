@@ -91,9 +91,10 @@ TEST_CASE("An installed printer model renamed in its bundle stays installed unde
     // old model keeps it installed, so its printers stay in the printer list.
     ScopedTemporaryFile file(".conf");
     {
+        // Ended by a line break, as AppConfig::save() writes it (the Windows loader reads past the last '}').
         boost::nowide::ofstream out(file.string());
         out << R"({"models":[{"vendor":"Custom","model":"ThetaFirm Core R-Theta","nozzle_diameter":"0.4"},)"
-            << R"({"vendor":"Custom","model":"Generic Klipper Printer","nozzle_diameter":"0.4"}]})";
+            << R"({"vendor":"Custom","model":"Generic Klipper Printer","nozzle_diameter":"0.4"}]})" << std::endl;
     }
     AppConfig config;
     config.set_loading_path(file.string());
