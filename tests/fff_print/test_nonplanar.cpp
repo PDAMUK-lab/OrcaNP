@@ -151,6 +151,27 @@ TEST_CASE("S4 printing curves the layers of an overhanging part", "[NonPlanar]")
             REQUIRE(axis(m, 'Z') > 0.);
 }
 
+TEST_CASE("S4 printing on a printer with an extruder offset prints the same path, shifted by it", "[NonPlanar]")
+{
+    const std::vector<Move> plain = body_moves(slice({ inverted_frustum() }, s4_config()));
+    DynamicPrintConfig      config = s4_config();
+    config.set_deserialize_strict("extruder_offset", "0x2");
+    const std::vector<Move> shifted = body_moves(slice({ inverted_frustum() }, config));
+
+    std::vector<Vec3d> a, b;
+    for (const Move &m : plain)
+        if (m.e > 0.)
+            a.emplace_back(axis(m, 'X'), axis(m, 'Y') - 2., axis(m, 'Z'));
+    for (const Move &m : shifted)
+        if (m.e > 0.)
+            b.emplace_back(axis(m, 'X'), axis(m, 'Y'), axis(m, 'Z'));
+    REQUIRE(a.size() == b.size());
+    double worst = 0.;
+    for (size_t i = 0; i < a.size(); ++i)
+        worst = std::max(worst, (a[i] - b[i]).norm());
+    CHECK_THAT(worst, WithinAbs(0., 0.01));
+}
+
 namespace {
 
 // The lowest and highest extrusion of each layer.

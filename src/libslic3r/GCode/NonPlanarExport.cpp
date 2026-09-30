@@ -1,12 +1,16 @@
 #include "NonPlanarExport.hpp"
 
 #include "../BoundingBox.hpp"
+#include "../Exception.hpp"
 #include "../Geometry.hpp"
 #include "../I18N.hpp"
+#include "../format.hpp"
 #include "../Print.hpp"
 #include "GCodeProcessor.hpp"
 
 #include <boost/nowide/fstream.hpp>
+
+#include <optional>
 
 namespace Slic3r {
 namespace NonPlanarExport {
@@ -66,7 +70,18 @@ std::unique_ptr<S4Mappers> s4_mappers(const Print &print)
         const PrintObject::S4Deformation *s4 = object->s4_deformation();
         if (s4 == nullptr)
             continue;
-        const Vec2d           xy = unscale(object->instances().front().shift) - print.get_plate_origin().head<2>();
+        // G-code positions are also less the offset of the extruder printing them (GCode::point_to_gcode()),
+        // which must be the same for all of the object's extruders.
+        std::optional<Vec2d> nozzle;
+        for (unsigned int filament : object->object_extruders()) {
+            const Vec2d o = print.config().extruder_offset.get_at(print.get_extruder_id(filament));
+            if (nozzle && (o - *nozzle).norm() > EPSILON)
+                throw Slic3r::SlicingError(format(_u8L("%1% is printed non-planar by extruders at different offsets (Extruder offset): "
+                                                       "print it with one extruder."),
+                                                  object->model_object()->name));
+            nozzle = o;
+        }
+        const Vec2d xy = unscale(object->instances().front().shift) - print.get_plate_origin().head<2>() - nozzle.value_or(Vec2d::Zero());
         const Eigen::Vector3d offset(xy.x(), xy.y(), print.config().z_offset.value + object->slicing_parameters().object_print_z_min);
         NonPlanar::TetMesh           mesh = s4->mesh;
         std::vector<Eigen::Vector3d> deformed = s4->deformed;
